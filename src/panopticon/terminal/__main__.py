@@ -1,0 +1,329 @@
+"""``panopticon`` / ``python -m panopticon.terminal`` — the operator CLI.
+
+`panopticon` with no argument (or `panopticon start`) starts everything: runs DB migrations,
+starts the task service and session-service runner in background tmux sessions, then opens the
+session supervisor (ADR 0009) — the dashboard, plus handing the terminal to a task's tmux on `t`
+and rejoining on detach. Given a task id or slug (`panopticon start <task>`), it joins — attaches
+straight to — that task's container session first, falling into the dashboard on detach.
+`panopticon console` opens the supervisor only (assumes services are already running) and takes
+the same optional task argument. `panopticon dashboard` runs the dashboard once without the attach loop;
+`panopticon tasks` lists tasks as plain text; `panopticon migrate` applies DB migrations to head
+via the bundled Alembic config. `panopticon quickstart` registers panopticon itself as a repo
+(idempotent) then starts everything. `panopticon doctor` checks that the host has the
+prerequisites (git, docker + a running daemon, tmux, claude, Python 3.11+) those flows need.
+`panopticon start`/`panopticon host` each preflight the Docker daemon before starting sessions
+(REQ-031) — refusing with an actionable message rather than spawning every task into a crash loop.
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import os
+import shlex
+import subprocess
+from collections.abc import Callable, Sequence
+from pathlib import Path
+
+import httpx
+
+from panopticon.client import TaskServiceClient
+from panopticon.terminal.log_tee import open_private_directory
+from panopticon.terminal.session_environment import (
+    session_environment_command as _session_command,
+)
+
+
+def _make_client(service_url: str) -> TaskServiceClient:
+    return TaskServiceClient(httpx.Client(base_url=service_url, trust_env=False))
+
+
+DEFAULT_SERVICE_URL = "http://localhost:8000"
+
+
+def _private_log_paths() -> dict[str, Path]:
+    """Create private integrated-stack logs without following path-level symlinks."""
+    if configured := os.environ.get("PANOPTICON_STATE"):
+        root = Path(configured)
+    elif xdg_state := os.environ.get("XDG_STATE_HOME"):
+        root = Path(xdg_state) / "panopticon"
+    else:
+        root = Path.home() / ".local" / "state" / "panopticon"
+    directory_fd = open_private_directory(root, create=True)
+    try:
+        os.fchmod(directory_fd, 0o700)
+        paths: dict[str, Path] = {}
+        for name in ("service", "runner"):
+            filename = f"{name}.log"
+            log_fd = os.open(
+                filename,
+                os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=directory_fd,
+            )
+            try:
+                os.fchmod(log_fd, 0o600)
+            finally:
+                os.close(log_fd)
+            paths[name] = root / filename
+        return paths
+    finally:
+        os.close(directory_fd)
+
+
+def _default_service_host(platform: str) -> str:
+    return "127.0.0.1" if platform == "darwin" else "0.0.0.0"
+
+
+def _run_migrate() -> None:
+    import importlib.resources
+
+    import alembic.config
+
+    ini_ref = importlib.resources.files("panopticon") / "alembic.ini"
+    with importlib.resources.as_file(ini_ref) as ini_path:
+        alembic.config.main(argv=["--config", str(ini_path), "upgrade", "head"])
+
+
+def _start_sessions(
+    *, run: Callable[..., subprocess.CompletedProcess[bytes]] | None = None
+) -> None:
+    import sys
+
+    from panopticon.sessionservice.tmux_defaults import defaults_argv, new_session_argv
+
+    do_run = run or subprocess.run
+    python = sys.executable
+    log_paths = _private_log_paths()
+    service_host = os.environ.get("PANOPTICON_HOST") or _default_service_host(sys.platform)
+    for name, cmd in [
+        (
+            "service",
+            f"{shlex.quote(python)} -m panopticon.taskservice "
+            f"--host {shlex.quote(service_host)} "
+            f"2>&1 | {shlex.quote(python)} -m panopticon.terminal.log_tee "
+            f"{shlex.quote(str(log_paths['service']))}",
+        ),
+        (
+            "runner",
+            f"{shlex.quote(python)} -m panopticon.sessionservice.host "
+            f"2>&1 | {shlex.quote(python)} -m panopticon.terminal.log_tee "
+            f"{shlex.quote(str(log_paths['runner']))}",
+        ),
+    ]:
+        # Don't bounce an already-running session. Restarting the task service wipes its in-memory
+        # registrations (connection-scoped liveness), so a `panopticon start <task>` that restarts a
+        # healthy service would find no container to join until every task reconnects its /live
+        # stream — the join races the reconnect and falls back to the dashboard. Leave it be.
+        if (
+            do_run(
+                [
+                    "tmux",
+                    "-L",
+                    "panopticon",
+                    *defaults_argv("panopticon"),
+                    "has-session",
+                    "-t",
+                    name,
+                ],
+                capture_output=True,
+            ).returncode
+            == 0
+        ):
+            continue
+        # `panopticon start`/`host` typically run before the dashboard or any task container, so
+        # this is often the actual first touch of a fresh socket — load the shipped tmux defaults
+        # (REQ-030) via `-f` here too, not just at the dashboard/task-spawn call sites.
+        do_run(
+            [
+                "tmux",
+                "-L",
+                "panopticon",
+                *new_session_argv("panopticon"),
+                "-d",
+                "-s",
+                name,
+                _session_command(cmd),
+            ],
+            check=True,
+        )
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    client: TaskServiceClient | None = None,
+) -> int:
+    parser = argparse.ArgumentParser(prog="panopticon", description="panopticon operator CLI")
+    parser.add_argument(
+        "--service-url",
+        default=os.environ.get("PANOPTICON_SERVICE_URL", DEFAULT_SERVICE_URL),
+        help="task service base URL",
+    )
+    sub = parser.add_subparsers(dest="command")
+    con = sub.add_parser(
+        "console", help="session supervisor: dashboard + attach loop (assumes services are running)"
+    )
+    con.add_argument("task", nargs="?", help="task id or slug to join (attach to) on startup")
+    dash = sub.add_parser("dashboard", help="run the dashboard once, without the attach loop")
+    # Set by the supervisor (ADR 0009): the dashboard runs inside tmux, so it reports the session
+    # the operator picked with `t` by writing it here instead of returning it in-process.
+    dash.add_argument("--switch-file", help=argparse.SUPPRESS)
+    sub.add_parser("tasks", help="list tasks as plain text")
+    mig = sub.add_parser("migrate", help="apply DB migrations to head (or pass alembic args)")
+    mig.add_argument("alembic_args", nargs="*", default=["upgrade", "head"])
+    sub.add_parser("build", help="build the base task-container image (panopticon-base)")
+    sub.add_parser(
+        "doctor", help="check host prerequisites for quickstart/start/setup-repo, then exit"
+    )
+    sub.add_parser(
+        "host", help="start task service + runner in background tmux sessions (no console)"
+    )
+    start = sub.add_parser("start", help="start everything and open the dashboard supervisor")
+    start.add_argument("task", nargs="?", help="task id or slug to join (attach to) on startup")
+    sub.add_parser("stop", help="stop task containers and the panopticon tmux server")
+    sub.add_parser(
+        "quickstart",
+        help=(
+            "first-time setup: register panopticon as a repo (idempotent), "
+            "then start everything and open the dashboard supervisor"
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    if args.command == "migrate":
+        import importlib.resources
+
+        import alembic.config
+
+        ini_ref = importlib.resources.files("panopticon") / "alembic.ini"
+        with importlib.resources.as_file(ini_ref) as ini_path:
+            alembic.config.main(argv=["--config", str(ini_path), *list(args.alembic_args)])
+        return 0
+    elif args.command == "build":
+        from panopticon.sessionservice.images import ImageBuilder
+
+        ImageBuilder().build_base(verbose=True)
+        return 0
+    elif args.command == "doctor":
+        from panopticon.terminal import doctor
+
+        return doctor.report(doctor.run_checks())
+    elif args.command == "host":
+        from panopticon.sessionservice import docker_daemon
+        from panopticon.taskservice.auth import environment_token
+
+        # Fail fast on an unreachable Docker daemon (REQ-031.1) rather than spawning every task
+        # into a crash loop — e.g. after a host reboot, before OrbStack/Docker Desktop is back up.
+        environment_token()
+        if (message := docker_daemon.preflight_message("host")) is not None:
+            print(message)
+            return 1
+        _run_migrate()
+        _start_sessions()
+        return 0
+    elif args.command == "quickstart":
+        from panopticon.taskservice.auth import environment_token
+        from panopticon.terminal import doctor
+        from panopticon.terminal import quickstart as _qs
+
+        # Fail fast on missing host prerequisites before touching the DB or starting sessions,
+        # so a missing binary / stopped Docker daemon surfaces as the doctor report rather than
+        # a cryptic failure deep inside session or container spawn.
+        environment_token()
+        if doctor.report(doctor.run_checks()) != 0:
+            return 1
+
+        _run_migrate()
+        _start_sessions()
+        _qs.wait_for_service(args.service_url)
+        env_file = _qs.ensure_secrets_file()
+        harness = _qs.choose_harness(
+            _qs.detect_harnesses(environ=_qs.harness_environment(env_file))
+        )
+        git_url = _qs.detect_git_url()
+        qs_client = _make_client(args.service_url)
+        repo_id, repo_name = _qs.setup_repo(qs_client, git_url, env_file, default_harness=harness)
+        task_id = _qs.ensure_setup_repo_task(qs_client, repo_id, repo_name)
+        from panopticon.terminal.console import run_console_local
+
+        # Open the console already attached to the setup-repo task so the operator lands straight
+        # in `claude setup-token`; if its shell session isn't up yet, join falls back to the dashboard.
+        run_console_local(args.service_url, client=qs_client, join=task_id)
+        return 0
+    elif args.command == "stop":
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["docker", "ps", "--all", "--quiet", "--filter", "label=panopticon.task"],
+                capture_output=True,
+                text=True,
+            )
+            ids = result.stdout.split() if result.stdout.strip() else []
+            if ids:
+                subprocess.run(["docker", "rm", "--force", *ids], check=True)
+        except FileNotFoundError:
+            pass
+        with contextlib.suppress(FileNotFoundError):
+            subprocess.run(
+                ["tmux", "-L", "panopticon", "kill-server"],
+                capture_output=True,
+            )
+        return 0
+
+    client = client or _make_client(args.service_url)
+    if args.command == "tasks":
+        for t in client.list_tasks():
+            print(f"{t['id']}  {t['state']:<10}  {t['turn']:<5}  {t['slug'] or '-'}")
+    elif args.command == "dashboard":
+        from panopticon.terminal.console import make_runner_switch, make_service_switch, switch_to
+        from panopticon.terminal.dashboard import run
+
+        on_switch = None
+        on_service = None
+        on_runner = None
+        draft_file = None
+        if (
+            args.switch_file
+        ):  # run under the supervisor: report `t`/`s`/`u` picks via the switch-file
+            switch_file = Path(args.switch_file)
+            on_switch = lambda session, host, label: switch_to(  # noqa: E731
+                session, host=host, label=label, switch_file=switch_file
+            )
+            on_service = make_service_switch(switch_file)
+            on_runner = make_runner_switch(switch_file)
+            draft_file = switch_file.with_name("new-task-drafts.json")
+        # Same default as the task service (shared ARTIFACTS_DIR): when the dashboard shares
+        # the store's filesystem, `a`'s `e` opens the on-disk artifact in place.
+        from panopticon.core.dirs import ARTIFACTS_DIR
+
+        artifacts_root = ARTIFACTS_DIR
+        run(
+            client,
+            on_switch=on_switch,
+            on_service=on_service,
+            on_runner=on_runner,
+            artifacts_root=artifacts_root,
+            draft_file=draft_file,
+        )
+    else:  # "start", "console", or no subcommand (no subcommand → alias for "start")
+        if args.command in (None, "start"):  # "console" assumes services are already running
+            from panopticon.sessionservice import docker_daemon
+
+            # Fail fast on an unreachable Docker daemon (REQ-031.1) rather than spawning every
+            # task into a crash loop — e.g. after a host reboot, before OrbStack/Docker Desktop is
+            # back up.
+            if (message := docker_daemon.preflight_message("start")) is not None:
+                print(message)
+                return 1
+            _run_migrate()
+            _start_sessions()
+        from panopticon.terminal.console import run_console_local
+
+        run_console_local(args.service_url, client=client, join=getattr(args, "task", None))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

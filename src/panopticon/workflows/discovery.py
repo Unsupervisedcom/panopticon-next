@@ -1,0 +1,121 @@
+"""Discover ``Workflow`` subclasses on a package/path — the registry the task service runs on (Slice 8).
+
+Scans the built-in :mod:`panopticon.workflows` package, then
+``$XDG_CONFIG_HOME/panopticon/workflows/`` (``~/.config/panopticon/workflows/`` when unset,
+if it exists), then an optional extra directory for concrete ``Workflow`` subclasses, instantiates
+each (instantiation **validates** it — states, transitions, the required terminal state), and keys
+them by ``name``. Adding a user workflow is then just dropping a module in
+``~/.config/panopticon/workflows/``: no change to ``core`` or ``taskservice``. Duplicate names
+are rejected so a stray copy can't silently shadow a built-in. LLM-free.
+"""
+
+from __future__ import annotations
+
+import importlib
+import importlib.util
+import inspect
+import logging
+import pkgutil
+import sys
+from collections.abc import Iterator
+from hashlib import sha256
+from pathlib import Path
+from types import ModuleType
+
+from panopticon.core.dirs import user_config_dir
+from panopticon.core.workflow import Workflow
+from panopticon.harnesses import HARNESSES
+
+#: Module namespace for directory-discovered workflows (kept distinct from the package's).
+_EXT_PREFIX = "panopticon_workflows_ext"
+_log = logging.getLogger(__name__)
+
+
+def _concrete_workflows(module: ModuleType) -> list[type[Workflow]]:
+    """The concrete ``Workflow`` subclasses *defined in* ``module`` (not imported into it)."""
+    return [
+        obj
+        for _, obj in inspect.getmembers(module, inspect.isclass)
+        if issubclass(obj, Workflow)
+        and obj.__module__ == module.__name__  # defined here, not a re-export of the base/others
+        and isinstance(getattr(obj, "name", None), str)
+    ]
+
+
+def _package_modules(package: ModuleType) -> Iterator[ModuleType]:
+    for info in pkgutil.iter_modules(package.__path__, prefix=f"{package.__name__}."):
+        yield importlib.import_module(info.name)
+
+
+def _directory_modules(path: Path) -> Iterator[ModuleType]:
+    for file in sorted(path.glob("*.py")):
+        if file.name.startswith("_"):
+            continue
+        digest = sha256(str(file.resolve()).encode()).hexdigest()[:12]
+        module_name = f"{_EXT_PREFIX}.{file.stem}_{digest}"
+        spec = importlib.util.spec_from_file_location(module_name, file)
+        if spec is None or spec.loader is None:  # not importable — skip
+            continue
+        module = importlib.util.module_from_spec(spec)
+        previous = sys.modules.get(module_name)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            if previous is None:
+                del sys.modules[module_name]
+            else:
+                sys.modules[module_name] = previous
+            raise
+        yield module
+
+
+def discover_workflows(
+    *,
+    package: str = "panopticon.workflows",
+    path: str | None = None,
+    _home_workflows: Path | None = None,
+    _skip_duplicates: bool = False,
+) -> dict[str, Workflow]:
+    """Build the ``{name: workflow}`` registry: built-in ``package`` → ``$XDG_CONFIG_HOME/panopticon/workflows/`` → ``path``.
+
+    Each discovered class is instantiated (validating it); a duplicate ``name`` raises ``ValueError``.
+    ``_home_workflows`` overrides the default config-dir workflows scan target (tests only).
+    ``_skip_duplicates`` logs and skips later definitions (live-rescan wiring only).
+    """
+    modules = list(_package_modules(importlib.import_module(package)))
+    home_wf = _home_workflows if _home_workflows is not None else (user_config_dir() / "workflows")
+    if home_wf.is_dir():
+        modules += list(_directory_modules(home_wf))
+    if path:
+        modules += list(_directory_modules(Path(path)))
+    registry: dict[str, Workflow] = {}
+    for module in modules:
+        for cls in _concrete_workflows(module):
+            workflow = cls()  # instantiation validates the workflow (raises InvalidWorkflow)
+            workflow.validate_registration(HARNESSES)
+            if workflow.name in registry:
+                source = inspect.getsourcefile(cls)
+                if (
+                    source is not None
+                    and cls.__module__.startswith(_EXT_PREFIX)
+                    and Path(source).resolve().is_relative_to(home_wf.resolve())
+                ):
+                    raise ValueError(
+                        f"external workflow file {source}: duplicate workflow name "
+                        f"{workflow.name!r}; remove this external workflow file before restarting "
+                        "Panopticon"
+                    )
+                if _skip_duplicates:
+                    _log.warning(
+                        "skipping duplicate workflow name %r from %s.%s",
+                        workflow.name,
+                        cls.__module__,
+                        cls.__name__,
+                    )
+                    continue
+                raise ValueError(
+                    f"duplicate workflow name {workflow.name!r} (from {cls.__module__}.{cls.__name__})"
+                )
+            registry[workflow.name] = workflow
+    return registry

@@ -1,0 +1,108 @@
+"""Workflow states, expressed as classes (declarative, à la an ORM model).
+
+A state is a **class** used as a type-level identity (never instantiated). Subclass:
+
+* :class:`State` — a non-terminal state. It carries an inherited transition to
+  :class:`Dropped`, so every task is always droppable; concrete states add their own
+  ``transitions`` (which accumulate with the inherited ``Dropped`` across the hierarchy).
+* :class:`TerminalState` — a terminal state (no outgoing transitions).
+
+``transitions`` entries are other state **classes** or their ``label`` **strings**; strings
+are resolved to classes when the owning :class:`~panopticon.core.workflow.Workflow` is built
+(forward references — e.g. cycles — must use strings, as with an ORM relationship).
+
+Each state declares two orthogonal, immutable facts:
+
+* ``turn_on_enter`` — who holds the turn *on entry* (distinct from ``Task.turn``, the live
+  holder, which may differ later within the state);
+* ``advanced_by`` — who moves the task *out* of the state (the user, or the agent once
+  satisfied). These are independent: e.g. a plan state is left by the user (approval) yet
+  the next state may begin on the agent's turn.
+"""
+
+from __future__ import annotations
+
+from abc import ABC
+from collections.abc import Mapping
+from typing import ClassVar
+
+from panopticon.core.models import Actor, Responsibility
+
+
+class BaseState(ABC):
+    """Common base for workflow states — use :class:`State` or :class:`TerminalState`."""
+
+    #: Stable identifier — persisted in ``Task.state`` and shown on the dashboard.
+    label: ClassVar[str]
+    #: Short, human-facing prose for what this phase is *for* (rendered into the agent's
+    #: workflow overview + per-turn briefing). Empty by default — states need not set it.
+    description: ClassVar[str] = ""
+    #: Who holds the turn upon entering this state.
+    turn_on_enter: ClassVar[Actor]
+    #: The agent's obligations while in this state (empty = ungated).
+    responsibilities: ClassVar[tuple[Responsibility, ...]] = ()
+
+
+class TerminalState(BaseState):
+    """A terminal state: the task is finished here; no outgoing transitions.
+
+    The turn returns to the user once a task is terminal.
+    """
+
+    turn_on_enter: ClassVar[Actor] = Actor.USER
+
+
+class Complete(TerminalState):
+    """Built-in terminal state for successfully finished tasks."""
+
+    label: ClassVar[str] = "COMPLETE"
+    description: ClassVar[str] = "The work has landed; the task is finished."
+
+
+class Dropped(TerminalState):
+    """Built-in terminal state for abandoned tasks. Reachable from every non-terminal state."""
+
+    label: ClassVar[str] = "DROPPED"
+    description: ClassVar[str] = "The task was abandoned."
+
+
+#: The built-in terminal state labels — a task in one of these has finished (no container needed).
+#: The one central definition for the cross-cutting "is this task done?" check (e.g. the runner's
+#: spawn loop). Per-workflow terminal states beyond these are a server-side refinement (BACKLOG).
+TERMINAL_LABELS: frozenset[str] = frozenset({Complete.label, Dropped.label})
+
+
+class State(BaseState):
+    """A non-terminal state.
+
+    Concrete states set ``label``, optionally override ``turn_on_enter``/``advanced_by``, and
+    add their own ``transitions``. The inherited transition to :class:`Dropped` makes every
+    task droppable without each state having to declare it. Defaults suit the common case — the
+    agent acts first on entry, then the user reviews and advances — so a state where the
+    agent advances itself once satisfied overrides ``advanced_by = Actor.AGENT``.
+    """
+
+    turn_on_enter: ClassVar[Actor] = Actor.AGENT
+    advanced_by: ClassVar[Actor] = Actor.USER
+    transitions: ClassVar[tuple[type[BaseState] | str, ...]] = (Dropped,)
+    #: Named **core operations** beyond the implicit `drop` — a verb → target-state map (the
+    #: target must be one of this state's ``transitions``). The control plane and the
+    #: in-container agent invoke these by name (ADR 0004's two-tier commands) instead of naming
+    #: a raw state. `advance` is auto-derived when a state has exactly one non-`DROPPED`
+    #: transition, so linear states need declare nothing; declare it (and e.g. `iterate`) only
+    #: when a state has several outgoing edges. `drop` → `DROPPED` is always implicit.
+    operations: ClassVar[Mapping[str, type[BaseState] | str]] = {}
+
+
+class InitialState(State):
+    """A workflow's entry state — every workflow's ``initial`` must subclass this
+    (enforced when the workflow is built).
+
+    The turn defaults to the **user**, so the common freshly created task waits for an
+    instruction. Workflows that start autonomously may override :attr:`turn_on_enter`; task
+    creation always uses the configured initial state's value. Every other aspect is inherited
+    from :class:`State` (``advanced_by = USER``, the inherited ``Dropped`` transition); being a
+    :class:`State`, it is also non-terminal.
+    """
+
+    turn_on_enter: ClassVar[Actor] = Actor.USER

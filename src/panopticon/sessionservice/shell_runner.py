@@ -1,0 +1,340 @@
+"""Host shell-script runner: run a workflow's ``shell_script`` in a host tmux session, no container.
+
+The companion to :class:`~panopticon.sessionservice.local_runner.LocalRunner` for workflows whose
+:attr:`~panopticon.core.workflow.Workflow.runner_type` is ``"shell"``. Where the local runner
+spawns a Docker container + a tmux pane execing into it, this runner just opens a **host tmux
+session** whose single pane runs the workflow's script directly on the host — no image, no
+per-task clone, no in-container agent. It's for short operator utilities that need a real shell and
+TTY (e.g. ``claude setup-token``, whose interactive OAuth flow the operator completes by attaching
+to the session).
+
+It shares the local runner's tmux socket (``-L panopticon``) and its ``panopticon-<task_id>``
+session naming, so the terminal supervisor's ``t`` (attach to a task's session) reaches a shell
+task exactly as it does a container one. The command executor is **injectable** so the runner is
+unit-testable without tmux. LLM-free — a shell task runs no agent.
+"""
+
+from __future__ import annotations
+
+import importlib.resources
+import os
+import shlex
+import sys
+import tempfile
+from collections.abc import Callable
+from pathlib import Path
+
+from panopticon.core.dirs import _secrets_dir, secrets_file_path
+from panopticon.core.models import LifecyclePhase
+from panopticon.sessionservice.local_runner import (
+    TMUX_SOCKET,
+    CommandRunner,
+    _subprocess_run,
+    session_name,
+)
+from panopticon.sessionservice.runner import Runner
+from panopticon.sessionservice.tmux_defaults import defaults_argv, new_session_argv
+from panopticon.taskservice.auth import load_tokens, snapshot_tokens
+
+#: The panopticon shell lib (``task_lib.sh``): functions a shell workflow's script uses to drive its
+#: task over REST (``panopticon_advance``/``_drop``/``_set_slug``/…) instead of hand-rolling curl.
+#: Loaded once at import and injected into every shell task's shell (see :meth:`ShellRunner.spawn`).
+_TASK_LIB = (importlib.resources.files("panopticon.sessionservice") / "task_lib.sh").read_text()
+
+
+def _minify_shell(script: str) -> str:
+    """Drop whole-line comments and blank lines from an assembled shell command.
+
+    tmux sends a whole ``new-session`` command (including the pane's shell command) to its server
+    over ``imsg``, which caps a single message at ``MAX_IMSGSIZE`` (16 KiB). A richly commented
+    workflow script plus the task lib and env-file can push the assembled command past that, and
+    then ``new-session`` fails outright (before the script even runs) — so we strip the parts that
+    are pure bulk at runtime. Only lines that are **entirely** a comment (optional leading whitespace
+    then ``#``) or blank are removed, so trailing/inline comments and every line of code are left
+    untouched; the source files keep their comments. Panopticon's shell assets don't put ``#`` lines
+    inside heredocs (where this would be wrong) — keep it that way.
+    """
+    return "\n".join(
+        line for line in script.splitlines() if line.strip() and not line.lstrip().startswith("#")
+    )
+
+
+class ShellRunner(Runner):
+    """Runs a shell workflow's script in a host tmux session (one host, no container)."""
+
+    def __init__(
+        self,
+        service_url: str,
+        *,
+        runner_id: str = "local",
+        tmux_socket: str | None = TMUX_SOCKET,
+        secrets_dir: str | Path | None = None,
+        auth_file: str | None = None,
+        script_dir: str | Path | None = None,
+        run: CommandRunner = _subprocess_run,
+    ) -> None:
+        self._service_url = service_url
+        self._runner_id = runner_id
+        self._tmux_socket = tmux_socket
+        # Root the repo's `env_file` *name* resolves against — this host's local secrets dir, matching
+        # LocalRunner (ADR 0007). None = resolve the host's secrets dir dynamically at spawn.
+        self._secrets_dir = secrets_dir
+        self._auth_file = (
+            auth_file if auth_file is not None else os.environ.get("PANOPTICON_SERVICE_AUTH_FILE")
+        )
+        self._script_dir = Path(script_dir or tempfile.gettempdir())
+        self._run = run
+
+    def _tmux(self, *args: str) -> list[str]:
+        prefix = ["tmux", *(["-L", self._tmux_socket] if self._tmux_socket else [])]
+        return [*prefix, *args]
+
+    def validate_configuration(self) -> None:
+        """Reject an unusable control-plane credential before any spawn side effect."""
+        if self._auth_file:
+            load_tokens(self._auth_file, secrets_dir=self._secrets_dir)
+
+    def _remove_auth_snapshots(self, task_id: str) -> None:
+        """Remove private snapshots left by a killed shell session."""
+        for path in self._script_dir.glob(f"panopticon-service-auth-{task_id}-*.json"):
+            path.unlink(missing_ok=True)
+
+    def spawn(
+        self,
+        task_id: str,
+        *,
+        env_file: str | None = None,
+        git_url: str | None = None,
+        repo_name: str | None = None,
+        script: str = "",
+        workdir: str | None = None,
+        progress: Callable[[LifecyclePhase], None] | None = None,
+    ) -> str:
+        """Run ``script`` for ``task_id`` in a fresh host tmux session; return the session name.
+
+        The session is named ``panopticon-<task_id>`` (matching the local runner) so the terminal
+        supervisor attaches to it the same way, and starts in ``workdir`` — the task's own directory
+        the spawner prepares (empty by default, or a repo clone when the workflow opts in), or the
+        workflow's own override. ``workdir`` falls back to the operator's home only when unset (direct
+        use). The pane runs ``sh -c`` with ``PANOPTICON_SERVICE_URL`` and ``PANOPTICON_TASK_ID``
+        exported — so the script can drive its own lifecycle over REST (e.g. advance to COMPLETE on
+        success) — and the repo's ``env_file`` secrets sourced first when given. ``git_url``, when
+        given, is exported as ``PANOPTICON_GIT_URL`` so a script can tell what forge the repo lives
+        on (e.g. offer to record a GitHub token); ``repo_name`` is exported as ``PANOPTICON_REPO_NAME``
+        so a script can name the repo in its summary. ``env_file`` is a
+        **name relative to this runner's secrets dir** (ADR 0007), resolved host-locally (like
+        ``LocalRunner``) so a remote runner uses its own host's secrets. The panopticon shell lib
+        (``panopticon_advance``/``_drop``/…) is loaded into the shell so the script can drive its task
+        over REST. It also holds a ``/live`` registration open in the background for the session's
+        lifetime, so the dashboard shows the task **live** (not ``awaiting``) while the script runs. Reports ``STARTING`` (before the
+        session) then ``AWAITING`` (once it's up) via ``progress`` — it composes to ``live`` once the
+        background registration connects; there is no ``PREPARING``/``BUILDING`` (no clone, no image).
+        Idempotent: a stale session of the same name is killed first, so a respawn is a no-op restart."""
+
+        def _report(phase: LifecyclePhase) -> None:
+            if progress is not None:
+                progress(phase)
+
+        start_dir = workdir or os.path.expanduser("~")
+        session = session_name(task_id)
+        # Resolve caller-controlled references before creating a credential snapshot, so a
+        # rejected repo secret cannot strand a copy of the control-plane credentials.
+        env_path = secrets_file_path(env_file, secrets_dir=self._secrets_dir)
+        self._remove_auth_snapshots(task_id)
+        auth_snapshot = (
+            snapshot_tokens(
+                self._auth_file,
+                directory=self._script_dir,
+                secrets_dir=self._secrets_dir,
+                prefix=f"panopticon-service-auth-{task_id}-",
+                task_id=task_id,
+            )
+            if self._auth_file
+            else None
+        )
+        auth_path = auth_snapshot
+        try:
+            return self._spawn_with_snapshot(
+                task_id=task_id,
+                script=script,
+                session=session,
+                start_dir=start_dir,
+                env_path=env_path,
+                auth_snapshot=auth_snapshot,
+                auth_path=auth_path,
+                git_url=git_url,
+                repo_name=repo_name,
+                progress=progress,
+            )
+        except BaseException:
+            if auth_snapshot is not None:
+                auth_snapshot.unlink(missing_ok=True)
+            (self._script_dir / f"panopticon-shell-{task_id}.sh").unlink(missing_ok=True)
+            raise
+
+    def _spawn_with_snapshot(
+        self,
+        *,
+        task_id: str,
+        script: str,
+        session: str,
+        start_dir: str,
+        env_path: str | None,
+        auth_snapshot: Path | None,
+        auth_path: Path | None,
+        git_url: str | None,
+        repo_name: str | None,
+        progress: Callable[[LifecyclePhase], None] | None,
+    ) -> str:
+        """Assemble and launch after snapshot creation; the caller owns failure cleanup."""
+
+        def _report(phase: LifecyclePhase) -> None:
+            if progress is not None:
+                progress(phase)
+
+        # A shell task runs no agent to open its own `/live` registration, so the dashboard would
+        # read it as `awaiting` for its whole life. Hold the liveness stream open in the background
+        # for the session's lifetime instead — the task then composes as `live` while the script
+        # runs. `curl --no-buffer` keeps the GET open (the connection *is* the signal); `trap … EXIT`
+        # drops it when the script exits, and killing the session SIGHUPs the whole pane group, which
+        # reaps the backgrounded curl too — either way liveness ends exactly with the session.
+        live_url = (
+            f"{self._service_url}/tasks/{task_id}/live"
+            f"?container_id={session}&runner_id={self._runner_id}"
+        )
+        liveness_helper = shlex.join(
+            [
+                sys.executable,
+                "-m",
+                "panopticon.sessionservice.shell_liveness",
+                "--service-url",
+                self._service_url,
+                "--task-id",
+                task_id,
+                "--runner-id",
+                self._runner_id,
+                "--socket",
+                self._tmux_socket or "",
+                "--session",
+                session,
+                "--snapshot",
+                str(auth_snapshot) if auth_snapshot is not None else "",
+            ]
+        )
+        lines = []
+        # Repo credentials are caller-controlled. Load literal NAME=VALUE records without sourcing
+        # host shell code, then pin every reserved control-plane value below.
+        if env_path:
+            quoted = shlex.quote(env_path)
+            lines.extend(
+                [
+                    f"if [ -f {quoted} ]; then",
+                    'while IFS= read -r _pan_env_line || [ -n "$_pan_env_line" ]; do',
+                    "case $_pan_env_line in ''|'#'*) continue ;; esac",
+                    "_pan_env_name=${_pan_env_line%%=*}",
+                    "case $_pan_env_line in *=*) ;; *) continue ;; esac",
+                    "case $_pan_env_name in ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;; esac",
+                    'export "$_pan_env_line"',
+                    f"done < {quoted}",
+                    "fi",
+                    f"export PANOPTICON_ENV_FILE={quoted}",
+                ]
+            )
+        else:
+            lines.append("unset PANOPTICON_ENV_FILE")
+        lines.extend(
+            [
+                f"export PANOPTICON_SERVICE_URL={shlex.quote(self._service_url)}",
+                f"export PANOPTICON_TASK_ID={shlex.quote(task_id)}",
+                f"export PANOPTICON_RUNNER_ID={shlex.quote(self._runner_id)}",
+                f"export PANOPTICON_PYTHON={shlex.quote(sys.executable)}",
+                f"export PANOPTICON_SECRETS_DIR={shlex.quote(str(self._secrets_dir or _secrets_dir()))}",
+                *(
+                    ["export PANOPTICON_SERVICE_AUTH_FILE=" + shlex.quote(str(auth_path))]
+                    if auth_path is not None
+                    else ["unset PANOPTICON_SERVICE_AUTH_FILE"]
+                ),
+                "unset PANOPTICON_SERVICE_AUTH_TOKEN",
+                *(
+                    [f"export PANOPTICON_GIT_URL={shlex.quote(git_url)}"]
+                    if git_url
+                    else ["unset PANOPTICON_GIT_URL"]
+                ),
+                *(
+                    [f"export PANOPTICON_REPO_NAME={shlex.quote(repo_name)}"]
+                    if repo_name
+                    else ["unset PANOPTICON_REPO_NAME"]
+                ),
+                # Load the panopticon shell lib so the script can drive its task (panopticon_advance, …).
+                _TASK_LIB,
+                'if [ -n "${TMUX:-}" ]; then',
+                f"nohup {liveness_helper} </dev/null >/dev/null 2>&1 &",
+                "_panopticon_live_pid=$!",
+                "else",
+                f"_panopticon_curl --silent --no-buffer {shlex.quote(live_url)} >/dev/null 2>&1 &",
+                "_panopticon_live_pid=$!",
+                "fi",
+                "_panopticon_cleanup() { trap - EXIT HUP INT TERM; "
+                "kill $_panopticon_live_pid 2>/dev/null; "
+                + (
+                    "rm -f " + shlex.quote(str(auth_snapshot)) + "; "
+                    if auth_snapshot is not None
+                    else ""
+                )
+                + "}",
+                "trap '_panopticon_cleanup' EXIT",
+                "trap '_panopticon_cleanup; exit 129' HUP INT TERM",
+            ]
+        )
+        lines.append(script)
+        # Strip comments/blank lines so the assembled command stays under tmux's 16 KiB imsg cap.
+        command = _minify_shell("\n".join(lines))
+        # tmux's imsg transport caps one command around 16 KiB. Keep small workflows inline; spill a
+        # larger assembled script to a private host file and run a tiny cleanup wrapper instead.
+        if len(command.encode()) >= 12_000:
+            script_path = self._script_dir / f"panopticon-shell-{task_id}.sh"
+            script_path.write_text(command)
+            script_path.chmod(0o700)
+            quoted_script = shlex.quote(str(script_path))
+            command = f"trap 'rm -f {quoted_script}' EXIT; sh {quoted_script}"
+        # Clear any stale session first so a respawn is idempotent (no-op when none exists).
+        self._run(
+            self._tmux(*defaults_argv(self._tmux_socket), "kill-session", "-t", session),
+            check=False,
+        )
+        _report(LifecyclePhase.STARTING)
+        # -c sets the pane's start directory (the task's own dir) so the script runs in a known place.
+        self._run(
+            self._tmux(
+                *new_session_argv(self._tmux_socket),
+                "-d",
+                "-s",
+                session,
+                "-c",
+                start_dir,
+                "sh",
+                "-c",
+                command,
+            )
+        )
+        _report(LifecyclePhase.AWAITING)
+        return session
+
+    def is_running(self, task_id: str) -> bool:
+        """Whether the task's shell session is alive — the running signal for a shell task.
+
+        A shell task registers no ``/live`` connection (it runs no agent), so its tmux session
+        **is** its liveness: the session lives exactly as long as the script's process. Mirrors the
+        local runner's method name so the spawner can probe either backend uniformly."""
+        return self.has_session(task_id)
+
+    def has_session(self, task_id: str) -> bool:
+        """Whether the task's host tmux session exists on this runner's tmux server."""
+        session = session_name(task_id)
+        sessions = self._run(self._tmux("list-sessions", "-F", "#{session_name}"), check=False)
+        return session in sessions.splitlines()
+
+    def stop(self, session_id: str) -> None:
+        # Idempotent: tolerate an already-gone session.
+        self._run(self._tmux("kill-session", "-t", session_id), check=False)
+        self._remove_auth_snapshots(session_id.removeprefix("panopticon-"))

@@ -1,0 +1,302 @@
+"""The turn-flip hook callback (`python -m panopticon.container.hook <user|agent> [prompt|stop]`).
+
+claude's Stop / UserPromptSubmit hooks invoke this to flip the live turn (the Slice 4 contract);
+so do the PreToolUse / PostToolUse hooks matched to ``AskUserQuestion``, so the turn reads *user*
+while the agent is asking the user something and *agent* once it's answered. It reads the task from
+the container's env and POSTs `set_turn`. claude-specific wiring (M3); the deterministic turn
+mechanism it calls lives in the task service. A turn-to-agent write also clears the deliberate
+`blocked` marker; a turn-to-user write preserves it.
+
+The first argument is the turn to set; the optional second selects an **event side-effect** — kept
+distinct from the actor so the bare question hooks (`hook user` / `hook agent`) are a pure turn flip:
+
+- ``prompt`` (UserPromptSubmit → ``agent``): print, into the agent's context (claude adds a
+  UserPromptSubmit hook's stdout there), the **current-phase briefing** — which state the task is in
+  and what that phase expects — so the agent knows where it is instead of charging ahead. While the
+  task is still unslugged it additionally prints the provisioning nudge (ADR 0011 §3), reminding the
+  agent to run the `provision` skill once it can name the task.
+- ``stop`` (Stop → ``user``): gate the turn flip on background work, perform an eligible turn
+  update first, and then launch detached reporting of the session's cumulative token usage from
+  the transcript the hook payload names (best-effort, silent). A
+  background task (a Bash command launched with ``run_in_background``, the ``Monitor`` tool, or a
+  background **agent**) keeps running after the agent's visible turn ends; its completion re-invokes
+  the agent with a synthetic message — *not* a ``UserPromptSubmit`` — so a turn flipped to ``user``
+  would never flip back even though the agent is about to be woken and keep working. So if the Stop
+  payload reports any **live** background task (``background_tasks`` array, claude ≥ v2.1.145) we
+  leave the turn on the agent; it flips to ``user`` on the eventual real stop with nothing in flight.
+  If the payload lacks the field (older claude / empty stdin) we degrade to the plain flip.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import signal
+import subprocess
+import sys
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from pathlib import Path
+from threading import current_thread, main_thread
+from types import FrameType
+from typing import Any, TextIO
+
+import httpx
+
+from panopticon.client import TaskServiceClient
+from panopticon.container.pricing import cost_weighted_tokens
+from panopticon.core.provisioning import PROVISION_NUDGE
+
+#: A background task's ``status`` value counts as *finished* (no longer in flight) only if it's one
+#: of these. Anything else — including a missing/unknown status — is treated as live, so we err
+#: toward keeping the turn on the agent rather than prematurely handing it back.
+_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "canceled", "error"})
+
+#: Shorter than the harness's three-second whole-command backstop. The absolute deadline covers all
+#: requests and response processing together; the per-request timeout is a second line of defence.
+_CALLBACK_DEADLINE_SECONDS = 2.0
+_HTTP_TIMEOUT_SECONDS = 1.5
+_TOKEN_REPORT_MODE = "_report-tokens"
+
+
+class _CallbackDeadlineExceeded(TimeoutError):
+    """The callback's fail-open deadline expired."""
+
+
+def _raise_callback_deadline(_signum: int, _frame: FrameType | None) -> None:
+    raise _CallbackDeadlineExceeded
+
+
+@contextmanager
+def _callback_deadline() -> Iterator[None]:
+    """Bound the complete callback while preserving direct, threaded unit-test use.
+
+    Production invokes this module as the process's main thread on Linux. Python only permits
+    signal handlers on that thread, so injected clients used by threaded unit tests retain their
+    own timeout semantics instead of trying to install an invalid handler.
+    """
+    if current_thread() is not main_thread():
+        yield
+        return
+    previous_handler = signal.signal(signal.SIGALRM, _raise_callback_deadline)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, _CALLBACK_DEADLINE_SECONDS)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, *previous_timer)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
+def _read_payload(stdin: TextIO) -> dict[str, Any]:
+    """Tolerantly parse the hook's stdin JSON; empty/invalid input yields an empty payload."""
+    try:
+        raw = stdin.read()
+    except (OSError, ValueError):
+        return {}
+    if not raw or not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _has_live_background_task(payload: dict[str, Any]) -> bool:
+    """Whether the Stop payload reports a still-running background task.
+
+    Reads claude's ``background_tasks`` array (claude ≥ v2.1.145; absent on older builds, where this
+    is simply ``False`` and the turn flips as before). An entry is live unless its ``status`` is a
+    known terminal one (see :data:`_TERMINAL_STATUSES`).
+
+    Deliberately **type-agnostic**: it ignores each entry's ``type`` so it covers every kind of
+    background work that re-wakes the agent — ``shell`` (Bash ``run_in_background``), ``monitor``,
+    and background **agents** (``subagent``/``workflow``/``teammate``/``cloud_session``/``mcp_task``)
+    alike. They all re-invoke the agent on completion without a UserPromptSubmit, so the turn must
+    stay on the agent for all of them."""
+    if "background_tasks" not in payload:
+        return False
+    tasks = payload["background_tasks"]
+    if not isinstance(tasks, list):
+        return True
+    for task in tasks:
+        if not isinstance(task, dict):
+            return True  # unrecognised shape → assume live (don't hand the turn back prematurely)
+        status = task.get("status")
+        if not isinstance(status, str) or status.strip().lower() not in _TERMINAL_STATUSES:
+            return True
+    return False
+
+
+def session_tokens(transcript_path: str) -> int:
+    """Total the cost-weighted tokens across a claude session transcript (JSONL).
+
+    Each assistant line carries ``message.usage`` and ``message.model``; we apply per-tier
+    cost weights (cache-reads ≈0.1×, output ≈5×) so the result is in **input-equivalent
+    tokens** — proportional to spend rather than dominated by cheap cache-reads. Pure and
+    LLM-free, so it's unit-tested with a fixture transcript. Tolerant of a missing file, blank
+    or malformed lines, and absent usage keys (each counted as 0), so a transcript hiccup yields
+    a best-effort number rather than raising."""
+    total = 0
+    try:
+        with Path(transcript_path).open() as lines:
+            for line in lines:
+                total += _line_tokens(line)
+    except OSError:  # no transcript yet / unreadable — nothing to count
+        return 0
+    return total
+
+
+def _line_tokens(line: str) -> int:
+    """The cost-weighted usage on one transcript line, or 0 if it isn't an assistant line with usage."""
+    line = line.strip()
+    if not line:
+        return 0
+    try:
+        obj = json.loads(line)
+        msg = obj.get("message") or {}
+        usage = msg.get("usage") or {}
+        model: str | None = msg.get("model")
+    except (ValueError, AttributeError):  # not JSON, or message/usage isn't a dict
+        return 0
+    if not isinstance(usage, dict):
+        return 0
+    int_usage = {k: v for k, v in usage.items() if isinstance(v, int)}
+    return cost_weighted_tokens(int_usage, model)
+
+
+def _report_tokens(client: TaskServiceClient, task_id: str, transcript: str) -> None:
+    """Best-effort: total the transcript the Stop payload names and record it.
+
+    Control-plane failures are handled by the caller's fail-open boundary."""
+    client.set_tokens_used(task_id, session_tokens(transcript))
+
+
+def _transcript_path(payload: dict[str, Any]) -> str | None:
+    """The Stop payload's transcript path when it has the expected string shape."""
+    transcript = payload.get("transcript_path")
+    return transcript if isinstance(transcript, str) else None
+
+
+def _defer_token_report(task_id: str, transcript: str) -> None:
+    """Start token accounting outside the bounded hook process.
+
+    The worker gets a new session so a harness timing out or killing the callback's process group
+    cannot kill telemetry with it. All standard streams are detached too: retaining the callback's
+    captured stdout/stderr pipes would make the harness wait for the worker despite the process
+    separation. The environment is inherited intentionally; it carries the task-service URL and
+    optional service credential required by :class:`TaskServiceClient`.
+    """
+    subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "panopticon.container.hook",
+            _TOKEN_REPORT_MODE,
+            task_id,
+            transcript,
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+        start_new_session=True,
+    )
+
+
+def _run_callback(
+    client: TaskServiceClient,
+    task_id: str,
+    actor: str,
+    event: str | None,
+    stdin: TextIO,
+    *,
+    defer_token_report: bool,
+) -> None:
+    """Perform one hook callback inside the caller's fail-open deadline."""
+    # `stop` (Stop): the agent's turn just ended. Read the payload once — it carries the transcript
+    # path and the background_tasks list. Decide the turn first: don't hand it back while a
+    # background task is still running, since the task's completion re-invokes the agent without a
+    # UserPromptSubmit and a flip to `user` would never flip back. Otherwise persist the correctness
+    # signal before any transcript work. Production then detaches cumulative token accounting from
+    # the bounded callback; injected-client tests run the same accounting synchronously after the
+    # turn boundary. (This gate is the Stop event only, not the bare AskUserQuestion `hook user`
+    # flip — there the agent is genuinely awaiting the user.)
+    if event == "stop":
+        payload = _read_payload(stdin)
+        if not _has_live_background_task(payload):
+            client.set_turn(task_id, actor)
+        if transcript := _transcript_path(payload):
+            if defer_token_report:
+                _defer_token_report(task_id, transcript)
+            else:
+                _report_tokens(client, task_id, transcript)
+        return
+    client.set_turn(task_id, actor)
+    # `prompt` (UserPromptSubmit): ground the agent in its current phase, and (while the task is
+    # unslugged) nudge toward provisioning. claude adds this hook's stdout to its context.
+    if event == "prompt":
+        print(client.get_briefing(task_id))
+        if client.get_task(task_id).get("slug") is None:
+            print(PROVISION_NUDGE)
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    client: TaskServiceClient | None = None,
+    stdin: TextIO | None = None,
+) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    env = os.environ
+    if len(args) == 3 and args[0] == _TOKEN_REPORT_MODE:
+        try:
+            worker_client = TaskServiceClient(
+                httpx.Client(
+                    base_url=env["PANOPTICON_SERVICE_URL"],
+                    timeout=_HTTP_TIMEOUT_SECONDS,
+                    trust_env=False,
+                )
+            )
+            _report_tokens(worker_client, args[1], args[2])
+        except Exception:
+            return 0
+        return 0
+    if (
+        not 1 <= len(args) <= 2
+        or args[0] not in ("user", "agent")
+        or args[1:] not in ([], ["prompt"], ["stop"])
+    ):
+        print(
+            "usage: python -m panopticon.container.hook <user|agent> [prompt|stop]", file=sys.stderr
+        )
+        return 2
+    actor, event = args[0], (args[1] if len(args) == 2 else None)
+    task_id = env["PANOPTICON_TASK_ID"]
+    try:
+        with _callback_deadline():
+            callback_client = client or TaskServiceClient(
+                httpx.Client(
+                    base_url=env["PANOPTICON_SERVICE_URL"],
+                    timeout=_HTTP_TIMEOUT_SECONDS,
+                    trust_env=False,
+                )
+            )
+            _run_callback(
+                callback_client,
+                task_id,
+                actor,
+                event,
+                stdin or sys.stdin,
+                defer_token_report=client is None,
+            )
+    except Exception:
+        # Hook bookkeeping must not block the harness. Transport/status failures, malformed
+        # responses, unexpected response shapes, and the absolute deadline all fail open and silent.
+        return 0
+    # No event (the AskUserQuestion PreToolUse/PostToolUse hooks): a pure turn flip, no side-effects.
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

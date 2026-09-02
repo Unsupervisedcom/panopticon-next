@@ -1,0 +1,1509 @@
+"""The task service: deterministic orchestration over the store.
+
+Owns the store (sole DB authority, ADR 0006), the workflow registry, the artifact
+store, and ephemeral liveness registrations. All task-state mutations flow through here and
+are enforced by the workflow before persistence ("transition enforcement at the boundary").
+
+Uses a clock for timestamps and an id factory for ids; both are injectable so tests are
+deterministic. No LLM (the determinism invariant).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import inspect
+import json
+import logging
+import os
+import uuid
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
+from typing import Any
+
+from panopticon.core.artifact_skills import ARTIFACT_SKILL
+from panopticon.core.artifacts import ArtifactStore, validate_segment
+from panopticon.core.dirs import secrets_file_path
+from panopticon.core.layers import LayerStore
+from panopticon.core.models import (
+    Actor,
+    ContainerStatus,
+    LifecyclePhase,
+    MigrationRecord,
+    Repo,
+    Responsibility,
+    SessionInput,
+    SessionInputStatus,
+    SessionTranscript,
+    Skill,
+    Status,
+    Task,
+    WakeStatus,
+    compose_container_status,
+)
+from panopticon.core.provisioning import PROVISION_SKILL
+from panopticon.core.state import TERMINAL_LABELS, Dropped
+from panopticon.core.store import NotFound, Store
+from panopticon.core.workflow import InvalidWorkflow, Workflow
+from panopticon.harnesses import HARNESSES, get_harness
+from panopticon.harnesses.base import ReviewerDispatchError, parse_reviewer_config
+
+_log = logging.getLogger(__name__)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _uuid_hex() -> str:
+    return uuid.uuid4().hex
+
+
+def _validate_agent_surface(workflow: Workflow) -> None:
+    workflow.validate_registration(HARNESSES)
+    surface_names = {PROVISION_SKILL.name, ARTIFACT_SKILL.name}
+    for skill in workflow.container_skills():
+        if skill.name in surface_names:
+            raise InvalidWorkflow(f"{workflow.name!r}: duplicate agent surface name {skill.name!r}")
+        surface_names.add(skill.name)
+    for label in workflow.labels():
+        for operation in workflow.operations(label):
+            if operation in surface_names:
+                raise InvalidWorkflow(
+                    f"{workflow.name!r}: duplicate agent surface name {operation!r}"
+                )
+
+
+class UnknownWorkflow(Exception):
+    """Raised when a task references a workflow the service hasn't loaded."""
+
+
+class AlreadyClaimed(Exception):
+    """Raised when a task is claimed by a different runner than the one claiming."""
+
+
+class SessionConflict(Exception):
+    """A session-I/O request conflicts with task state or an existing record."""
+
+
+class NotReady(Exception):
+    """Raised when an unclaimed task is no longer eligible to be claimed."""
+
+
+class NotAuthorized(Exception):
+    """Raised when a task attempts an operation its workflow isn't permitted (e.g. a
+    non-orchestration workflow trying to create other tasks)."""
+
+
+def _dependency_cycle(graph: Mapping[str, list[str]], start: str) -> list[str] | None:
+    """Return the first deterministic dependency cycle reachable from ``start``, if any."""
+    path: list[str] = []
+    positions: dict[str, int] = {}
+    visited: set[str] = set()
+
+    def visit(task_id: str) -> list[str] | None:
+        if task_id in positions:
+            return [*path[positions[task_id] :], task_id]
+        if task_id in visited:
+            return None
+        positions[task_id] = len(path)
+        path.append(task_id)
+        for dep_id in graph.get(task_id, []):
+            if cycle := visit(dep_id):
+                return cycle
+        path.pop()
+        positions.pop(task_id)
+        visited.add(task_id)
+        return None
+
+    return visit(start)
+
+
+@dataclass
+class Registration:
+    """An active container's claim that it is working on a task (liveness).
+
+    A registration exists for exactly as long as the container holds its liveness connection open
+    (the ``/live`` stream): the connection *is* the signal. There is no heartbeat and no
+    ``last_seen`` — death is detected by the connection dropping (see :meth:`TaskService.register`
+    / :meth:`deregister` and the ``/live`` endpoint), not by aging out a timestamp."""
+
+    id: str
+    task_id: str
+    container_id: str
+    runner_id: str | None
+    registered_at: str
+
+
+@dataclass
+class ContainerLifecycle:
+    """The session service's latest reported spawn phase for a task (ADR 0008 feedback).
+
+    Ephemeral, like :class:`Registration`: the runner pushes it over ``PUT /tasks/{id}/lifecycle``
+    as it claims → prepares → builds → starts the container, and it's cleared on claim release /
+    reclaim (a respawn starts clean). Not persisted — it's transient runtime state, re-reported on
+    the next spawn pass. Folded with registration presence + runner liveness into the displayed
+    :class:`~panopticon.core.models.ContainerStatus` (see :meth:`TaskService.container_status`)."""
+
+    task_id: str
+    runner_id: str
+    phase: LifecyclePhase
+    detail: str | None
+    at: str
+
+
+@dataclass
+class RunnerRegistration:
+    """A session-service (runner) host's standing signal that it is alive and managing its tasks.
+
+    The host-liveness counterpart of a container :class:`Registration`, one layer up: it exists for
+    exactly as long as the runner holds its ``/runners/{id}/live`` connection open — the connection
+    *is* the signal. The daemon dying (clean stop or crash) drops it, and the runner falls out of
+    :meth:`TaskService.live_runners`; no heartbeat, no ``last_seen``, no TTL. Each connection gets a
+    fresh ``id`` (not keyed by ``runner_id``) so an overlapping reconnect during a blip can't have
+    the *old* connection's disconnect reap the *new* one."""
+
+    id: str
+    runner_id: str
+    registered_at: str
+    host: str | None = None  # the runner's hostname or operator alias (M5: remote attach)
+
+
+class TaskService:
+    def __init__(
+        self,
+        store: Store,
+        workflows: Mapping[str, Workflow],
+        artifacts: ArtifactStore,
+        *,
+        layers: LayerStore | None = None,
+        workflow_discovery: Callable[[], Mapping[str, Workflow]] | None = None,
+        clock: Callable[[], str] = _utc_now_iso,
+        id_factory: Callable[[], str] = _uuid_hex,
+    ) -> None:
+        self._store = store
+        self._workflows = dict(workflows)
+        for workflow in self._workflows.values():
+            _validate_agent_surface(workflow)
+        self._artifacts = artifacts
+        self._layers = layers
+        self._workflow_discovery = workflow_discovery
+        self._clock = clock
+        self._id = id_factory
+        self._registrations: dict[str, Registration] = {}
+        self._runner_registrations: dict[str, RunnerRegistration] = {}
+        self._lifecycles: dict[str, ContainerLifecycle] = {}
+        self._transition_locks: dict[str, asyncio.Lock] = {}
+        self._dependency_lock = asyncio.Lock()
+        # Ephemeral liveness (registrations, runner liveness, lifecycle phases) lives outside the
+        # store, so it doesn't bump the store's version. But the dashboard's change-feed long-poll
+        # only wakes on a version change — so a container going live or a phase advancing wouldn't
+        # show until an unrelated task mutation. This epoch + listener fan-out folds those ephemeral
+        # events into the same feed (``tasks_version`` adds it; ``_notify_change`` fires listeners).
+        self._ephemeral_epoch = 0
+        self._change_listeners: list[Callable[[], None]] = []
+
+    async def init(self) -> None:
+        """Bootstrap the store's schema (idempotent). Called by the task service's lifespan."""
+        await self._store.init()
+
+    async def create_session_input(
+        self, task_id: str, *, text: str, submit: bool, idempotency_key: str
+    ) -> SessionInput:
+        async with self._transition_lock(task_id):
+            task = await self.get_task(task_id)
+            existing_inputs = await self._store.list_session_inputs(task_id)
+            for existing in existing_inputs:
+                if existing.idempotency_key == idempotency_key:
+                    if existing.text != text or existing.submit != submit:
+                        raise SessionConflict("idempotency key already has different input")
+                    return existing
+            if any(item.status is SessionInputStatus.PENDING for item in existing_inputs):
+                raise SessionConflict("task session already has pending input")
+            if (
+                self.task_is_terminal(task)
+                or task.claimed_by is None
+                or task.claimed_by not in self.live_runners()
+                or self.container_status(task) is not ContainerStatus.LIVE
+                or task.turn is not Actor.USER
+            ):
+                raise SessionConflict("task session is not accepting input")
+            return await self._store.create_session_input(
+                SessionInput(
+                    id=self._id(),
+                    task_id=task_id,
+                    idempotency_key=idempotency_key,
+                    text=text,
+                    submit=submit,
+                    status=SessionInputStatus.PENDING,
+                    created_at=self._clock(),
+                )
+            )
+
+    async def list_session_inputs(self, task_id: str) -> list[SessionInput]:
+        await self.get_task(task_id)
+        return await self._store.list_session_inputs(task_id)
+
+    async def get_session_input(self, task_id: str, delivery_id: str) -> SessionInput:
+        await self.get_task(task_id)
+        result = await self._store.get_session_input(task_id, delivery_id)
+        if result is None:
+            raise NotFound(f"session input {delivery_id!r} does not exist")
+        return result
+
+    async def settle_session_input(
+        self,
+        task_id: str,
+        delivery_id: str,
+        *,
+        runner_id: str,
+        status: SessionInputStatus,
+        failure_reason: str | None = None,
+    ) -> SessionInput:
+        task = await self.get_task(task_id)
+        if task.claimed_by != runner_id:
+            raise SessionConflict("runner does not own task")
+        if status is SessionInputStatus.PENDING:
+            raise SessionConflict("pending session input cannot be settled as pending")
+        delivery = await self.get_session_input(task_id, delivery_id)
+        if delivery.status is not SessionInputStatus.PENDING:
+            return delivery
+        failure_reason = "tmux-delivery-failed" if status is SessionInputStatus.FAILED else None
+        return await self._store.settle_session_input(
+            replace(
+                delivery,
+                status=status,
+                settled_at=self._clock(),
+                failure_reason=failure_reason,
+            )
+        )
+
+    async def publish_session_transcript(
+        self,
+        task_id: str,
+        *,
+        runner_id: str,
+        text: str,
+        columns: int,
+        rows: int,
+        truncated: bool,
+    ) -> SessionTranscript:
+        task = await self.get_task(task_id)
+        if task.claimed_by != runner_id:
+            raise SessionConflict("runner does not own task")
+        return await self._store.put_session_transcript(
+            SessionTranscript(
+                task_id=task_id,
+                runner_id=runner_id,
+                text=text,
+                columns=columns,
+                rows=rows,
+                truncated=truncated,
+                received_at=self._clock(),
+            )
+        )
+
+    async def get_session_transcript(self, task_id: str) -> SessionTranscript:
+        await self.get_task(task_id)
+        result = await self._store.get_session_transcript(task_id)
+        if result is None:
+            raise NotFound("session transcript unavailable")
+        return result
+
+    # -- repos --------------------------------------------------------------------
+
+    async def create_repo(self, repo: Repo) -> Repo:
+        repo = replace(
+            repo,
+            honesty_reviewer=self._normalize_reviewer_override(
+                "honesty_reviewer", repo.honesty_reviewer
+            ),
+            reviewer_1=self._normalize_reviewer_override("reviewer_1", repo.reviewer_1),
+            reviewer_2=self._normalize_reviewer_override("reviewer_2", repo.reviewer_2),
+        )
+        await self._validate_env_file(repo.env_file)
+        self._validate_harness_name(repo.default_harness)
+        self._validate_repo_harness_model(repo)
+        await self._validate_credential_dir(repo.credential_dir)
+        await self._store.create_repo(repo)
+        return repo
+
+    @staticmethod
+    def _normalize_reviewer_override(field: str, value: str | None) -> str | None:
+        """Normalize blank repo overrides and reject invalid atomic reviewer pairs."""
+        if value is None or not value.strip():
+            return None
+        value = value.strip()
+        try:
+            parse_reviewer_config(value)
+        except ReviewerDispatchError as exc:
+            raise ValueError(f"{field}: {exc}") from exc
+        return value
+
+    async def _validate_credential_dir(self, credential_dir: str | None) -> None:
+        """Reject a repo whose credential-dir reference points at a missing directory.
+
+        The directory-shaped sibling of :meth:`_validate_env_file`: ``credential_dir`` is a name
+        relative to the secrets dir, mounted read-write into the repo's task containers at spawn.
+        Same M1 caveat — resolved against *this host's* secrets dir.
+        """
+        path = secrets_file_path(credential_dir)  # None for no reference; raises on escape
+        if path is None:
+            return
+        if not await asyncio.to_thread(os.path.isdir, path):
+            raise ValueError(
+                f"credential_dir {credential_dir!r} does not exist under the secrets dir"
+            )
+
+    @staticmethod
+    def _validate_harness_name(harness: str | None) -> None:
+        """Reject a harness name the registry doesn't know (``None`` = the default is valid).
+
+        Applied wherever a harness is chosen — a repo's ``default_harness`` and a task's explicit
+        ``harness`` — so a spawn never discovers an unknown harness. Raises :class:`ValueError`
+        (the API maps it to HTTP 400) naming the offender and the known set.
+        """
+        if harness is None:
+            return
+        try:
+            get_harness(harness)
+        except KeyError as exc:
+            raise ValueError(str(exc.args[0])) from exc
+
+    @staticmethod
+    def _validate_repo_harness_model(repo: Repo) -> None:
+        """Reject a repo model that has no harness to define its vocabulary."""
+        if repo.default_model is not None and repo.default_harness is None:
+            raise ValueError("default_model requires default_harness")
+
+    async def _validate_env_file(self, env_file: str | None) -> None:
+        """Reject a repo whose secrets-file reference points at a missing file.
+
+        ``env_file`` is a *name* relative to the secrets dir (``$PANOPTICON_CONFIG/secrets``,
+        ADR 0007 / #291); the runner resolves it against its own local secrets dir at
+        ``docker run --env-file``. Validated here on create/update so a bad reference is caught at
+        registration rather than surfacing as an obscure ``--env-file`` failure at spawn. ``None``
+        (no secrets file) is valid. Raises :class:`ValueError` — for a name that escapes the
+        secrets dir (via :func:`secrets_file_path`) or one that resolves to a missing file — which
+        the API maps to HTTP 400.
+
+        NOTE(M5): ``env_file`` is resolved against *this host's* secrets dir. Today the task
+        service and the runner share a host (M1), so this stat answers the real question; when the
+        runner is remote, the file lives on the runner's host — move/duplicate the check on the
+        session service then.
+        """
+        path = secrets_file_path(env_file)  # None for no reference; raises ValueError on escape
+        if path is None:
+            return
+        if not await asyncio.to_thread(os.path.isfile, path):
+            raise ValueError(f"env_file {env_file!r} does not exist under the secrets dir")
+
+    async def get_repo(self, repo_id: str) -> Repo:
+        repo = await self._store.get_repo(repo_id)
+        if repo is None:
+            raise NotFound(f"repo {repo_id!r} does not exist")
+        return repo
+
+    async def list_repos(self) -> list[Repo]:
+        return await self._store.list_repos()
+
+    async def update_repo(self, repo_id: str, changes: Mapping[str, Any]) -> Repo:
+        """Apply a partial update to a repo: merge ``changes`` onto the stored repo and persist.
+
+        Read-modify-write, so any field not in ``changes`` (e.g. ``image_layer_file`` /
+        ``capabilities``, which the dashboard never sends) is preserved. ``id`` is the key and
+        can't be reassigned. Raises :class:`NotFound` if the repo is unknown.
+        """
+        existing = await self.get_repo(repo_id)  # raises NotFound
+        if "id" in changes and changes["id"] != repo_id:
+            raise ValueError("a repo's id cannot be changed")
+        normalized = {k: v for k, v in changes.items() if k != "id"}
+        for field in ("honesty_reviewer", "reviewer_1", "reviewer_2"):
+            if field in normalized:
+                normalized[field] = self._normalize_reviewer_override(field, normalized[field])
+        updated = replace(existing, **normalized)
+        if "env_file" in changes:  # validate only when the caller is actually setting the field,
+            await self._validate_env_file(
+                updated.env_file
+            )  # so an unrelated patch never fails on it
+        if "default_harness" in changes:
+            self._validate_harness_name(updated.default_harness)
+        if "default_harness" in changes or "default_model" in changes:
+            self._validate_repo_harness_model(updated)
+        if "credential_dir" in changes:
+            await self._validate_credential_dir(updated.credential_dir)
+        await self._store.update_repo(updated)
+        return updated
+
+    async def delete_repo(self, repo_id: str) -> None:
+        """Delete a repository only when no persisted task references it."""
+        await self._store.delete_repo(repo_id)
+
+    async def repo_image_layer(self, repo_id: str) -> str:
+        """The repo's Dockerfile layer (ADR 0005's repo tier), read from its referenced file.
+
+        ``Repo.image_layer_file`` is a file name resolved relative to the configured layers
+        directory; this reads its content so the runner can compose it over REST (mirroring
+        :meth:`workflow_image_layer`). Empty string when the repo declares no layer. Raises
+        :class:`NotFound` when a referenced file is configured but absent (or no layer store is
+        wired), and the layer store rejects a name that escapes its root.
+        """
+        name = (
+            await self.get_repo(repo_id)
+        ).image_layer_file  # raises NotFound for an unknown repo
+        if not name:
+            return ""
+        if self._layers is None:
+            raise NotFound(f"no layer store configured to read image layer {name!r}")
+        content = await self._layers.get(name)
+        if content is None:
+            raise NotFound(f"image layer file {name!r} not found")
+        return content.decode()
+
+    # -- workflows ----------------------------------------------------------------
+
+    def _rescan_workflows(self) -> None:
+        if self._workflow_discovery is None:
+            return
+        for name, workflow in self._workflow_discovery().items():
+            if name in self._workflows:
+                # Additive only: in-flight tasks retain their loaded workflow. Edits and renames
+                # intentionally require a service restart rather than replacing/removing it here.
+                continue
+            _validate_agent_surface(workflow)
+            self._workflows[name] = workflow
+
+    async def workflow_names(self) -> list[str]:
+        return sorted(self._workflows)
+
+    async def list_workflow_infos(self) -> list[dict[str, str | bool]]:
+        """Each workflow's name, when_to_use description and opt_in flag, sorted by name.
+        ``hidden`` workflows are omitted — this drives the repo form's enable/disable menu."""
+        self._rescan_workflows()
+        return [
+            {
+                "name": name,
+                "when_to_use": self._workflows[name].when_to_use,
+                "opt_in": self._workflows[name].opt_in,
+            }
+            for name in sorted(self._workflows)
+            if not self._workflows[name].hidden
+        ]
+
+    async def list_workflow_editor_infos(self) -> list[dict[str, str | bool]]:
+        """Every registered workflow and its defining Python file, for the operator UI."""
+        self._rescan_workflows()
+        return [
+            {
+                "name": name,
+                "when_to_use": workflow.when_to_use,
+                "path": inspect.getsourcefile(type(workflow)) or "",
+                "built_in": type(workflow).__module__.startswith("panopticon.workflows."),
+            }
+            for name, workflow in sorted(self._workflows.items())
+        ]
+
+    async def list_workflow_infos_for_repo(
+        self, repo_id: str
+    ) -> list[dict[str, str | bool | None]]:
+        """Workflows visible for a repo, filtered by opt_in and the repo's workflow preferences.
+        ``hidden`` workflows are omitted — this drives the task-creation picker (a hidden workflow
+        stays creatable via the API / a dedicated hotkey; ``hidden`` is display-only, not a gate)."""
+        repo = await self.get_repo(repo_id)
+        return [
+            {
+                "name": name,
+                "when_to_use": self._workflows[name].when_to_use,
+                "opt_in": self._workflows[name].opt_in,
+                "default_harness": self._workflows[name].default_harness,
+                "default_model": self._workflows[name].default_model,
+            }
+            for name in sorted(self._workflows)
+            if self._workflow_visible(self._workflows[name], repo)
+            and not self._workflows[name].hidden
+        ]
+
+    def _workflow_visible(self, workflow: Workflow, repo: Repo) -> bool:
+        if workflow.name in repo.disabled_workflows:
+            return False
+        if workflow.opt_in:
+            return workflow.name in repo.enabled_workflows
+        return True
+
+    async def workflow_image_layer(self, name: str) -> str:
+        """The workflow's Docker image layer (ADR 0005) — the Dockerfile fragment the runner
+        composes onto the base image (e.g. github-peer-reviewed's `gh`). Empty when the workflow needs none."""
+        return self._workflow(name).image_layer()
+
+    async def workflow_execution(self, name: str) -> dict[str, Any]:
+        """How the session service runs this workflow's tasks — everything the runner needs to route
+        and launch, in one call so it fetches once and caches:
+
+        * ``runner_type`` — ``"docker"`` (a task container) or ``"shell"`` (a host shell script);
+        * ``script`` — the shell script a ``"shell"`` workflow runs (empty for ``"docker"``);
+        * ``clone_repo`` — whether to clone the repo into the task dir (``"docker"`` always does);
+        * ``workdir`` — a ``"shell"`` workflow's start-directory override (``None`` = the task dir).
+        """
+        workflow = self._workflow(name)
+        return {
+            "runner_type": workflow.runner_type,
+            "script": workflow.shell_script(),
+            "clone_repo": workflow.clone_repo,
+            "workdir": workflow.shell_workdir,
+        }
+
+    def _workflow(self, name: str) -> Workflow:
+        try:
+            return self._workflows[name]
+        except KeyError:
+            raise UnknownWorkflow(f"unknown workflow {name!r}") from None
+
+    def task_orchestrates(self, task: Task | None) -> bool:
+        """Return a persisted task's orchestration capability, failing closed if unavailable."""
+
+        if task is None:
+            return False
+        workflow = self._workflows.get(task.workflow)
+        return bool(workflow is not None and workflow.orchestrates)
+
+    def _task_is_terminal(self, task: Task) -> bool:
+        """Classify a task through its workflow, with built-in labels as a legacy fallback."""
+        workflow = self._workflows.get(task.workflow)
+        if workflow is None:
+            return task.state in TERMINAL_LABELS
+        try:
+            return workflow.is_terminal(task.state)
+        except InvalidWorkflow:
+            # Persisted state labels can outlive workflow-code changes. Keep those tasks
+            # listable and operable so an operator can recover them with a free state move.
+            return task.state in TERMINAL_LABELS
+
+    # -- tasks --------------------------------------------------------------------
+
+    async def _save_task(self, task: Task) -> None:
+        """Stamp ``updated_at`` and persist. All task mutations route through here."""
+        task.updated_at = self._clock()
+        await self._store.save_task(task)
+
+    async def _save_container_state(self, task: Task) -> None:
+        """Persist container-ownership fields (``claimed_by``) without stamping ``updated_at``.
+
+        Container status changes (claim / release / reclaim) are runner bookkeeping, not task
+        content mutations — they must not reorder the dashboard or wake watchers that key on
+        meaningful task progress.
+        """
+        await self._store.save_task(task)
+
+    async def create_task(
+        self,
+        repo_id: str,
+        workflow_name: str,
+        *,
+        memo: str | None = None,
+        governor_task_id: str | None = None,
+        initial_prompt: str | None = None,
+        harness: str | None = None,
+        starting_model: str | None = None,
+        artifacts: dict[str, str] | None = None,
+        depends_on_task_ids: list[str] | None = None,
+    ) -> Task:
+        repo = await self.get_repo(repo_id)  # ensure exists (raises NotFound)
+        # ADR-0014 stack 2 lands before the review workflow itself on some branches, so its stable
+        # name is the marker here. Stack 3 can rebase this coupling onto a workflow declaration if
+        # stack 1 introduces a cleaner marker.
+        if workflow_name == "review" and governor_task_id is None:
+            raise ValueError("review tasks require a governor_task_id")
+        governor = None
+        if governor_task_id is not None:
+            governor = await self.get_task(governor_task_id)  # ensure it exists (raises NotFound)
+        self._validate_harness_name(harness)  # so a spawn never meets an unknown harness
+        if workflow_name not in self._workflows:
+            self._rescan_workflows()
+        wf = self._workflow(workflow_name)
+        if not self._workflow_visible(wf, repo):
+            raise NotAuthorized(f"workflow {workflow_name!r} is not enabled for repo {repo_id!r}")
+        now = self._clock()
+        task = wf.start_task(self._id(), repo_id, at=now, memo=memo, initial_prompt=initial_prompt)
+        # Defaults travel as an atomic harness/model pair: workflow beats repo beats the app's
+        # harness-only default. A task may override either half, but changing the harness discards
+        # a model scoped to the losing harness. Materialize the app default so later registry
+        # changes cannot reroute an existing task.
+        pair_harness, pair_model = (
+            (wf.default_harness, wf.default_model)
+            if wf.default_harness is not None
+            else (repo.default_harness, repo.default_model)
+        )
+        selected_harness = pair_harness or get_harness(None).name
+        task.harness = harness if harness is not None else selected_harness
+        task.starting_model = starting_model
+        if starting_model is None and (harness is None or harness == selected_harness):
+            task.starting_model = pair_model
+        if workflow_name == "review" and (
+            governor is None or get_harness(task.harness).name == get_harness(governor.harness).name
+        ):
+            raise ValueError("review task harness must differ from its governor task's harness")
+        task.governor_task_id = governor_task_id
+        task.created_at = now
+        task.updated_at = now  # creation time = first mutation
+        if depends_on_task_ids:
+            async with self._dependency_lock:
+                await self._validate_dependencies(task.id, depends_on_task_ids)
+                task.depends_on_task_ids = list(depends_on_task_ids)
+                await self._store.create_task(task)
+        else:
+            await self._store.create_task(task)
+        _log.info("task %s: created (workflow=%s, repo=%s)", task.id, workflow_name, repo_id)
+        for name, content in (artifacts or {}).items():
+            await self.put_artifact(task.id, name, content.encode())
+        return task
+
+    async def _require_orchestrator(self, actor_task_id: str) -> Task:
+        """Authorize an orchestration action by ``actor_task_id``: the acting task must exist and
+        its workflow must opt in (``Workflow.orchestrates``). Returns the acting task on success.
+
+        The capability lives on the workflow (declarative, like ``skills``/``tools``), so the
+        service stays workflow-name-agnostic — any workflow that sets ``orchestrates = True`` can
+        create/seed other tasks.
+        """
+        actor = await self.get_task(actor_task_id)  # raises NotFound
+        if not self._workflow(actor.workflow).orchestrates:
+            raise NotAuthorized(
+                f"task {actor_task_id!r} (workflow {actor.workflow!r}) may not orchestrate other tasks"
+            )
+        return actor
+
+    async def create_task_as(
+        self,
+        actor_task_id: str,
+        workflow_name: str,
+        *,
+        memo: str | None = None,
+        initial_prompt: str | None = None,
+        artifacts: dict[str, str] | None = None,
+        depends_on_task_ids: list[str] | None = None,
+    ) -> Task:
+        """Create a task **on behalf of an orchestrator task** — gated to orchestration workflows.
+
+        The acting task (``actor_task_id``) must be one whose workflow ``orchestrates``; otherwise
+        :class:`NotAuthorized`. The new task is created **in the orchestrator's own repo** — this
+        first iteration deliberately can't create tasks in another repo, so there is no repo
+        parameter to misuse. This is the create path the orchestration MCP tools use; the plain
+        :meth:`create_task` (and REST ``POST /tasks``) remain the ungated user/dashboard path.
+        """
+        actor = await self._require_orchestrator(actor_task_id)
+        return await self.create_task(
+            actor.repo_id,
+            workflow_name,
+            memo=memo,
+            governor_task_id=actor_task_id,
+            initial_prompt=initial_prompt,
+            artifacts=artifacts,
+            depends_on_task_ids=depends_on_task_ids,
+        )
+
+    async def workflow_names_as(self, actor_task_id: str) -> list[str]:
+        """List workflow names for an orchestrator task (gated): discovery for a child's ``workflow``."""
+        await self._require_orchestrator(actor_task_id)
+        return await self.workflow_names()
+
+    async def get_task(self, task_id: str) -> Task:
+        task = await self._store.get_task(task_id)
+        if task is None:
+            raise NotFound(f"task {task_id!r} does not exist")
+        return task
+
+    async def list_tasks(self) -> list[Task]:
+        return await self._store.list_tasks()
+
+    async def list_tasks_summary(self, *, terminal: bool | None = None) -> list[Task]:
+        """Return tasks without history. Optionally filter to terminal-only or active-only."""
+        tasks = await self._store.list_tasks_summary()
+        if terminal is None:
+            return tasks
+        return [t for t in tasks if self._task_is_terminal(t) == terminal]
+
+    async def _tasks_snapshot(self, *, terminal: bool | None = None) -> tuple[int, list[Task]]:
+        """Read the version before the query so the reported version is a lower bound.
+
+        If a mutation commits during the ``await``, the version we already captured is from before
+        it, so the client's next long-poll (``since=version``) unblocks immediately rather than
+        waiting for ``MAX_WAIT_SECONDS``.
+        """
+        version = self.tasks_version()
+        tasks = await self.list_tasks_summary(terminal=terminal)
+        return version, tasks
+
+    def tasks_version(self) -> int:
+        """The change-feed version — bumped on every task mutation (ADR 0006 single writer) **and**
+        on every ephemeral liveness change (registration, runner liveness, lifecycle phase), so a
+        container coming up or a spawn phase advancing wakes a parked :meth:`subscribe_to_changes`
+        long-poll just like a stored mutation does. The sum of both counters is monotonic."""
+        return self._store.version() + self._ephemeral_epoch
+
+    def subscribe_to_changes(self, listener: Callable[[], None]) -> None:
+        """Register a callback fired (synchronously) after every change — stored *or* ephemeral.
+        The HTTP layer wires an async wake-up here so ``GET /tasks`` can long-poll for changes."""
+        self._store.subscribe(listener)
+        self._change_listeners.append(listener)
+
+    def _notify_change(self) -> None:
+        """Record an ephemeral change (bump the epoch) and wake every subscribed listener — the
+        ephemeral counterpart of the store bumping its version on a task mutation."""
+        self._ephemeral_epoch += 1
+        for listener in self._change_listeners:
+            listener()
+
+    async def legal_transitions(self, task_id: str) -> list[str]:
+        """The states the task may move to next (its workflow's edges out of the current state)."""
+        task = await self.get_task(task_id)
+        return sorted(self._workflow(task.workflow).transitions(task.state))
+
+    async def workflow_states(self, task_id: str) -> list[str]:
+        """Every state of the task's workflow — the candidates for a free state-set (set_state)."""
+        task = await self.get_task(task_id)
+        return list(self._workflow(task.workflow).labels())
+
+    async def operations(self, task_id: str) -> dict[str, str]:
+        """The named core operations available now (verb → target state) — advance/drop."""
+        task = await self.get_task(task_id)
+        return self._workflow(task.workflow).operations(task.state)
+
+    async def skills(self, task_id: str) -> list[Skill]:
+        """The universal core skills followed by the active workflow's own skills."""
+        task = await self.get_task(task_id)
+        return [PROVISION_SKILL, ARTIFACT_SKILL, *self._workflow(task.workflow).container_skills()]
+
+    async def briefing(self, task_id: str) -> str:
+        """A short briefing on the task's current phase (state + responsibilities + how it advances),
+        rendered from the workflow so the in-container agent knows *where it is* (the hook emits it)."""
+        task = await self.get_task(task_id)
+        return await self._workflow(task.workflow).briefing(task, artifacts=self._artifacts)
+
+    async def stage_entry_briefing(self, task_id: str, entry_index: int) -> str:
+        """Render the deterministic agent briefing for one recorded state entry."""
+        task = await self.get_task(task_id)
+        if entry_index < 0:
+            raise ValueError("history entry index must be non-negative")
+        try:
+            entry = task.history[entry_index]
+        except IndexError:
+            raise ValueError(f"history entry {entry_index} does not exist") from None
+        entry_task = replace(
+            task,
+            state=entry.to_state,
+            history=list(task.history[: entry_index + 1]),
+        )
+        briefing = await self._workflow(task.workflow).briefing(
+            entry_task, artifacts=self._artifacts
+        )
+        skills = await self.skills(task_id)
+        skill_pointer = ", ".join(f"`/{skill.name}`" for skill in skills)
+        parts = [f"You have entered {entry.to_state}.", briefing]
+        if skill_pointer:
+            parts.append(f"Relevant agent skills: {skill_pointer}.")
+        return "\n\n".join(parts)
+
+    async def record_stage_entry_wake(
+        self, task_id: str, entry_index: int, status: WakeStatus
+    ) -> Task:
+        """Settle one pending runner-side wake as delivered or deliberately skipped."""
+        if status is WakeStatus.PENDING:
+            raise ValueError("a stage-entry wake can only be recorded as delivered or skipped")
+        async with self._transition_lock(task_id):
+            task = await self.get_task(task_id)
+            if entry_index < 0 or entry_index >= len(task.history):
+                raise ValueError(f"history entry {entry_index} does not exist")
+            entry = task.history[entry_index]
+            if entry.wake_status is status:
+                return task
+            if entry.wake_status is not WakeStatus.PENDING:
+                raise ValueError(
+                    f"history entry {entry_index} wake is already {entry.wake_status.value}"
+                )
+            task.history[entry_index] = replace(entry, wake_status=status)
+            await self._save_task(task)
+            return task
+
+    async def workflow_overview(self, task_id: str) -> str:
+        """A one-time map of the task's whole workflow (the agent gets this in its system prompt)."""
+        task = await self.get_task(task_id)
+        return self._workflow(task.workflow).overview()
+
+    async def apply_operation(
+        self, task_id: str, operation: str, *, note: str | None = None
+    ) -> Task:
+        """Apply a named core operation (advance/drop) — a gated move along the declared graph."""
+        async with self._transition_lock(task_id):
+            async with self._dependency_lock:
+                task = await self.get_task(task_id)
+                wf = self._workflow(task.workflow)
+                to_state = wf.resolve_operation(task.state, operation)
+                task = await self._commit_transition(
+                    task, wf, to_state, force=False, trigger=operation, note=note
+                )
+            return await self._cascade_after_transition(task, trigger=operation, note=note)
+
+    async def request_transition(
+        self,
+        task_id: str,
+        to_state: str,
+        *,
+        trigger: str | None = None,
+        note: str | None = None,
+    ) -> Task:
+        async with self._transition_lock(task_id):
+            async with self._dependency_lock:
+                task = await self.get_task(task_id)
+                wf = self._workflow(task.workflow)
+                task = await self._commit_transition(
+                    task, wf, to_state, force=False, trigger=trigger, note=note
+                )
+            return await self._cascade_after_transition(task, trigger=trigger, note=note)
+
+    async def set_state(self, task_id: str, to_state: str, *, note: str | None = None) -> Task:
+        """The user's free override: move the task to any state, bypassing the graph and the gate."""
+        async with self._transition_lock(task_id):
+            async with self._dependency_lock:
+                task = await self.get_task(task_id)
+                wf = self._workflow(task.workflow)
+                task = await self._commit_transition(
+                    task, wf, to_state, force=True, trigger="set-state", note=note
+                )
+            return await self._cascade_after_transition(task, trigger="set-state", note=note)
+
+    def _transition_lock(self, task_id: str) -> asyncio.Lock:
+        """Serialize each task's read-transition-effect-save boundary within this service."""
+        return self._transition_locks.setdefault(task_id, asyncio.Lock())
+
+    async def _commit_transition(
+        self,
+        task: Task,
+        wf: Workflow,
+        to_state: str,
+        *,
+        force: bool,
+        trigger: str | None,
+        note: str | None,
+    ) -> Task:
+        from_state = task.state
+        _log.info("task %s: %s → %s (trigger=%s)", task.id, from_state, to_state, trigger)
+        if force:
+            wf.force_transition(task, to_state, at=self._clock(), trigger=trigger, note=note)
+        else:
+            wf.apply_transition(task, to_state, at=self._clock(), trigger=trigger, note=note)
+        # End the stale waiting condition from the state being left before lifecycle effects run.
+        # A hook may deliberately raise a fresh block for the state being entered.
+        task.blocked = False
+        # Deterministic lifecycle hook (e.g. seed the plan on plan acceptance) — may touch the
+        # task/artifacts; run before the single save so any task mutation persists with it.
+        await wf.on_transition(
+            task, from_state=from_state, to_state=task.state, artifacts=self._artifacts
+        )
+        await self._create_review_task_on_entry(task, wf)
+        await self._save_task(task)
+        return task
+
+    async def _cascade_after_transition(
+        self, task: Task, *, trigger: str | None, note: str | None
+    ) -> Task:
+        """Cascade a governor drop after releasing the dependency graph lock."""
+        if task.state == Dropped.label:
+            await self._cascade_drop_governed(task.id, trigger=trigger, note=note)
+        return task
+
+    async def _create_review_task_on_entry(self, task: Task, workflow: Workflow) -> None:
+        """Apply ADR-0014's deterministic review-gate lifecycle effect.
+
+        A workflow opts in by declaring its reviewer launch pair. The ordinary task-creation path
+        remains the single validation boundary for the governed worker, including cross-harness
+        enforcement. A rejected pair is recorded on the authoring transition instead of undoing
+        it, preserving the user's free-move fallback.
+        """
+        if task.state != "REVIEW" or workflow.review_harness is None:
+            return
+
+        responsibilities = task.current_entry.responsibilities
+        if not any(item.key == "review-addressed" for item in responsibilities):
+            responsibilities.append(
+                Responsibility(
+                    key="review-addressed",
+                    description="Address the governed review verdict before advancing.",
+                )
+            )
+
+        try:
+            await self.create_task(
+                task.repo_id,
+                "review",
+                governor_task_id=task.id,
+                harness=workflow.review_harness,
+                starting_model=workflow.review_model,
+            )
+        except Exception as exc:
+            entry = task.current_entry
+            reason = str(exc) or type(exc).__name__
+            failure = f"Review task creation failed: {reason}"
+            task.history[-1] = replace(
+                entry,
+                note=f"{entry.note}\n{failure}" if entry.note else failure,
+            )
+        else:
+            task.blocked = True
+
+    async def _cascade_drop_governed(
+        self, governor_id: str, *, trigger: str | None, note: str | None
+    ) -> None:
+        """Drop every non-terminal task governed by governor_id.
+
+        Called after a governor lands in DROPPED. Each child's own _commit_transition also
+        runs this, so nested governor chains cascade without an explicit outer loop."""
+        count = 0
+        for child in await self._store.list_tasks_summary():
+            if child.governor_task_id == governor_id and not self._task_is_terminal(child):
+                await self.request_transition(
+                    child.id, Dropped.label, trigger="cascade-drop", note=note
+                )
+                count += 1
+        if count:
+            _log.info("task %s: cascade-dropped %d governed task(s)", governor_id, count)
+
+    async def resolve_responsibility(
+        self, task_id: str, key: str, *, status: Status, comment: str | None = None
+    ) -> Task:
+        """Record the agent's progress on one promised responsibility (fulfilled in place).
+
+        If this call clears the state's last outstanding responsibility, and the workflow
+        has the agent (not the user) advance out of it, and the state has a single
+        well-defined `advance` operation, that transition fires immediately — the same
+        transition an explicit `advance` would perform — so the agent need not separately
+        call it (REQ-009). A state left with any responsibility still `PENDING`, a
+        user-advanced state, or a state with no derivable `advance` (e.g. more than one
+        forward transition) is unaffected: this call resolves the responsibility and
+        nothing more.
+
+        The eligibility check and the transition run against the *same* in-memory task,
+        persisted in one `_commit_transition` save — not a separate save followed by a
+        re-fetch (which would let a concurrent mutation land in between and have the
+        transition act on a state it was never checked against).
+        """
+        async with self._transition_lock(task_id):
+            async with self._dependency_lock:
+                task = await self.get_task(task_id)
+                task.resolve_responsibility(key=key, status=status, comment=comment)
+                _log.debug("task %s: responsibility %s → %s", task_id, key, status)
+                if task.outstanding_responsibilities:
+                    await self._save_task(task)
+                    return task
+                wf = self._workflow(task.workflow)
+                advance_dest = wf.operations(task.state).get("advance")
+                if advance_dest is None or wf.advanced_by(task.state) is not Actor.AGENT:
+                    await self._save_task(task)
+                    return task
+                task = await self._commit_transition(
+                    task, wf, advance_dest, force=False, trigger="advance", note=None
+                )
+            return await self._cascade_after_transition(task, trigger="advance", note=None)
+
+    async def set_slug(self, task_id: str, slug: str) -> Task:
+        task = await self.get_task(task_id)
+        previous = task.slug
+        validate_segment(slug)
+        # Establish the new artifact alias before persisting the task so an invalid or colliding
+        # slug cannot leave the recorded slug changed without its corresponding alias.
+        await self._artifacts.link_slug(task_id, slug)
+        task.slug = slug
+        try:
+            await self._save_task(task)
+        except Exception:
+            if previous != slug:
+                await self._artifacts.unlink_slug(slug)
+            raise
+        _log.info("task %s: slug → %s", task_id, slug)
+        # Expose the task's artifacts under the slug alias; drop a stale one on a re-slug so the
+        # tasks/ dir keeps a single live alias per task (the symlinks live on the artifact store).
+        if previous is not None and previous != slug:
+            await self._artifacts.unlink_slug(previous)
+        return task
+
+    async def set_url(self, task_id: str, url: str) -> Task:
+        """Record an external URL for the task (its PR, an issue, …); the dashboard's `p`
+        hotkey opens it. A plain recorded fact, like the slug — no transition, no git."""
+        task = await self.get_task(task_id)
+        task.url = url
+        await self._save_task(task)
+        _log.debug("task %s: url → %s", task_id, url)
+        return task
+
+    async def set_snooze(self, task_id: str, until: str | None) -> Task:
+        """Record or clear an operator snooze deadline without interpreting the clock."""
+        task = await self.get_task(task_id)
+        task.snoozed_until = until
+        await self._save_task(task)
+        _log.debug("task %s: snoozed_until → %s", task_id, until)
+        return task
+
+    async def set_tokens_used(self, task_id: str, tokens_used: int) -> Task:
+        """Record the cumulative tokens the container's claude has used (its Stop hook reports the
+        recomputed session total). Reports are monotonic because detached Stop-hook workers can
+        finish out of order. A plain recorded fact, like the slug — no transition, no git."""
+        return await self._store.set_tokens_used_max(task_id, tokens_used, self._clock())
+
+    async def set_token_estimate(self, task_id: str, token_estimate: int) -> Task:
+        """Record the agent's forecast of the total tokens this task will consume (set once during
+        planning). A plain recorded fact, like the slug — no transition, no git."""
+        task = await self.get_task(task_id)
+        task.token_estimate = token_estimate
+        await self._save_task(task)
+        return task
+
+    async def set_turn(self, task_id: str, turn: Actor) -> Task:
+        """Flip who holds the turn within a state (the in-container hooks' callback).
+
+        This is the agnostic agent↔user ball tracking (ADR 0004). A turn-to-agent write means the
+        user addressed the task, so it also clears ``blocked``; a turn-to-user write preserves it.
+        """
+        task = await self.get_task(task_id)
+        task.turn = turn
+        if turn is Actor.AGENT:
+            task.blocked = False
+            task.attention = False
+        await self._save_task(task)
+        return task
+
+    async def set_blocked(self, task_id: str, blocked: bool) -> Task:
+        """Explicitly set/clear ``blocked``; later agent-turn writes and state changes clear it."""
+        task = await self.get_task(task_id)
+        task.blocked = blocked
+        await self._save_task(task)
+        _log.debug("task %s: blocked=%s", task_id, blocked)
+        return task
+
+    async def set_attention(self, task_id: str, attention: bool) -> Task:
+        """Set or clear the escalation-only attention marker without changing turn or blocked."""
+        task = await self.get_task(task_id)
+        task.attention = attention
+        await self._save_task(task)
+        _log.debug("task %s: attention=%s", task_id, attention)
+        return task
+
+    async def set_governor(self, task_id: str, governor_task_id: str | None) -> Task:
+        """Set or clear the governor task for ``task_id``.
+
+        Pass a non-None ``governor_task_id`` to link an overseer; pass ``None`` to remove it.
+        When non-None, the governor task must exist (raises :class:`NotFound` if not).
+        """
+        task = await self.get_task(task_id)
+        if governor_task_id is not None:
+            await self.get_task(governor_task_id)  # ensure governor exists
+        task.governor_task_id = governor_task_id
+        await self._save_task(task)
+        return task
+
+    async def set_dependencies(self, task_id: str, dep_ids: list[str]) -> Task:
+        """Replace the task's dependency list with ``dep_ids``.
+
+        Each ID must reference an existing task; self-references are rejected. Passing an
+        empty list clears all dependencies. This is a plain recorded fact — the state machine
+        does not enforce the constraint.
+        """
+        async with self._dependency_lock:
+            task = await self.get_task(task_id)
+            await self._validate_dependencies(task_id, dep_ids)
+            task.depends_on_task_ids = list(dep_ids)
+            await self._save_task(task)
+        return task
+
+    async def _validate_dependencies(self, task_id: str, dep_ids: list[str]) -> None:
+        """Validate one proposed graph write while the caller holds ``_dependency_lock``."""
+        for dep_id in dep_ids:
+            if await self._store.get_task(dep_id) is None:
+                raise NotFound(f"dependency task {dep_id!r} does not exist")
+        graph = {
+            candidate.id: list(candidate.depends_on_task_ids)
+            for candidate in await self._store.list_tasks_summary()
+        }
+        graph[task_id] = list(dep_ids)
+        if cycle := _dependency_cycle(graph, task_id):
+            rendered = " -> ".join(cycle)
+            raise ValueError(
+                f"dependency cycle detected: {rendered}; edit the dependency set to break the cycle"
+            )
+
+    async def dependency_tasks(self, task: Task) -> list[Task]:
+        """Resolve a task's dependency rows in recorded order."""
+        dependencies: list[Task] = []
+        for dep_id in task.depends_on_task_ids:
+            dependency = await self._store.get_task(dep_id)
+            if dependency is not None:
+                dependencies.append(dependency)
+        return dependencies
+
+    async def dependencies_blocking(self, task: Task) -> bool:
+        """Whether dependency facts prevent an unspawned task from becoming ready."""
+        dependencies = await self.dependency_tasks(task)
+        return len(dependencies) != len(task.depends_on_task_ids) or any(
+            self.dependency_blocks(dependency) for dependency in dependencies
+        )
+
+    def dependencies_blocking_in_snapshot(
+        self, task: Task, tasks_by_id: Mapping[str, Task]
+    ) -> bool:
+        """Derive readiness from one already-read task snapshot, without additional store I/O."""
+        return any(
+            (dependency := tasks_by_id.get(dep_id)) is None or self.dependency_blocks(dependency)
+            for dep_id in task.depends_on_task_ids
+        )
+
+    def dependency_blocks(self, dependency: Task) -> bool:
+        """Whether one dependency is still required or ended without supplying its work."""
+        return dependency.state == Dropped.label or not self._task_is_terminal(dependency)
+
+    def task_is_terminal(self, task: Task) -> bool:
+        """Public workflow-aware terminality projection for API consumers."""
+        return self._task_is_terminal(task)
+
+    # -- claim (a runner owns the task; the spawn gate, ADR 0008) --------------------------
+
+    async def claim(self, task_id: str, runner_id: str) -> Task:
+        """Claim an unclaimed task for ``runner_id`` (a session service claims before spawning).
+
+        Compare-and-set: succeeds if the task is unclaimed (idempotent if this runner already holds
+        it); raises :class:`AlreadyClaimed` if a different runner does, or :class:`NotReady` if the
+        current workflow/dependency facts no longer permit a new claim. Dependency writes and
+        terminality-changing transitions share the same lock, so readiness cannot change between
+        this check and the persisted claim.
+        """
+        async with self._dependency_lock:
+            task = await self.get_task(task_id)
+            if task.claimed_by not in (None, runner_id):
+                raise AlreadyClaimed(f"task {task_id!r} is already claimed by {task.claimed_by!r}")
+            if task.claimed_by is None and task.provisioned_by not in (None, runner_id):
+                migration = task.migration
+                if migration is None:
+                    raise NotReady("cross-host claim requires an explicit migration record")
+                if migration.source_runner != task.provisioned_by:
+                    raise NotReady("migration source does not own the recorded workspace")
+                if migration.destination_runner != runner_id:
+                    raise NotReady("migration destination does not match the claiming runner")
+                if migration.workspace_disposition not in {"installed", "accepted"}:
+                    raise NotReady(
+                        f"migration workspace is {migration.workspace_disposition}, not accepted"
+                    )
+            if task.claimed_by is None and (
+                self._task_is_terminal(task) or await self.dependencies_blocking(task)
+            ):
+                raise NotReady(
+                    f"task {task_id!r} is not ready to claim; refresh dependency and state facts"
+                )
+            task.claimed_by = runner_id
+            self.clear_lifecycle(
+                task_id
+            )  # drop any stale phase from a prior owner; this spawn re-reports
+            await self._save_container_state(task)
+        _log.info("task %s: claimed by runner %s", task_id, runner_id)
+        return task
+
+    async def release(self, task_id: str) -> Task:
+        """Release a task's claim (back to unclaimed) so it can be re-claimed / respawned. Clears any
+        reported lifecycle phase so the task reads ``queued`` until the runner re-claims + re-reports."""
+        task = await self.get_task(task_id)
+        task.claimed_by = None
+        self.clear_lifecycle(task_id)
+        await self._save_container_state(task)
+        _log.info("task %s: claim released", task_id)
+        return task
+
+    # -- provisioning (the session service does the host git; the service only records) ---
+
+    async def record_provisioning(
+        self,
+        task_id: str,
+        branch: str,
+        clone: str,
+        runner_id: str,
+        workspace_verified: bool,
+    ) -> Task:
+        """Record the slug-named branch + per-task clone the session service created **on the
+        host** for this task (ADR 0010/0011 / ARCHITECTURE §9).
+
+        The git itself happens on the runner's host (`core/git.py`), observed via the work-pull
+        loop; the task service never touches a filesystem, so this stays correct when the runner
+        is remote (ADR 0009). Slug-gated: the branch is named from the slug, so we refuse to
+        record before one is set.
+
+        This is a pure recorded-fact write — it does **not** run ``Workflow.provision``. ADR 0010
+        §1 moves provisioning's host-touching work to the session service and leaves the
+        host-side-vs-recorded-fact split of that hook an open question; until it's designed (and a
+        workflow needs it), ``Workflow.provision`` stays a declared seam, unwired here.
+        """
+        try:
+            json.dumps(
+                {
+                    "branch": branch,
+                    "clone": clone,
+                    "runner_id": runner_id,
+                    "workspace_verified": workspace_verified,
+                }
+            )
+        except (TypeError, ValueError) as exc:
+            raise TypeError("runner-reported facts must be JSON serializable") from exc
+        task = await self.get_task(task_id)
+        if task.slug is None:
+            raise ValueError("cannot record provisioning before the task's slug is set")
+        if task.claimed_by != runner_id:
+            raise NotReady("provisioning runner must hold the task claim")
+        if (
+            task.migration is not None
+            and task.migration.destination_runner == runner_id
+            and task.migration.workspace_disposition not in {"installed", "accepted"}
+        ):
+            raise NotReady("destination workspace has not been accepted")
+        expected_branch = f"panopticon/{task.slug}"
+        if branch != expected_branch and task.branch != branch:
+            raise NotReady("provisioning branch does not match the task record or slug")
+        task.branch = branch
+        task.clone = clone
+        task.provisioned_by = runner_id
+        task.workspace_verified_by = runner_id if workspace_verified else None
+        await self._save_task(task)
+        _log.info("task %s: provisioned (branch=%s)", task_id, branch)
+        return task
+
+    async def record_migration(
+        self,
+        task_id: str,
+        source_runner: str,
+        destination_runner: str,
+        workspace_disposition: str,
+        session_history_disposition: str,
+        discarded_changes: list[str],
+        discard_authorized_by: str | None,
+        workspace_method: str = "archive",
+    ) -> Task:
+        """Persist only the reported facts of an explicit operator migration decision."""
+        facts = {
+            "source_runner": source_runner,
+            "destination_runner": destination_runner,
+            "workspace_disposition": workspace_disposition,
+            "workspace_method": workspace_method,
+            "session_history_disposition": session_history_disposition,
+            "discarded_changes": discarded_changes,
+            "discard_authorized_by": discard_authorized_by,
+        }
+        try:
+            json.dumps(facts)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("runner-reported facts must be JSON serializable") from exc
+        task = await self.get_task(task_id)
+        if task.provisioned_by is None:
+            raise NotReady("migration requires an existing workspace owner")
+        if source_runner != task.provisioned_by:
+            raise NotReady("migration source does not own the recorded workspace")
+        if destination_runner == source_runner:
+            raise ValueError("migration destination must differ from its source")
+        if workspace_disposition not in {"pending", "installed", "accepted", "failed"}:
+            raise ValueError("invalid workspace disposition")
+        if workspace_method not in {"archive", "forge-first"}:
+            raise ValueError("invalid workspace migration method")
+        if session_history_disposition not in {"requested", "accepted", "omitted", "failed"}:
+            raise ValueError("invalid session-history disposition")
+        previous = task.migration
+        if workspace_disposition in {"installed", "accepted"} and (
+            previous is None
+            or previous.source_runner != source_runner
+            or previous.destination_runner != destination_runner
+            or previous.workspace_method != workspace_method
+            or previous.workspace_disposition
+            not in (
+                {"pending"} if workspace_disposition == "installed" else {"pending", "installed"}
+            )
+        ):
+            raise NotReady("workspace acceptance requires a matching pending migration")
+        if discarded_changes and discard_authorized_by != Actor.USER.value:
+            raise ValueError("discarded changes require explicit user authorization")
+        history_was_requested = bool(
+            task.migration
+            and (
+                task.migration.session_history_disposition == "requested"
+                or task.migration.session_history_was_requested
+            )
+        )
+        task.migration = MigrationRecord(
+            source_runner=source_runner,
+            destination_runner=destination_runner,
+            workspace_disposition=workspace_disposition,
+            workspace_method=workspace_method,
+            session_history_disposition=session_history_disposition,
+            discarded_changes=list(discarded_changes),
+            discard_authorized_by=discard_authorized_by,
+            session_history_changed_by=(
+                Actor.USER.value
+                if history_was_requested and session_history_disposition == "omitted"
+                else None
+            ),
+            session_history_was_requested=history_was_requested
+            or session_history_disposition == "requested",
+        )
+        await self._save_task(task)
+        return task
+
+    # -- artifacts ----------------------------------------------------------------
+
+    async def put_artifact(self, task_id: str, name: str, content: bytes) -> None:
+        await self.get_task(task_id)  # ensure the task exists
+        await self._artifacts.put(task_id, name, content)
+        self._notify_change()
+        _log.debug("task %s: artifact %s written", task_id, name)
+
+    async def get_artifact(self, task_id: str, name: str) -> bytes | None:
+        await self.get_task(task_id)
+        return await self._artifacts.get(task_id, name)
+
+    async def list_artifacts(self, task_id: str) -> list[str]:
+        await self.get_task(task_id)
+        return await self._artifacts.list(task_id)
+
+    # -- liveness -----------------------------------------------------------------
+    #
+    # Liveness is connection-scoped: a container holds the ``/live`` stream open for its whole
+    # lifetime, the service registers on connect and removes on disconnect. Death (clean exit,
+    # ``docker stop``, ``SIGKILL`` / ``docker rm --force``, crash) drops the connection and is
+    # noticed immediately — no heartbeat to miss, no wall-clock TTL to age out (so a container
+    # that dies can't linger as "live", and ``registrations`` reads no clock at all).
+
+    async def register(
+        self, task_id: str, container_id: str, runner_id: str | None = None
+    ) -> Registration:
+        await self.get_task(task_id)  # ensure the task exists
+        reg = Registration(
+            id=self._id(),
+            task_id=task_id,
+            container_id=container_id,
+            runner_id=runner_id,
+            registered_at=self._clock(),
+        )
+        self._registrations[reg.id] = reg
+        self._notify_change()  # a container going live wakes the dashboard's long-poll
+        _log.info("task %s: container registered (reg=%s)", task_id, reg.id)
+        return reg
+
+    async def deregister(self, registration_id: str) -> None:
+        reg = self._registrations.pop(registration_id, None)
+        if reg is not None:
+            self._notify_change()  # a container dropping wakes the long-poll (live → down/awaiting)
+            _log.info("task %s: registration %s released", reg.task_id, registration_id)
+
+    def registrations(self, task_id: str | None = None) -> list[Registration]:
+        return [r for r in self._registrations.values() if task_id is None or r.task_id == task_id]
+
+    # -- container lifecycle (the session service reports its spawn progress) -------------
+    #
+    # The runner pushes a :class:`ContainerLifecycle` phase as it claims → prepares → builds →
+    # starts a container, so the feedback that used to be invisible (a slow ``docker build``, a
+    # container that never came up) surfaces on the dashboard. Ephemeral like a registration —
+    # cleared on claim release/reclaim — and folded with registration presence + runner liveness
+    # into the displayed :class:`ContainerStatus` by :meth:`container_status`.
+
+    async def report_lifecycle(
+        self, task_id: str, runner_id: str, phase: LifecyclePhase, detail: str | None = None
+    ) -> ContainerLifecycle:
+        """Record the runner's latest spawn phase for a task (an upsert; the newest wins)."""
+        await self.get_task(task_id)  # ensure the task exists
+        lifecycle = ContainerLifecycle(
+            task_id=task_id, runner_id=runner_id, phase=phase, detail=detail, at=self._clock()
+        )
+        self._lifecycles[task_id] = lifecycle
+        self._notify_change()
+        _log.debug("task %s: lifecycle phase=%s", task_id, phase.value)
+        return lifecycle
+
+    def clear_lifecycle(self, task_id: str) -> None:
+        """Drop a task's reported phase (idempotent — only wakes the feed if one was present)."""
+        if self._lifecycles.pop(task_id, None) is not None:
+            self._notify_change()
+            _log.debug("task %s: lifecycle cleared", task_id)
+
+    def lifecycle(self, task_id: str) -> ContainerLifecycle | None:
+        """The task's latest reported spawn phase, or ``None`` if none is current."""
+        return self._lifecycles.get(task_id)
+
+    def container_status(
+        self, task: Task, *, dependencies_blocking: bool = False
+    ) -> ContainerStatus:
+        """The task's composed container-lifecycle status (the single string the dashboard shows):
+        fold the reported phase together with registration presence + runner liveness."""
+        lifecycle = self._lifecycles.get(task.id)
+        return compose_container_status(
+            terminal=self._task_is_terminal(task),
+            dependencies_blocking=dependencies_blocking,
+            claimed=task.claimed_by is not None,
+            registered=bool(self.registrations(task.id)),
+            runner_live=task.claimed_by in self.live_runners(),
+            phase=lifecycle.phase if lifecycle is not None else None,
+        )
+
+    # -- host (runner) liveness + reclaim ------------------------------------------
+    #
+    # The same connection-drop liveness as containers, one layer up: a runner (session service)
+    # holds the ``/runners/{id}/live`` stream open for its whole life, so the control plane knows
+    # which hosts are alive without a heartbeat or a wall-clock TTL. This is what makes **reclaim**
+    # possible — a claim (``claimed_by``) used to linger forever when its runner died, with no way
+    # to tell "runner dead" from "runner idle"; now a dead runner falls out of ``live_runners`` and
+    # an operator (or a future supervisor) can release its claims so a healthy host respawns them.
+
+    async def register_runner(
+        self, runner_id: str, *, host: str | None = None
+    ) -> RunnerRegistration:
+        reg = RunnerRegistration(
+            id=self._id(), runner_id=runner_id, registered_at=self._clock(), host=host
+        )
+        self._runner_registrations[reg.id] = reg
+        self._notify_change()  # a runner (re)connecting can flip its tasks disconnected → …
+        _log.info("runner %s: registered (reg=%s, host=%s)", runner_id, reg.id, host)
+        return reg
+
+    async def deregister_runner(self, registration_id: str) -> None:
+        reg = self._runner_registrations.pop(registration_id, None)
+        if reg is not None:
+            self._notify_change()  # a runner dropping flips its claimed tasks → disconnected
+            _log.info("runner %s: deregistered", reg.runner_id)
+
+    def live_runners(self) -> set[str]:
+        """The set of runner ids currently holding a host-liveness connection (no clock read)."""
+        return {r.runner_id for r in self._runner_registrations.values()}
+
+    def runner_host(self, runner_id: str) -> str | None:
+        """The hostname the runner registered with, or ``None`` if unknown / not registered."""
+        for reg in self._runner_registrations.values():
+            if reg.runner_id == runner_id:
+                return reg.host
+        return None
+
+    def live_runner_registrations(self) -> list[RunnerRegistration]:
+        """One registration per distinct live runner id (deduplicated; stable order for REST)."""
+        seen: dict[str, RunnerRegistration] = {}
+        for reg in self._runner_registrations.values():
+            seen.setdefault(reg.runner_id, reg)
+        return sorted(seen.values(), key=lambda r: r.runner_id)
+
+    async def reclaim(self, runner_id: str) -> list[Task]:
+        """Release every non-terminal task claimed by ``runner_id`` so a healthy host can re-claim
+        and respawn it. The operator-gated answer to a dead runner (justification 2): its containers
+        died with it, but its claims would otherwise linger forever.
+
+        Connection-driven and **clock-free** — "dead" is the caller's judgement (the runner is
+        absent from :meth:`live_runners`); reclaim only releases the claims, it adds no TTL. Skips
+        terminal tasks (nothing to respawn) and is idempotent (a second call finds nothing to do).
+        Auto-triggering this on disconnect is deliberately *not* done here: with the auto-claiming
+        spawner it would respawn a duplicate container on a transient host blip, so the release stays
+        a deliberate action until spawn-dedup exists."""
+        reclaimed = []
+        for task in await self._store.list_tasks():
+            if task.claimed_by == runner_id and not self._task_is_terminal(task):
+                task.claimed_by = None
+                self.clear_lifecycle(task.id)  # the dead runner's phase is stale; start clean
+                await self._save_container_state(task)
+                reclaimed.append(task)
+        if reclaimed:
+            _log.info("runner %s: reclaim released %d task(s)", runner_id, len(reclaimed))
+        return reclaimed

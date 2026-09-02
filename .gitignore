@@ -1,0 +1,46 @@
+# Editor / Obsidian vault metadata
+.obsidian/
+
+# Private planning and agent-working context. These files may exist locally,
+# but they are never part of the distributable repository.
+/project-plan.md
+/project-log.md
+/CURRENT.md
+/TODO.md
+/CODEX.md
+/memos/
+/notes/
+/research/
+/transcripts/
+/strategy/
+/.deepwork/
+/.deepreview/
+/docs/design/BACKLOG.md
+/docs/design/GOALS.md
+/docs/design/PARITY.md
+/docs/design/ROADMAP.md
+/extract-cutover-step.py
+/g??-gate.sh
+/s??-cutover.sh
+/s??-check-only.sh
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+# 2119:gitignore-begin
+# Review packets are scratch; verdicts are committed audit history.
+!.2119/
+.2119/reviews/
+!.2119/verdicts/
+!.2119/verdicts/**
+# 2119:gitignore-end

@@ -1,0 +1,447 @@
+"""Core domain models — pure data, no I/O, no LLM.
+
+These types are the vocabulary the whole system shares. Most are plain records; the exception
+is :class:`Task`, which carries behavior over **its own record** — fulfilling the
+responsibilities it promised on entry and reporting which remain outstanding. The *rules of
+the state machine* (which transitions are legal, what each state means) live in
+:class:`panopticon.core.workflow.Workflow`, and the state classes live in
+:mod:`panopticon.core.state`.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
+
+
+class Actor(str, Enum):
+    """A party that can act on a task: the user or the agent.
+
+    The same two parties answer every "who?" in the model — who holds the turn
+    (``Task.turn``, ``State.turn_on_enter``) and who transitions out of a state
+    (``State.advanced_by``).
+    """
+
+    USER = "user"
+    AGENT = "agent"
+
+
+class Status(str, Enum):
+    """Resolution status of a single responsibility."""
+
+    PENDING = "pending"  # not yet resolved — blocks handing the turn back
+    MET = "met"
+    FAILED = "failed"  # could not be satisfied; requires a comment
+
+
+class WakeStatus(str, Enum):
+    """Delivery state for the runner-side wake associated with one history entry."""
+
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    SKIPPED = "skipped"
+
+
+class SessionInputStatus(str, Enum):
+    """Durable state of one remote session-input request."""
+
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class SessionInput:
+    id: str
+    task_id: str
+    idempotency_key: str
+    text: str
+    submit: bool
+    status: SessionInputStatus
+    created_at: str
+    settled_at: str | None = None
+    failure_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class SessionTranscript:
+    task_id: str
+    runner_id: str
+    text: str
+    columns: int
+    rows: int
+    truncated: bool
+    received_at: str
+
+
+class LifecyclePhase(str, Enum):
+    """A step the **session service** reports as it brings a task's container up (ADR 0008).
+
+    These are the *pre-live* phases the runner pushes over ``PUT /tasks/{id}/lifecycle`` as it
+    claims, prepares, builds, and launches — the feedback that used to be invisible. ``LIVE`` /
+    ``DOWN`` / ``QUEUED`` / ``DISCONNECTED`` are **not** here: they're derived by the task service
+    from registration presence + runner liveness (see :func:`compose_container_status`), so the
+    runner never invents them. Each value equals its :class:`ContainerStatus` counterpart so a
+    reported phase maps straight through.
+    """
+
+    HEALING = "healing"  # an orphan flagged for self-heal; queued behind the serial respawn
+    CLAIMING = "claiming"  # claimed the task; spawn about to start
+    PREPARING = "preparing"  # readying the per-task clone / workspace
+    BUILDING = "building"  # composing + docker-building the image (the slow first-run step)
+    STARTING = "starting"  # docker run + the tmux session coming up
+    AWAITING = "awaiting"  # container + tmux up; waiting for it to open its /live registration
+    FAILED = "failed"  # a spawn step raised (carries a detail string)
+
+
+class ContainerStatus(str, Enum):
+    """A task's *composed* container-lifecycle status — the single string the dashboard displays.
+
+    The task service computes it (see :func:`compose_container_status`) by folding the session
+    service's reported :class:`LifecyclePhase` together with container-registration presence and
+    runner liveness, so the dashboard renders it verbatim instead of guessing.
+    """
+
+    NONE = "–"  # terminal task — no container concept
+    GATED = "gated"  # unclaimed, non-terminal — dependencies are not ready
+    QUEUED = "queued"  # unclaimed, non-terminal — waiting for a runner to claim it
+    HEALING = "healing"  # claimed, container gone, the runner is self-healing it (orphan respawn)
+    CLAIMING = "claiming"
+    PREPARING = "preparing"
+    BUILDING = "building"
+    STARTING = "starting"
+    AWAITING = "awaiting"
+    LIVE = "live"  # a container registration is open
+    DOWN = "down"  # claimed, runner live, container gone and unregistered → respawn with `R`
+    FAILED = "failed"  # a spawn step raised
+    DISCONNECTED = "disconnected"  # claimed by a runner no longer connected to the task service
+
+
+def compose_container_status(
+    *,
+    terminal: bool,
+    dependencies_blocking: bool = False,
+    claimed: bool,
+    registered: bool,
+    runner_live: bool,
+    phase: LifecyclePhase | None,
+) -> ContainerStatus:
+    """Fold the lifecycle signals into one displayed status — pure, so it's unit-testable alone.
+
+    Order matters (first match wins): a terminal task has no container; an unclaimed one is
+    ``QUEUED``; an open container registration is ``LIVE`` regardless of anything else (the
+    container holds its own ``/live`` connection independent of its runner); a claim held by a
+    runner that's no longer connected is ``DISCONNECTED`` (even if it left a stale phase behind);
+    otherwise a reported spawn ``phase`` shows through; and a claimed task with a live runner but
+    no phase and no registration is ``DOWN`` (came up and vanished, or never reported).
+    """
+    if terminal:
+        return ContainerStatus.NONE
+    if not claimed and dependencies_blocking:
+        return ContainerStatus.GATED
+    if not claimed:
+        return ContainerStatus.QUEUED
+    if registered:
+        return ContainerStatus.LIVE
+    if not runner_live:
+        return ContainerStatus.DISCONNECTED
+    if phase is not None:
+        return ContainerStatus(phase.value)
+    return ContainerStatus.DOWN
+
+
+@dataclass(frozen=True)
+class Responsibility:
+    """An agent obligation for a state.
+
+    The workflow supplies these as *definitions* (``status`` ``PENDING``, no comment). The
+    agent resolves each to ``MET`` or ``FAILED`` before handing the turn back; a ``FAILED``
+    responsibility must carry a ``comment`` explaining why. They are agent-only — user
+    actions drive transitions directly rather than being modelled as responsibilities.
+    """
+
+    key: str
+    description: str
+    status: Status = Status.PENDING
+    comment: str | None = None
+
+    def resolve(self, status: Status, comment: str | None = None) -> Responsibility:
+        """Return a resolved copy carrying the definition's ``key``/``description``."""
+        return Responsibility(
+            key=self.key, description=self.description, status=status, comment=comment
+        )
+
+
+@dataclass(frozen=True)
+class Skill:
+    """A workflow-specific, agent-driven procedure exposed in the task container (ADR 0004).
+
+    Workflow-agnostic by design: a workflow declares skills as data (``name``, one-line
+    ``description``, and ``instructions`` — the agent procedure); the agent layer renders them to
+    whatever the active CLI needs (claude slash-commands for now, other CLIs in M3). On top of
+    the core operations (advance/drop), and present only if the active workflow defines them.
+    """
+
+    name: str
+    description: str
+    instructions: str
+
+
+@dataclass(frozen=True)
+class Tool:
+    """A command-line tool a workflow expects in its task container, named so the agent knows to use
+    it. Declared as data (``name`` + one-line ``description`` of what it's for) and listed in the
+    agent's system prompt. Common tools such as ``gh`` can come from the base image; a workflow's
+    image layer supplies workflow-specific additions (ADR 0005). Tool declarations describe what
+    the workflow expects, independently of which image tier installs it.
+    """
+
+    name: str
+    description: str
+
+
+@dataclass
+class Repo:
+    """A repository tasks operate on.
+
+    Holds a *reference* to its per-repo secrets (ADR 0007), never the values: ``env_file`` is a
+    **name relative to the secrets dir** (``$PANOPTICON_CONFIG/secrets``) naming an env-file of
+    API-key-style secrets, injected into the task container at launch (``--env-file``), so secrets
+    stay out of the DB, artifacts, and image layers. The runner resolves it against its **own**
+    host's secrets dir, so a remote runner uses its own secrets and the value stays host-agnostic;
+    the file's content never crosses the wire.
+
+    ``image_layer_file`` *references* the repo's Dockerfile fragment (ADR 0005's repo tier): a file
+    name resolved relative to the task service's layers directory, not inline content. The task
+    service reads it to serve over REST (``GET /repos/{id}/image-layer``) and the runner composes
+    base → workflow → **repo** into the task image, so a repo can layer on its toolchain (e.g. `uv`,
+    `make`). Empty/None = no repo layer.
+
+    ``capabilities`` is a per-repo opt-in map for elevated container privileges the runner grants at
+    spawn. ``docker_in_docker`` (a privileged nested Docker daemon) is the first — off by default,
+    since it's a trust escalation (a privileged container ≈ host root).
+
+    ``hook_file`` *references* an executable script the runner runs on the host after the per-task
+    workspace is prepared but before ``docker run``: a **name relative to the runner's hooks dir**
+    (``$PANOPTICON_CONFIG/hooks``), resolved against its **own** host like ``env_file`` is against
+    the secrets dir, so a remote runner uses its own host's script. The hook runs with the checkout
+    as its cwd and receives ``PANOPTICON_TASK_ID``, ``PANOPTICON_REPO_NAME``, and
+    ``PANOPTICON_WORKSPACE`` as env vars; a nonzero exit aborts the spawn. Use it to modify the
+    worktree before the agent sees it (e.g. strip host-only config files). ``None`` = no hook.
+    See ``docs/hooks.md``.
+    """
+
+    id: str
+    name: str
+    git_url: str
+    default_base: str = "main"
+    env_file: str | None = None
+    image_layer_file: str | None = None
+    capabilities: dict[str, Any] = field(default_factory=dict)
+    hook_file: str | None = None
+    enabled_workflows: list[str] = field(default_factory=list)
+    disabled_workflows: list[str] = field(default_factory=list)
+    #: A *reference* to the repo's shared credential **directory** (ADR 0007's directory-shaped
+    #: sibling of ``env_file``): a name relative to the secrets dir, resolved host-locally by the
+    #: runner and mounted **read-write** into the repo's task containers at
+    #: :data:`~panopticon.harnesses.CREDENTIALS_MOUNT`. Holds credential *files* whose nature is
+    #: shared across sessions (e.g. a ChatGPT-subscription ``auth.json``, one rotating token
+    #: chain per account) — unlike env-file values, these rotate in place and every container
+    #: converges on the same copy. ``None`` = no credential dir.
+    credential_dir: str | None = None
+    #: The agent-CLI harness this repo's tasks run by **default** (``None`` = the system default,
+    #: claude). The on-the-rails path: teams usually standardize per repo, so task creation never
+    #: needs to name a harness — but an explicit :attr:`Task.harness` at creation always wins
+    #: (people do jump between harnesses in one repo). Validated against the registry on
+    #: create/update; the resolved choice is recorded on the task, so a later change to this
+    #: default never re-routes existing tasks.
+    default_harness: str | None = None
+    #: Harness-scoped model/effort string (for example ``"gpt-5.6-sol:high"``). Opaque to the
+    #: control plane; harness adapters own their vocabulary. A non-null model requires a
+    #: non-null :attr:`default_harness`, so the vocabulary always has an explicit owner.
+    default_model: str | None = None
+    #: Optional repo-owned override for the workflow's test-honesty reviewer. This is ordinary
+    #: configuration, not a credential; the runner transports it into the task container.
+    honesty_reviewer: str | None = None
+    #: Optional repo-owned overrides for the workflow's two stage-4 reviewer slots. Each value is
+    #: an atomic ``<harness>:<model>`` pair; the model suffix remains harness-owned and opaque.
+    reviewer_1: str | None = None
+    reviewer_2: str | None = None
+
+
+@dataclass(frozen=True)
+class HistoryEntry:
+    """One entry in a task's log — recorded when the task *enters* ``to_state``.
+
+    Timestamps are passed in by the caller (the task service stamps them); the core
+    never reads the clock, which keeps the state machine deterministic and testable.
+
+    On entry, ``responsibilities`` is seeded with the destination state's obligations, all
+    ``PENDING`` — a promise to fulfil them before leaving. The agent then resolves them **one
+    at a time**. ``wake_status`` separately records whether the session service delivered the
+    entry's runner-side stage briefing. Those two delivery/progress facts may settle after entry;
+    the transition facts never change.
+    """
+
+    at: str  # ISO-8601 timestamp, supplied by the caller
+    from_state: str | None
+    to_state: str
+    trigger: str | None = None  # what triggered the transition (e.g. "start", "advance")
+    note: str | None = None
+    responsibilities: list[Responsibility] = field(default_factory=list)
+    wake_status: WakeStatus = WakeStatus.SKIPPED
+
+
+@dataclass(frozen=True)
+class MigrationRecord:
+    """Auditable operator decision and destination acceptance for a host hand-off."""
+
+    source_runner: str
+    destination_runner: str
+    workspace_disposition: str
+    session_history_disposition: str
+    workspace_method: str = "archive"
+    discarded_changes: list[str] = field(default_factory=list)
+    discard_authorized_by: str | None = None
+    session_history_changed_by: str | None = None
+    session_history_was_requested: bool = False
+
+
+@dataclass
+class Task:
+    """A unit of work. Identity is the internal ``id``; ``slug`` is a human label set later.
+
+    A task carries behavior over **its own record** — fulfilling the responsibilities it
+    promised on entering its current state, and reporting which remain outstanding. It knows
+    nothing of the state machine's rules; those live in
+    :class:`~panopticon.core.workflow.Workflow`, which drives the task across states.
+    """
+
+    id: str
+    repo_id: str
+    workflow: str
+    state: str
+    turn: Actor
+    #: A deliberate "waiting on something" marker the agent sets. A turn-to-agent write or state
+    #: change clears it; a turn-to-user write preserves it, and the agent may set it again.
+    blocked: bool = False
+    #: An escalation-only marker agents set when they need operator attention despite a
+    #: control-plane-verifiable upstream wait. It never suppresses the ordinary turn queue.
+    attention: bool = False
+    #: A brief, one-line reminder of what the task is, collected when the task is created (shown
+    #: in the dashboard's task summary) — a human label of *intent*, not a full description (that
+    #: lives in the task's plan artifact). Distinct from the ``slug`` (a short identifier the
+    #: agent sets later); ``None`` when the creator gave none.
+    memo: str | None = None
+    #: Optional text prefilled (unsent) into Claude's input box on the task's first spawn,
+    #: taking precedence over ``memo`` for that purpose. ``None`` until set at creation.
+    initial_prompt: str | None = None
+    slug: str | None = None
+    #: An optional external URL for the task — its pull request, an issue, a dashboard link
+    #: (cloude-cade's ``pr_url``). Set via :meth:`TaskService.set_url`; the dashboard's ``p``
+    #: hotkey opens it. ``None`` until something records one (e.g. the ``open-pr`` skill).
+    url: str | None = None
+    #: An operator-owned attention mute deadline, recorded exactly as an ISO-8601 timestamp.
+    #: ``None`` means not snoozed; display code alone decides whether a finite deadline is active.
+    snoozed_until: str | None = None
+    #: The git refs the session service provisions for this task once the slug is set (ADR
+    #: 0010/0011): the slug-named branch and the path of the per-task ``clone`` it works in **on
+    #: the host where the container runs**. The task service only records these — it does no git
+    #: itself — so this stays correct when the runner is remote. Both ``None`` until provisioning.
+    branch: str | None = None
+    clone: str | None = None
+    provisioned_by: str | None = None
+    workspace_verified_by: str | None = None
+    migration: MigrationRecord | None = None
+    #: The runner that has **claimed** this task (its ``runner_id``), or ``None`` if unclaimed. A
+    #: session service claims an unclaimed task before spawning its container, so exactly one host
+    #: owns it; the claim is the spawn gate (ADR 0008). Released (back to ``None``) to hand it off
+    #: or have it respawned. Distinct from liveness — a claimed task whose container died is
+    #: "claimed but down".
+    claimed_by: str | None = None
+    #: Cumulative **cost-weighted** tokens the ``claude`` agent in this task's container has used,
+    #: expressed in input-equivalent units (cache-reads ≈0.1×, output ≈5×). The container's Stop
+    #: hook reports it via :meth:`TaskService.set_tokens_used`, recomputing the session total each
+    #: turn; the dashboard shows it in short human form. ``None`` until the first report. Values
+    #: recorded before cost-weighting was introduced are raw four-tier sums and are not comparable.
+    tokens_used: int | None = None
+    #: The agent's *forecast* of the total tokens this task will consume, set once during planning
+    #: via :meth:`TaskService.set_token_estimate` (distinct from ``tokens_used``, the running
+    #: actual). The GithubForge workflows and the orchestrator record it when producing the plan.
+    #: ``None`` until estimated.
+    token_estimate: int | None = None
+    #: The model the agent should start with — e.g. ``"opus"``. Seeded from
+    #: :attr:`~panopticon.core.workflow.Workflow.default_model` when the task is created;
+    #: injected as ``PANOPTICON_STARTING_MODEL`` at spawn so the agent can pass ``--model``
+    #: to ``claude`` on first launch. ``None`` means no model preference (claude picks its default).
+    starting_model: str | None = None
+    #: Which agent-CLI **harness** runs this task's container (``"claude"``, ``"codex"``, …) —
+    #: an opaque name the control plane records and the container/runner resolve against the
+    #: harness registry (:mod:`panopticon.harnesses`). Validated and materialized at creation;
+    #: ``None`` remains readable for legacy rows and resolves to the current application default.
+    #: Like ``starting_model``, recorded — never interpreted — here.
+    harness: str | None = None
+    #: The task that *governs* (oversees) this one — its ``id``. Set by the orchestrator on the
+    #: tasks it creates so the relationship is recorded; also settable manually via
+    #: :meth:`TaskService.set_governor`. ``None`` for ungoverned tasks.
+    governor_task_id: str | None = None
+    #: ISO-8601 timestamp when the task was created, stamped once at creation and never changed.
+    #: ``None`` only for tasks created before this field was introduced.
+    created_at: str | None = None
+    #: ISO-8601 timestamp of the last mutation (any field change or history update), stamped by
+    #: the task service. ``None`` only for tasks created before this field was introduced.
+    updated_at: str | None = None
+    #: Task IDs that must reach a terminal state before work on this task should begin.
+    #: Tracking only — the state machine does not enforce this constraint.
+    depends_on_task_ids: list[str] = field(default_factory=list)
+    history: list[HistoryEntry] = field(default_factory=list)
+
+    @property
+    def provisioned(self) -> bool:
+        """True only when branch and clone are recorded, migration is absent or its workspace disposition is accepted, and a current claim is present and matches both the provisioning and workspace-verification runners."""
+        migration_ready = (
+            self.migration is None or self.migration.workspace_disposition == "accepted"
+        )
+        return bool(
+            migration_ready
+            and self.branch
+            and self.clone
+            and self.claimed_by
+            and self.claimed_by == self.provisioned_by == self.workspace_verified_by
+        )
+
+    @property
+    def current_entry(self) -> HistoryEntry:
+        """The latest history entry — the one recorded on entering the current state."""
+        return self.history[-1]
+
+    def resolve_responsibility(
+        self, *, key: str, status: Status, comment: str | None = None
+    ) -> None:
+        """Resolve one responsibility promised on entering the current state, in place.
+
+        Resolves the matching promise on :attr:`current_entry`. ``status`` must be ``MET`` or
+        ``FAILED`` (the latter requires a ``comment``). Raises :class:`ValueError` for an
+        unknown key, a ``PENDING`` status, or a ``FAILED`` without a comment.
+        """
+        if status is Status.PENDING:
+            raise ValueError("resolve a responsibility as MET or FAILED, not PENDING")
+        if status is Status.FAILED and not (comment and comment.strip()):
+            raise ValueError(f"FAILED responsibility {key!r} requires a comment")
+        promised = self.current_entry.responsibilities
+        for i, definition in enumerate(promised):
+            if definition.key == key:
+                promised[i] = definition.resolve(status, comment)
+                return
+        raise ValueError(f"no responsibility {key!r} promised in state {self.state!r}")
+
+    @property
+    def outstanding_responsibilities(self) -> list[Responsibility]:
+        """Promises on the current entry still unresolved (``PENDING``).
+
+        An empty result means the turn may be handed back and the task may advance. A
+        ``FAILED`` promise counts as resolved — :meth:`resolve_responsibility` already requires
+        its comment, so it never lingers here.
+        """
+        return [r for r in self.current_entry.responsibilities if r.status is Status.PENDING]

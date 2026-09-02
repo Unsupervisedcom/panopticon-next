@@ -1,0 +1,801 @@
+"""The unified per-host session service daemon (ADR 0008/0011): each pass spawns new tasks and
+provisions slugged ones. A unit test isolates per-task errors; an integration test drives the full
+spawn→slug→provision flow against the real task service over REST. No Docker, no LLM."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable, Generator
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+
+from panopticon.client import JsonObj, TaskServiceClient
+from panopticon.core.git import GitClones
+from panopticon.core.models import Repo
+from panopticon.sessionservice.clones import CloneCache
+from panopticon.sessionservice.host import (
+    HostDaemon,
+    build_arg_parser,
+    hold_runner_liveness,
+    preflight_or_exit,
+    run_host,
+)
+from panopticon.taskservice.api import create_app
+from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
+from panopticon.taskservice.service import TaskService
+from panopticon.taskservice.store_sqlalchemy import SqlAlchemyStore
+from panopticon.workflows import Spike
+
+
+def _no_op_run(args: object, *, check: bool = True) -> str:
+    return ""
+
+
+class _FakeRunner:
+    def __init__(self) -> None:
+        self.spawned: list[str] = []
+
+    def spawn(
+        self,
+        task_id: str,
+        *,
+        env_file: str | None = None,
+        workspace: str | None = None,
+        image: str | None = None,
+        docker_in_docker: bool = False,
+        memo: str | None = None,
+        initial_prompt: str | None = None,
+        turn: str | None = None,
+        starting_model: str | None = None,
+        harness: str | None = None,
+        config_mount: str = "/home/panopticon/.claude",
+        credential_dir: str | None = None,
+        progress: object = None,
+    ) -> str:
+        self.spawned.append(task_id)
+        return f"panopticon-{task_id}"
+
+    def is_running(self, task_id: str) -> bool:
+        return True  # the spawned container is up (reconcile leaves it coming up)
+
+    def has_session(self, task_id: str) -> bool:
+        return True  # session present (heal leaves a healthy task untouched)
+
+    def stop(self, container_id: str) -> None:
+        pass
+
+    def delete_workspace_contents(self, path: str) -> None:
+        pass
+
+
+class _FakeImageBuilder:
+    """Stands in for ImageBuilder (no docker); always reports the base image as present."""
+
+    def build(
+        self, workflow: str, repo_id: str, layers: list[str], *, verbose: bool = False
+    ) -> str:
+        return f"panopticon-{workflow}-{repo_id}"
+
+    def build_base_if_missing(self, *, verbose: bool = False) -> bool:
+        return False
+
+
+class _FakeClient:
+    """A do-nothing change-feed client — `tick` takes the snapshot as an argument, so the client is
+    irrelevant to the tick-level tests; the constructor just needs *something* shaped like one."""
+
+    def __init__(self, tasks: list[JsonObj]) -> None:
+        self._tasks = tasks
+
+    def list_tasks_versioned(
+        self, *, since: int = 0, wait: float | None = None
+    ) -> tuple[list[JsonObj], int]:
+        return self._tasks, since
+
+
+def _host_task(
+    task_id: str,
+    *,
+    state: str = "ITERATING",
+    depends_on: list[str] | None = None,
+) -> JsonObj:
+    return {
+        "id": task_id,
+        "state": state,
+        "claimed_by": None,
+        "depends_on_task_ids": depends_on or [],
+    }
+
+
+def test_tick_isolates_a_failing_task_from_the_others() -> None:
+    seen: list[str] = []
+
+    class _Spawner:
+        def mark_healing(self, task: JsonObj) -> None:
+            return None
+
+        def spawn_one(self, task: JsonObj) -> None:
+            seen.append(task["id"])
+            if task["id"] == "t1":
+                raise RuntimeError("boom")
+
+        def reconcile(self, task: JsonObj) -> None:
+            return None
+
+        def heal(self, task: JsonObj) -> None:
+            return None
+
+        def cleanup(self, task: JsonObj) -> None:
+            return None
+
+    class _Provisioner:
+        def provision(self, task: JsonObj) -> None:
+            return None
+
+    daemon = HostDaemon(_FakeClient([]), _Spawner(), _Provisioner())  # type: ignore[arg-type]
+    daemon.tick([_host_task("t1"), _host_task("t2")])
+    assert seen == ["t1", "t2"]  # t1's error is logged + skipped; t2 still processed
+
+
+def test_tick_spawns_only_dependency_ready_tasks_on_each_current_snapshot() -> None:
+    spawned: list[str] = []
+
+    class _Spawner:
+        def mark_healing(self, task: JsonObj) -> None:
+            return None
+
+        def spawn_one(self, task: JsonObj) -> None:
+            spawned.append(task["id"])
+
+        def reconcile(self, task: JsonObj) -> None:
+            return None
+
+        def heal(self, task: JsonObj) -> None:
+            return None
+
+        def cleanup(self, task: JsonObj) -> None:
+            return None
+
+    class _Provisioner:
+        def provision(self, task: JsonObj) -> None:
+            return None
+
+    active = _host_task("active")
+    dropped = _host_task("dropped", state="DROPPED")
+    complete = _host_task("complete", state="COMPLETE")
+    waits_active = _host_task("waits-active", depends_on=["active"])
+    waits_dropped = _host_task("waits-dropped", depends_on=["dropped"])
+    waits_complete = _host_task("waits-complete", depends_on=["complete"])
+    tasks = [active, dropped, complete, waits_active, waits_dropped, waits_complete]
+    daemon = HostDaemon(_FakeClient([]), _Spawner(), _Provisioner())  # type: ignore[arg-type]
+
+    # 2119: REQ-026.1.1
+    # 2119: REQ-026.1.2
+    daemon.tick(tasks)
+    assert spawned == ["active", "waits-complete"]
+
+    # 2119: REQ-026.1.3
+    active["state"] = "COMPLETE"
+    spawned.clear()
+    daemon.tick(tasks)
+    assert spawned == ["waits-active", "waits-complete"]
+
+
+def test_tick_heals_each_task_in_the_snapshot() -> None:
+    # The pass also runs self-heal (orphan respawn) over every task, alongside spawn/provision/reconcile.
+    healed: list[str] = []
+
+    class _Spawner:
+        def mark_healing(self, task: JsonObj) -> None:
+            return None
+
+        def spawn_one(self, task: JsonObj) -> None:
+            return None
+
+        def reconcile(self, task: JsonObj) -> None:
+            return None
+
+        def heal(self, task: JsonObj) -> None:
+            healed.append(task["id"])
+
+        def cleanup(self, task: JsonObj) -> None:
+            return None
+
+    class _Provisioner:
+        def provision(self, task: JsonObj) -> None:
+            return None
+
+    HostDaemon(_FakeClient([]), _Spawner(), _Provisioner()).tick(  # type: ignore[arg-type]
+        [_host_task("t1"), _host_task("t2")]
+    )
+    assert healed == ["t1", "t2"]
+
+
+@pytest.mark.parametrize(
+    ("terminal_state", "projected_terminal"),
+    [("COMPLETE", None), ("DROPPED", None), ("CUSTOM_DONE", True)],
+)
+def test_tick_skips_only_provisioning_for_terminal_tasks(
+    terminal_state: str, projected_terminal: bool | None
+) -> None:
+    provisioned: list[str] = []
+    cleaned: list[str] = []
+
+    class _Spawner:
+        def mark_healing(self, task: JsonObj) -> None:
+            return None
+
+        def spawn_one(self, task: JsonObj) -> None:
+            return None
+
+        def reconcile(self, task: JsonObj) -> None:
+            return None
+
+        def heal(self, task: JsonObj) -> None:
+            return None
+
+        def cleanup(self, task: JsonObj) -> None:
+            cleaned.append(task["id"])
+
+    class _Provisioner:
+        def provision(self, task: JsonObj) -> None:
+            provisioned.append(task["id"])
+
+    daemon = HostDaemon(_FakeClient([]), _Spawner(), _Provisioner())  # type: ignore[arg-type]
+
+    # 2119-spec: skip-terminal-provisioner
+    # 2119: 1.1
+    # 2119: 1.2
+    terminal_task = _host_task("terminal", state=terminal_state)
+    if projected_terminal is not None:
+        terminal_task["terminal"] = projected_terminal
+    daemon.tick([terminal_task])
+
+    assert provisioned == []  # invocation, not error swallowing, is the observable contract
+    assert cleaned == ["terminal"]  # cleanup is why the host pass cannot skip terminal tasks
+
+
+def test_tick_flags_every_orphan_healing_before_any_respawn() -> None:
+    # The visibility fix: because respawns are serial (each heal blocks), the pass flags *all*
+    # orphans `healing` up front — so t2 reads `healing` while t1's slow respawn is still running,
+    # rather than `down`. Recorded as a single interleaving: both marks land before either respawn.
+    events: list[str] = []
+
+    class _Spawner:
+        def mark_healing(self, task: JsonObj) -> None:
+            events.append(f"mark:{task['id']}")
+
+        def spawn_one(self, task: JsonObj) -> None:
+            return None
+
+        def reconcile(self, task: JsonObj) -> None:
+            return None
+
+        def heal(self, task: JsonObj) -> None:
+            events.append(f"heal:{task['id']}")
+
+        def cleanup(self, task: JsonObj) -> None:
+            return None
+
+    class _Provisioner:
+        def provision(self, task: JsonObj) -> None:
+            return None
+
+    HostDaemon(_FakeClient([]), _Spawner(), _Provisioner()).tick(  # type: ignore[arg-type]
+        [_host_task("t1"), _host_task("t2")]
+    )
+    assert events == ["mark:t1", "mark:t2", "heal:t1", "heal:t2"]  # all marks precede any respawn
+
+
+def test_run_calls_startup_reclaim_once_on_first_successful_tick() -> None:
+    # On the first successful task fetch, startup_reclaim is called exactly once with that
+    # snapshot — so tasks without running containers are released to `queued` before any
+    # heal/spawn runs. Subsequent ticks don't call it again.
+    reclaims: list[list[JsonObj]] = []
+
+    class _Spawner:
+        def startup_reclaim(self, tasks: list[JsonObj]) -> None:
+            reclaims.append(list(tasks))
+
+        def mark_healing(self, task: JsonObj) -> None:
+            return None
+
+        def spawn_one(self, task: JsonObj) -> None:
+            return None
+
+        def reconcile(self, task: JsonObj) -> None:
+            return None
+
+        def heal(self, task: JsonObj) -> None:
+            return None
+
+        def cleanup(self, task: JsonObj) -> None:
+            return None
+
+    class _Provisioner:
+        def provision(self, task: JsonObj) -> None:
+            return None
+
+    passes: list[int] = []
+
+    class _FeedClient:
+        def list_tasks_versioned(
+            self, *, since: int = 0, wait: float | None = None
+        ) -> tuple[list[JsonObj], int]:
+            passes.append(len(passes))
+            return [{"id": f"t{len(passes)}"}], len(passes)
+
+    daemon = HostDaemon(_FeedClient(), _Spawner(), _Provisioner())  # type: ignore[arg-type]
+    daemon.run(until=lambda: len(passes) >= 3)
+    assert len(reclaims) == 1  # exactly once — on the first successful fetch
+    assert reclaims[0] == [{"id": "t1"}]  # the snapshot from that first fetch
+
+
+def test_run_blocks_on_the_change_feed_and_feeds_the_version_back() -> None:
+    # The loop waits on `list_tasks_versioned(wait=, since=)`, not a fixed-interval re-poll: each
+    # call's returned version is fed back as the next `since`, so we wake on the *next* change.
+    sinces: list[int] = []
+
+    class _Spawner:
+        def __init__(self) -> None:
+            self.seen: list[str] = []
+
+        def startup_reclaim(self, tasks: list[JsonObj]) -> None:
+            return None
+
+        def mark_healing(self, task: JsonObj) -> None:
+            return None
+
+        def spawn_one(self, task: JsonObj) -> None:
+            self.seen.append(task["id"])
+
+        def reconcile(self, task: JsonObj) -> None:
+            return None
+
+        def heal(self, task: JsonObj) -> None:
+            return None
+
+        def cleanup(self, task: JsonObj) -> None:
+            return None
+
+    class _Provisioner:
+        def provision(self, task: JsonObj) -> None:
+            return None
+
+    class _FeedClient:
+        def list_tasks_versioned(
+            self, *, since: int = 0, wait: float | None = None
+        ) -> tuple[list[JsonObj], int]:
+            sinces.append(since)
+            return [_host_task(f"t{len(sinces)}")], len(
+                sinces
+            )  # a fresh snapshot + a bumped version
+
+    spawner = _Spawner()
+    daemon = HostDaemon(_FeedClient(), spawner, _Provisioner())  # type: ignore[arg-type]
+    daemon.run(until=lambda: len(sinces) >= 3)
+    assert sinces == [0, 1, 2]  # starts at 0, then each returned version becomes the next `since`
+    assert spawner.seen == ["t1", "t2", "t3"]  # ticked the snapshot returned by each wake
+
+
+def test_run_survives_a_whole_pass_failure() -> None:
+    # The blocking call raising (a service blip, or the service not yet listening at startup) must
+    # not kill the daemon: the pass is logged + retried after a short sleep, so the loop keeps going.
+    passes = {"n": 0}
+
+    class _Spawner:
+        def startup_reclaim(self, tasks: list[JsonObj]) -> None:
+            return None
+
+        def mark_healing(self, task: JsonObj) -> None:
+            return None
+
+        def spawn_one(self, task: JsonObj) -> None:
+            return None
+
+        def reconcile(self, task: JsonObj) -> None:
+            return None
+
+        def heal(self, task: JsonObj) -> None:
+            return None
+
+        def cleanup(self, task: JsonObj) -> None:
+            return None
+
+    class _Provisioner:
+        def provision(self, task: JsonObj) -> None:
+            return None
+
+    class _FlakyClient:
+        def list_tasks_versioned(
+            self, *, since: int = 0, wait: float | None = None
+        ) -> tuple[list[JsonObj], int]:
+            passes["n"] += 1
+            if passes["n"] == 1:
+                raise RuntimeError("connection refused")  # first call fails (startup race)
+            return [], since
+
+    def until() -> bool:
+        return passes["n"] >= 3  # let it wake a few times after the failure
+
+    daemon = HostDaemon(_FlakyClient(), _Spawner(), _Provisioner(), sleep=lambda _s: None)  # type: ignore[arg-type]
+    daemon.run(until=until)
+    assert passes["n"] >= 3  # did not die on the first pass's error; kept going
+
+
+# 2119: REQ-039.4.1
+def test_hold_runner_liveness_reconnects_after_a_drop_until_stopped() -> None:
+    # The host-liveness loop re-opens the connection if it drops underneath a still-running daemon
+    # (a transient blip), and stops cleanly when `running()` flips — no heartbeat, no clock.
+    opens = {"n": 0}
+    attempts: list[tuple[str, str | None]] = []
+    closes = {"n": 0}
+    naps: list[float] = []
+
+    class _DroppingClient:
+        def live_runner(
+            self, runner_id: str, *, host: str | None = None
+        ) -> Generator[None, None, None]:
+            opens["n"] += 1
+            attempts.append((runner_id, host))
+
+            def gen() -> Generator[None, None, None]:
+                try:
+                    yield None  # connected
+                    request = httpx.Request("GET", f"http://service/runners/{runner_id}/live")
+                    raise httpx.ReadTimeout("simulated silent stream", request=request)
+                finally:
+                    closes["n"] += 1
+
+            return gen()
+
+    daemon_running = lambda: opens["n"] < 3  # flip after a couple of reconnects
+    hold_runner_liveness(
+        _DroppingClient(),  # type: ignore[arg-type]
+        "host-1",
+        running=daemon_running,
+        host="box.example.com",
+        reconnect_backoff=0.25,
+        sleep=naps.append,
+    )
+    assert opens["n"] == 3  # reconnected after each drop until `running()` said stop
+    assert attempts == [("host-1", "box.example.com")] * 3
+    assert closes["n"] == 3
+    assert naps == [0.25, 0.25]
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+def test_hold_runner_liveness_terminates_on_permanent_auth_rejection(
+    status_code: int,
+) -> None:
+    # 2119: REQ-035.45.1
+    class _RejectedClient:
+        def live_runner(
+            self, runner_id: str, *, host: str | None = None
+        ) -> Generator[None, None, None]:
+            def gen() -> Generator[None, None, None]:
+                response = httpx.Response(
+                    status_code,
+                    request=httpx.Request("GET", f"http://service/runners/{runner_id}/live"),
+                )
+                response.raise_for_status()
+                yield None
+
+            return gen()
+
+    with pytest.raises(RuntimeError, match="permanently rejected the runner liveness credential"):
+        hold_runner_liveness(
+            _RejectedClient(),  # type: ignore[arg-type]
+            "host-1",
+            running=lambda: True,
+            sleep=lambda _seconds: pytest.fail("permanent rejection must not retry"),
+        )
+
+
+def test_hold_runner_liveness_passes_host_to_client() -> None:
+    # The host= param is forwarded from hold_runner_liveness to client.live_runner every reconnect
+    # so the task service receives and records it (used for remote tmux attach, M5).
+    recorded: list[str | None] = []
+
+    class _RecordingClient:
+        def live_runner(
+            self, runner_id: str, *, host: str | None = None
+        ) -> Generator[None, None, None]:
+            recorded.append(host)
+
+            def gen() -> Generator[None, None, None]:
+                yield None
+
+            return gen()
+
+    hold_runner_liveness(
+        _RecordingClient(),
+        "host-1",  # type: ignore[arg-type]
+        running=lambda: len(recorded) < 1,
+        host="box.example.com",
+        sleep=lambda _s: None,
+    )
+    assert recorded == ["box.example.com"]
+
+
+def test_build_arg_parser_host_defaults_to_empty_when_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A local runner must not report a host at all — any truthy value makes the terminal
+    # supervisor wrap tmux attach in `ssh -t <host>`, which breaks a purely local session.
+    monkeypatch.delenv("PANOPTICON_RUNNER_HOST", raising=False)
+    args = build_arg_parser().parse_args([])
+    assert args.host == ""
+
+
+def test_build_arg_parser_host_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PANOPTICON_RUNNER_HOST", "box.example.com")
+    args = build_arg_parser().parse_args([])
+    assert args.host == "box.example.com"
+
+
+def test_build_arg_parser_host_flag_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PANOPTICON_RUNNER_HOST", "box.example.com")
+    args = build_arg_parser().parse_args(["--host", "other.example.com"])
+    assert args.host == "other.example.com"
+
+
+def test_preflight_or_exit_raises_with_the_actionable_message_when_docker_is_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "panopticon.sessionservice.host.docker_daemon.preflight_message",
+        lambda command: f"Docker daemon unreachable — fix it, then rerun `panopticon {command}`.",
+    )
+    with pytest.raises(SystemExit, match="Docker daemon unreachable"):
+        preflight_or_exit()
+
+
+def test_preflight_or_exit_names_the_real_fix_when_the_real_docker_probe_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Unlike the test above (which stubs `preflight_message` with a canned string), this drives
+    # the real `daemon_reachable` → `preflight_message` chain down to a faked `docker info`
+    # subprocess call, so the SystemExit message is the genuine cross-platform remediation text,
+    # not just a substring an under-specified stub happens to satisfy.
+    # 2119: REQ-031.2.2
+    docker_info_failed = MagicMock(returncode=1)
+    monkeypatch.setattr("subprocess.run", MagicMock(return_value=docker_info_failed))
+    with pytest.raises(SystemExit) as exc_info:
+        preflight_or_exit()
+    # Full-string equality, not a substring check: a substring check is a keyword-theater trap
+    # here — it would pass a *negated* remediation ("Never start OrbStack or Docker Desktop
+    # (macOS)") just as readily as the real, actionable one.
+    assert str(exc_info.value) == (
+        "Docker daemon unreachable — start OrbStack or Docker Desktop (macOS), or "
+        "`systemctl start docker` (Linux), then rerun `panopticon host`."
+    )
+
+
+def test_preflight_or_exit_is_a_no_op_when_docker_is_reachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "panopticon.sessionservice.host.docker_daemon.preflight_message", lambda command: None
+    )
+    preflight_or_exit()  # does not raise
+
+
+def test_main_exits_before_migrating_or_building_anything_when_docker_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The daemon process itself (not just the extracted helper) must refuse before touching the
+    # DB or building its runners — proving the wiring, not just `preflight_or_exit` in isolation.
+    from panopticon.sessionservice import host as host_module
+
+    monkeypatch.setattr(
+        host_module.docker_daemon,
+        "preflight_message",
+        lambda command: f"Docker daemon unreachable — fix it, then rerun `panopticon {command}`.",
+    )
+    mock_migrate = MagicMock()
+    monkeypatch.setattr(host_module, "migrate_session_dirs", mock_migrate)
+    with pytest.raises(SystemExit, match="Docker daemon unreachable"):
+        host_module.main([])
+    mock_migrate.assert_not_called()
+
+
+def test_main_exits_via_the_real_docker_probe_when_docker_info_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Unlike the tests above (which mock `preflight_message` itself), this drives the real
+    # `daemon_reachable` → `preflight_message` chain down to a faked `docker info` subprocess call
+    # — proving a genuinely unreachable daemon, not just a stubbed refusal, keeps this daemon
+    # process out of its spawn/heal loop.
+    # 2119: REQ-031.2.1
+    from panopticon.sessionservice import host as host_module
+
+    docker_info_failed = MagicMock(returncode=1)
+    mock_run = MagicMock(return_value=docker_info_failed)
+    monkeypatch.setattr("subprocess.run", mock_run)
+    mock_migrate = MagicMock()
+    monkeypatch.setattr(host_module, "migrate_session_dirs", mock_migrate)
+    mock_run_host = MagicMock()
+    monkeypatch.setattr(host_module, "run_host", mock_run_host)
+    with pytest.raises(SystemExit, match="Docker daemon unreachable"):
+        host_module.main([])
+    mock_run.assert_called_once_with(["docker", "info"], capture_output=True)
+    mock_migrate.assert_not_called()
+    mock_run_host.assert_not_called()  # the spawn/heal loop is never entered
+
+
+def test_main_proceeds_to_migrate_and_build_runners_when_docker_is_reachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 2119: REQ-031.2.1
+    from panopticon.sessionservice import host as host_module
+
+    monkeypatch.setattr(host_module.docker_daemon, "preflight_message", lambda command: None)
+    mock_migrate = MagicMock()
+    monkeypatch.setattr(host_module, "migrate_session_dirs", mock_migrate)
+    monkeypatch.setattr(host_module, "LocalRunner", MagicMock())
+    monkeypatch.setattr(host_module, "ShellRunner", MagicMock())
+    monkeypatch.setattr(host_module.threading, "Thread", MagicMock())
+    mock_run_host = MagicMock()
+    monkeypatch.setattr(host_module, "run_host", mock_run_host)
+    host_module.main([], client=MagicMock())  # a client bypasses building a real TaskServiceClient
+    mock_migrate.assert_called_once_with(host_module.CLONE_CACHE_DIR, host_module.TASKS_DIR)
+    mock_run_host.assert_called_once()  # actually enters the spawn/heal loop, not just migrates
+
+
+def test_main_terminates_when_liveness_thread_is_permanently_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 2119: REQ-035.45.1
+    from panopticon.sessionservice import host as host_module
+
+    monkeypatch.setattr(host_module.docker_daemon, "preflight_message", lambda command: None)
+    monkeypatch.setattr(host_module, "migrate_session_dirs", MagicMock())
+    monkeypatch.setattr(host_module, "LocalRunner", MagicMock())
+    monkeypatch.setattr(host_module, "ShellRunner", MagicMock())
+    rejection = RuntimeError("task-service permanently rejected the runner liveness credential")
+    monkeypatch.setattr(host_module, "hold_runner_liveness", MagicMock(side_effect=rejection))
+
+    def wait_for_rejection(*args: object, until: Callable[[], bool], **kwargs: object) -> None:
+        for _ in range(10_000):
+            if until():
+                return
+        pytest.fail("liveness rejection was not propagated to the host loop")
+
+    monkeypatch.setattr(host_module, "run_host", wait_for_rejection)
+    with pytest.raises(RuntimeError, match="runner liveness terminated") as raised:
+        host_module.main([], client=MagicMock())
+    assert raised.value.__cause__ is rejection
+
+
+def test_run_host_spawns_then_provisions_end_to_end(tmp_path: Path) -> None:
+    service = TaskService(SqlAlchemyStore(), {"spike": Spike()}, FilesystemArtifactStore(tmp_path))
+    asyncio.run(service.init())
+    asyncio.run(
+        service.create_repo(
+            Repo(id="r1", name="acme/widgets", git_url="https://forge/r1.git", default_base="trunk")
+        )
+    )
+    with TestClient(create_app(service)) as http:
+        client = TaskServiceClient(http)
+        task_id = client.create_task("r1", "spike")["id"]
+        runner = _FakeRunner()
+
+        def one_pass() -> Callable[[], bool]:
+            calls = {"n": 0}
+
+            def until() -> bool:
+                done = calls["n"] >= 1
+                calls["n"] += 1
+                return done
+
+            return until
+
+        kw = dict(  # noqa: C408 - readability
+            runner_id="host-1",
+            tasks_root="/clones",
+            cache=CloneCache(
+                "/cache", run=_no_op_run, exists=lambda _p: True, makedirs=lambda _p: None
+            ),
+            git=GitClones(run=_no_op_run),
+            images=_FakeImageBuilder(),
+            makedirs=lambda _p: None,
+            sleep=lambda _s: None,
+            daemon_reachable=lambda: True,  # no real Docker in tests
+        )
+
+        # Pass 1: fresh task → claimed + spawned; no slug yet → not provisioned.
+        run_host(client, runner, until=one_pass(), **kw)  # type: ignore[arg-type]
+        got = client.get_task(task_id)
+        assert runner.spawned == [task_id]
+        assert got["claimed_by"] == "host-1" and got["branch"] is None
+
+        # The agent sets its slug; next pass → provisioned (branched), no re-spawn (already claimed).
+        client.set_slug(task_id, "fix-widget")
+        run_host(client, runner, until=one_pass(), **kw)  # type: ignore[arg-type]
+        got = client.get_task(task_id)
+        assert runner.spawned == [task_id]  # not spawned again
+        assert got["branch"] == "panopticon/fix-widget" and got["clone"] == f"/clones/{task_id}"
+
+
+def test_run_host_forwards_daemon_reachable_to_the_real_spawner(tmp_path: Path) -> None:
+    # `run_host` wires its `daemon_reachable` parameter straight into the `Spawner` it builds
+    # (REQ-031.3) — this proves that wiring holds through a real `run_host` call, not just a
+    # directly-constructed `Spawner` in the spawner-level tests: dropping that forwarding line
+    # would leave this task claimable and spawned even with the daemon reported unreachable.
+    # 2119: REQ-031.3.1
+    service = TaskService(SqlAlchemyStore(), {"spike": Spike()}, FilesystemArtifactStore(tmp_path))
+    asyncio.run(service.init())
+    asyncio.run(
+        service.create_repo(
+            Repo(id="r1", name="acme/widgets", git_url="https://forge/r1.git", default_base="trunk")
+        )
+    )
+    with TestClient(create_app(service)) as http:
+        client = TaskServiceClient(http)
+        task_id = client.create_task("r1", "spike")["id"]
+        runner = _FakeRunner()
+
+        def one_pass() -> Callable[[], bool]:
+            calls = {"n": 0}
+
+            def until() -> bool:
+                done = calls["n"] >= 1
+                calls["n"] += 1
+                return done
+
+            return until
+
+        run_host(
+            client,
+            runner,  # type: ignore[arg-type]
+            runner_id="host-1",
+            tasks_root="/clones",
+            cache=CloneCache(
+                "/cache", run=_no_op_run, exists=lambda _p: True, makedirs=lambda _p: None
+            ),
+            git=GitClones(run=_no_op_run),
+            images=_FakeImageBuilder(),  # type: ignore[arg-type]
+            makedirs=lambda _p: None,
+            sleep=lambda _s: None,
+            until=one_pass(),
+            daemon_reachable=lambda: False,
+        )
+        got = client.get_task(task_id)
+        assert runner.spawned == []  # deferred, not spawned
+        assert got["claimed_by"] is None  # left unclaimed for a later pass to retry
+
+
+def test_tick_cleans_up_each_task() -> None:
+    # Each pass, cleanup is called on every task in the snapshot — so a terminal task whose
+    # container has exited gets its workspace removed once the spawner's self-gate fires.
+    cleaned: list[str] = []
+
+    class _Spawner:
+        def mark_healing(self, task: JsonObj) -> None:
+            return None
+
+        def spawn_one(self, task: JsonObj) -> None:
+            return None
+
+        def reconcile(self, task: JsonObj) -> None:
+            return None
+
+        def heal(self, task: JsonObj) -> None:
+            return None
+
+        def cleanup(self, task: JsonObj) -> None:
+            cleaned.append(task["id"])
+
+    class _Provisioner:
+        def provision(self, task: JsonObj) -> None:
+            return None
+
+    HostDaemon(_FakeClient([]), _Spawner(), _Provisioner()).tick(  # type: ignore[arg-type]
+        [_host_task("t1"), _host_task("t2")]
+    )
+    assert cleaned == ["t1", "t2"]

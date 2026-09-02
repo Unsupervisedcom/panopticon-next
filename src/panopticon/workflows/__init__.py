@@ -1,0 +1,28 @@
+"""Built-in workflow definitions.
+
+These live on a path the task service loads via registration (a later slice). The Spike seed
+workflow proves the state machine has no hardcoded lifecycle; the GithubPeerReviewed workflow
+reproduces cloude-cade's lifecycle (PARITY §1) as one configurable workflow among several.
+"""
+
+from panopticon.workflows.github_peer_reviewed import GithubPeerReviewed
+from panopticon.workflows.github_self_reviewed import GithubSelfReviewed
+from panopticon.workflows.local_git_self_reviewed import LocalGitSelfReviewed
+from panopticon.workflows.orchestrator import Orchestrator
+from panopticon.workflows.review import Review
+from panopticon.workflows.setup_repo import SetupRepo
+from panopticon.workflows.spec_2119 import Spec2119Auto, Spec2119AutoSol, Spec2119Human
+from panopticon.workflows.spike import Spike
+
+__all__ = [
+    "GithubPeerReviewed",
+    "GithubSelfReviewed",
+    "LocalGitSelfReviewed",
+    "Orchestrator",
+    "Review",
+    "SetupRepo",
+    "Spec2119Auto",
+    "Spec2119AutoSol",
+    "Spec2119Human",
+    "Spike",
+]

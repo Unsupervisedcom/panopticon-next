@@ -1,0 +1,1751 @@
+"""The task service REST API (FastAPI).
+
+The dashboard, the runner, and in-container skills are clients of this API. In-container
+agents also reach task operations/artifacts over **MCP**: ``create_app`` mounts the MCP
+streamable-HTTP app (see :mod:`panopticon.taskservice.mcp`) at ``/mcp``, so the same control
+plane serves REST and MCP. ``create_app`` builds an app around an injected
+:class:`~panopticon.taskservice.service.TaskService`, so tests can wire a deterministic one.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import json
+import logging
+import os
+import re
+import secrets
+import threading
+import traceback
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Literal, cast
+from urllib.parse import unquote_plus, urlsplit
+
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from starlette._utils import get_route_path
+from starlette.middleware.cors import CORSMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from panopticon.core.artifacts import ArtifactError
+from panopticon.core.liveness import LIVENESS_KEEPALIVE_SECONDS
+from panopticon.core.models import (
+    Actor,
+    ContainerStatus,
+    LifecyclePhase,
+    Repo,
+    SessionInputStatus,
+    Status,
+    Task,
+    WakeStatus,
+)
+from panopticon.core.store import AlreadyExists, NotFound, StoreError
+from panopticon.core.workflow import IllegalTransition, InvalidWorkflow, ResponsibilitiesNotMet
+from panopticon.taskservice.service import (
+    AlreadyClaimed,
+    NotAuthorized,
+    NotReady,
+    SessionConflict,
+    TaskService,
+    UnknownWorkflow,
+)
+
+MAX_AUTH_INSPECTION_BODY_BYTES = 8 * 1024 * 1024
+_log = logging.getLogger(__name__)
+_STANDARD_LOG_RECORD_KEYS = frozenset(
+    logging.LogRecord("", logging.INFO, "", 0, "", (), None).__dict__
+)
+
+
+class _StrictCORSMiddleware(CORSMiddleware):
+    """CORS transport whose header allowlist excludes browser-safelisted extras."""
+
+    def __init__(self, app: ASGIApp, **kwargs: Any) -> None:
+        super().__init__(app, **kwargs)
+        self.allow_headers = ["authorization", "content-type"]
+        self.preflight_headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+
+
+def _redact_log_value(value: Any, tokens: tuple[str, ...]) -> Any:
+    if isinstance(value, str):
+        for token in tokens:
+            value = value.replace(token, "[redacted]")
+        return value
+    if isinstance(value, bytes):
+        for token in tokens:
+            value = value.replace(token.encode(), b"[redacted]")
+        return value
+    if isinstance(value, tuple):
+        return tuple(_redact_log_value(item, tokens) for item in value)
+    if isinstance(value, list):
+        return [_redact_log_value(item, tokens) for item in value]
+    if isinstance(value, dict):
+        return {
+            _redact_log_value(key, tokens): _redact_log_value(item, tokens)
+            for key, item in value.items()
+        }
+    if isinstance(value, set):
+        return {_redact_log_value(item, tokens) for item in value}
+    if isinstance(value, frozenset):
+        return frozenset(_redact_log_value(item, tokens) for item in value)
+    rendered = str(value)
+    if any(token in rendered for token in tokens):
+        return _redact_log_value(rendered, tokens)
+    return value
+
+
+class _ConfiguredTokenLogFilter(logging.Filter):
+    def __init__(self, tokens: tuple[str, ...]) -> None:
+        super().__init__()
+        self._tokens = tuple(sorted(set(tokens), key=len, reverse=True))
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = _redact_log_value(record.msg, self._tokens)
+        record.args = _redact_log_value(record.args, self._tokens)
+        rendered = record.getMessage()
+        if any(token in rendered for token in self._tokens):
+            record.msg = _redact_log_value(rendered, self._tokens)
+            record.args = ()
+        if record.exc_info is not None:
+            record.exc_text = _redact_log_value(
+                "".join(traceback.format_exception(*record.exc_info)), self._tokens
+            )
+            record.exc_info = None
+        if record.stack_info is not None:
+            record.stack_info = _redact_log_value(record.stack_info, self._tokens)
+        record_fields = {
+            (key if key in _STANDARD_LOG_RECORD_KEYS else _redact_log_value(key, self._tokens)): (
+                value
+                if key in {"msg", "args", "exc_info", "stack_info"}
+                else _redact_log_value(value, self._tokens)
+            )
+            for key, value in record.__dict__.items()
+        }
+        record.__dict__.clear()
+        record.__dict__.update(record_fields)
+        return True
+
+
+_log_redaction_lock = threading.RLock()
+_active_log_redaction_filters: list[_ConfiguredTokenLogFilter] = []
+_pristine_logger_handle = logging.Logger.handle
+_original_logger_handle: Callable[[logging.Logger, logging.LogRecord], None] | None = None
+
+
+def _redacting_logger_handle(logger: logging.Logger, record: logging.LogRecord) -> None:
+    with _log_redaction_lock:
+        tokens = tuple(
+            sorted(
+                {
+                    token
+                    for redaction_filter in _active_log_redaction_filters
+                    for token in redaction_filter._tokens
+                },
+                key=len,
+                reverse=True,
+            )
+        )
+        original_handle = _original_logger_handle
+    if original_handle is None:
+        # A logging thread can resolve the patched method immediately before the final active
+        # lifespan restores Logger.handle. Never turn that shutdown race into a caller failure.
+        return _pristine_logger_handle(logger, record)
+    _ConfiguredTokenLogFilter(tokens).filter(record)
+    return original_handle(logger, record)
+
+
+def _install_log_redaction(tokens: tuple[str, ...]) -> _ConfiguredTokenLogFilter:
+    """Install a lifespan-owned redactor that also covers handlers added later."""
+    global _original_logger_handle
+    redaction_filter = _ConfiguredTokenLogFilter(tokens)
+    with _log_redaction_lock:
+        if not _active_log_redaction_filters:
+            _original_logger_handle = logging.Logger.handle
+            type.__setattr__(logging.Logger, "handle", _redacting_logger_handle)
+        _active_log_redaction_filters.append(redaction_filter)
+    return redaction_filter
+
+
+def _remove_log_redaction(redaction_filter: _ConfiguredTokenLogFilter) -> None:
+    global _original_logger_handle
+    with _log_redaction_lock:
+        _active_log_redaction_filters.remove(redaction_filter)
+        if not _active_log_redaction_filters:
+            assert _original_logger_handle is not None
+            type.__setattr__(logging.Logger, "handle", _original_logger_handle)
+            _original_logger_handle = None
+
+
+def _redact_stream_chunk(
+    data: bytes,
+    *,
+    configured: tuple[bytes, ...],
+    pending: bytes = b"",
+    more_body: bool,
+) -> tuple[bytes, bytes]:
+    """Redact configured values while retaining a possible cross-chunk token prefix."""
+    data = pending + data
+    if not configured:
+        return data, b""
+    pattern = re.compile(b"|".join(re.escape(token) for token in configured))
+    held = 0
+    if more_body:
+        held = max(
+            (
+                size
+                for token in configured
+                for size in range(1, min(len(data), len(token) - 1) + 1)
+                if data.endswith(token[:size])
+            ),
+            default=0,
+        )
+    safe_end = len(data) - held
+    output = bytearray()
+    consumed = 0
+    for matched in pattern.finditer(data):
+        if matched.start() >= safe_end:
+            break
+        output.extend(data[consumed : matched.start()])
+        output.extend(b"[redacted]")
+        consumed = matched.end()
+    if consumed < safe_end:
+        output.extend(data[consumed:safe_end])
+        consumed = safe_end
+    return bytes(output), data[consumed:]
+
+
+async def _wait_for_liveness_keepalive() -> None:
+    """Wait for the shared server keepalive interval."""
+    await asyncio.sleep(LIVENESS_KEEPALIVE_SECONDS)
+
+
+# -- wire schemas -------------------------------------------------------------------
+
+
+# ``*Out`` models read straight off the domain objects (`model_validate`): their fields match
+# the domain attribute names, so `from_attributes=True` does the conversion — incl. nested
+# Task -> History -> Responsibility — with no hand-written copying.
+
+
+class ResponsibilityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    key: str
+    description: str
+    status: Status
+    comment: str | None = None
+
+
+class HistoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    at: str
+    from_state: str | None
+    to_state: str
+    trigger: str | None = None
+    note: str | None = None
+    responsibilities: list[ResponsibilityOut] = []
+    wake_status: WakeStatus
+
+
+class MigrationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    source_runner: str
+    destination_runner: str
+    workspace_disposition: str
+    workspace_method: str = "archive"
+    session_history_disposition: str
+    discarded_changes: list[str] = []
+    discard_authorized_by: str | None = None
+    session_history_changed_by: str | None = None
+    session_history_was_requested: bool = False
+
+
+class TaskSummaryOut(BaseModel):
+    """Task fields from the tasks table only — no history. Returned by ``GET /tasks``."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    repo_id: str
+    workflow: str
+    state: str
+    turn: Actor
+    blocked: bool
+    attention: bool
+    memo: str | None
+    initial_prompt: str | None
+    slug: str | None
+    url: str | None
+    snoozed_until: str | None
+    branch: str | None
+    clone: str | None
+    claimed_by: str | None
+    provisioned_by: str | None = None
+    workspace_verified_by: str | None = None
+    migration: MigrationOut | None = None
+    tokens_used: int | None
+    token_estimate: int | None
+    starting_model: str | None = None
+    harness: str | None = None
+    governor_task_id: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    depends_on_task_ids: list[str] = []
+    provisioned: bool
+    terminal: bool = False
+    container_status: str = "–"
+    lifecycle_detail: str | None = None
+    runner_host: str | None = (
+        None  # hostname the claiming runner registered with (M5: remote attach)
+    )
+    has_artifacts: bool = False
+
+
+class TaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    repo_id: str
+    workflow: str
+    state: str
+    turn: Actor
+    blocked: bool
+    attention: bool
+    memo: (
+        str | None
+    )  # a brief one-line reminder of what the task is, collected at creation (shown in the summary)
+    initial_prompt: str | None  # optional text prefilled into Claude's input box on first spawn
+    slug: str | None
+    url: str | None  # an optional external URL (PR, issue, …); the dashboard's `p` hotkey opens it
+    snoozed_until: str | None  # operator-recorded mute deadline; only display code compares time
+    branch: str | None
+    clone: str | None
+    claimed_by: str | None  # the runner that owns this task (the spawn gate), or None
+    provisioned_by: str | None = None
+    workspace_verified_by: str | None = None
+    migration: MigrationOut | None = None
+    tokens_used: int | None  # cost-weighted input-equivalent tokens used (None until reported)
+    token_estimate: (
+        int | None
+    )  # the agent's forecast of total tokens (set in planning; None until then)
+    starting_model: str | None = (
+        None  # the model seeded at creation from the workflow's default_model
+    )
+    harness: str | None = (
+        None  # concrete for new tasks; None only on legacy rows (resolves to the app default)
+    )
+    governor_task_id: str | None = (
+        None  # the task that oversees this one, or None for ungoverned tasks
+    )
+    created_at: str | None = (
+        None  # ISO-8601 timestamp when the task was created; set once, never changed
+    )
+    updated_at: str | None = (
+        None  # ISO-8601 timestamp of the last mutation, stamped by the task service
+    )
+    depends_on_task_ids: list[
+        str
+    ] = []  # task IDs that must complete before work on this task should begin
+    provisioned: bool  # computed (Task.provisioned): branch + clone recorded
+    terminal: bool = False  # workflow-derived terminality for deterministic relationship consumers
+    #: The composed container-lifecycle status the dashboard displays (the task service folds the
+    #: session service's reported phase with registration presence + runner liveness). Not a domain
+    #: field — attached on serialization (see ``_task_out``), defaulted for the bare-validate path.
+    container_status: str = "–"
+    lifecycle_detail: str | None = (
+        None  # the reported phase's detail, e.g. the build layers / failure
+    )
+    runner_host: str | None = (
+        None  # hostname the claiming runner registered with (M5: remote attach)
+    )
+    history: list[HistoryOut]
+
+
+class RunnerOut(BaseModel):
+    id: str  # runner_id (the runner's own identifier, e.g. "local" or a hostname alias)
+    host: str | None  # hostname the runner registered with; None if not provided
+
+
+class RepoIn(BaseModel):
+    id: str
+    name: str
+    git_url: str
+    default_base: str = "main"
+    env_file: str | None = None
+    image_layer_file: str | None = None
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+    hook_file: str | None = None
+    enabled_workflows: list[str] = Field(default_factory=list)
+    disabled_workflows: list[str] = Field(default_factory=list)
+    default_harness: str | None = None  # the harness this repo's tasks run by default
+    default_model: str | None = None  # opaque model[:effort] for that harness
+    credential_dir: str | None = None  # name of a shared credential dir under the secrets dir
+    honesty_reviewer: str | None = None
+    reviewer_1: str | None = None
+    reviewer_2: str | None = None
+
+
+class RepoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    git_url: str
+    default_base: str
+    env_file: str | None = None
+    image_layer_file: str | None = None
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+    hook_file: str | None = None
+    enabled_workflows: list[str] = Field(default_factory=list)
+    disabled_workflows: list[str] = Field(default_factory=list)
+    default_harness: str | None = None
+    default_model: str | None = None
+    credential_dir: str | None = None
+    honesty_reviewer: str | None = None
+    reviewer_1: str | None = None
+    reviewer_2: str | None = None
+
+
+class RepoPatchIn(BaseModel):
+    # All fields optional: a PATCH carries only what changes. ``model_dump(exclude_unset=True)``
+    # then tells "field omitted" from "field explicitly set to null", so a partial update can't
+    # null out a field the operator didn't touch. ``id`` is the key — present here only so a
+    # mismatched body is rejected (the path id is authoritative).
+    id: str | None = None
+    name: str | None = None
+    git_url: str | None = None
+    default_base: str | None = None
+    env_file: str | None = None
+    image_layer_file: str | None = None
+    capabilities: dict[str, Any] | None = None
+    hook_file: str | None = None
+    enabled_workflows: list[str] | None = None
+    disabled_workflows: list[str] | None = None
+    default_harness: str | None = None
+    default_model: str | None = None
+    credential_dir: str | None = None
+    honesty_reviewer: str | None = None
+    reviewer_1: str | None = None
+    reviewer_2: str | None = None
+
+
+class WorkflowInfo(BaseModel):
+    name: str
+    when_to_use: str
+    opt_in: bool
+
+
+class WorkflowEditorInfo(BaseModel):
+    name: str
+    when_to_use: str
+    path: str
+    built_in: bool
+
+
+class CreateTaskIn(BaseModel):
+    repo_id: str
+    workflow: str
+    memo: str | None = None
+    governor_task_id: str | None = None
+    initial_prompt: str | None = None
+    harness: str | None = None  # agent-CLI harness for the task's container (None = claude)
+    starting_model: str | None = None  # harness-scoped model name (None = the harness's default)
+    artifacts: dict[str, str] | None = None
+    depends_on_task_ids: list[str] = []
+
+
+class DependenciesIn(BaseModel):
+    dep_ids: list[str]
+
+
+class GovernorIn(BaseModel):
+    governor_task_id: str | None
+
+
+class ResponsibilityIn(BaseModel):
+    key: str
+    status: Status
+    comment: str | None = None
+
+
+class StageEntryWakeIn(BaseModel):
+    status: WakeStatus
+
+
+class SessionInputIn(BaseModel):
+    text: str
+    submit: bool = Field(strict=True)
+    idempotency_key: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._~-]+$")
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        if not value or len(value.encode("utf-8")) > 65536:
+            raise ValueError("text must contain 1 through 65536 UTF-8 bytes")
+        if any(
+            (ord(character) < 32 and character not in {"\n", "\t"}) or 127 <= ord(character) <= 159
+            for character in value
+        ):
+            raise ValueError("text must not contain terminal control characters")
+        return value
+
+
+class SessionInputSettleIn(BaseModel):
+    runner_id: str
+    status: Literal[SessionInputStatus.DELIVERED, SessionInputStatus.FAILED]
+    failure_reason: str | None = None
+
+
+class SessionInputOut(BaseModel):
+    id: str
+    status: SessionInputStatus
+    submit: bool
+    byte_count: int
+    created_at: str
+    settled_at: str | None
+    failure_reason: str | None
+
+
+class RunnerSessionInputOut(SessionInputOut):
+    text: str
+
+
+class SessionTranscriptIn(BaseModel):
+    runner_id: str
+    text: str | None = None
+    text_b64: str | None = None
+    columns: int = Field(ge=1)
+    rows: int = Field(ge=1)
+    truncated: bool = Field(strict=True)
+
+    @model_validator(mode="after")
+    def decode_text(self) -> SessionTranscriptIn:
+        if (self.text is None) == (self.text_b64 is None):
+            raise ValueError("exactly one of text or text_b64 is required")
+        text = self.text
+        if self.text_b64 is not None:
+            try:
+                text = base64.b64decode(self.text_b64, validate=True).decode("utf-8")
+            except (ValueError, UnicodeDecodeError) as error:
+                raise ValueError("text_b64 must be valid base64-encoded UTF-8") from error
+        assert text is not None
+        if "\x1b" in text:
+            raise ValueError("transcript text must not contain terminal escape sequences")
+        if len(text.encode("utf-8")) > 65536 or len(text.splitlines()) > 200:
+            raise ValueError("transcript text exceeds the pane snapshot bounds")
+        self.text = text
+        return self
+
+
+class SessionTranscriptOut(BaseModel):
+    text: str
+    source: str = "pane"
+    received_at: str
+    columns: int
+    rows: int
+    truncated: bool
+    runner_id: str
+    stale: bool
+
+
+class TransitionIn(BaseModel):
+    to_state: str
+    trigger: str | None = None
+    note: str | None = None
+
+
+class SlugIn(BaseModel):
+    slug: str
+
+
+class UrlIn(BaseModel):
+    url: str
+
+
+class TokensUsedIn(BaseModel):
+    tokens_used: int
+
+
+class TokenEstimateIn(BaseModel):
+    token_estimate: int
+
+
+class StateIn(BaseModel):
+    state: str
+
+
+class ProvisioningIn(BaseModel):
+    branch: str
+    clone: str
+    runner_id: str
+    workspace_verified: bool
+
+
+class MigrationIn(BaseModel):
+    source_runner: str
+    destination_runner: str
+    workspace_disposition: str
+    workspace_method: str = "archive"
+    session_history_disposition: str
+    discarded_changes: list[str] = []
+    discard_authorized_by: str | None = None
+
+
+class SkillOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    description: str
+    instructions: str
+
+
+class TurnIn(BaseModel):
+    turn: Actor
+
+
+class BlockedIn(BaseModel):
+    blocked: bool
+
+
+class AttentionIn(BaseModel):
+    attention: bool
+
+
+class SnoozeIn(BaseModel):
+    until: str | None
+
+    @field_validator("until")
+    @classmethod
+    def validate_until(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("until must be an ISO-8601 timestamp") from exc
+        if len(value) <= 10:
+            raise ValueError("until must include a time")
+        return value
+
+
+class ClaimIn(BaseModel):
+    runner_id: str
+
+
+class RegisterIn(BaseModel):
+    container_id: str
+    runner_id: str | None = None
+
+
+class LifecycleIn(BaseModel):
+    runner_id: str
+    phase: LifecyclePhase
+    detail: str | None = None
+
+
+class RegistrationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    task_id: str
+    container_id: str
+    runner_id: str | None
+    registered_at: str
+
+
+# -- block-until-change feed --------------------------------------------------------
+
+#: The header carrying the store's change-feed version on every ``GET /tasks`` response — the
+#: cursor a client echoes back as ``?since=`` to long-poll for the next change.
+TASKS_VERSION_HEADER = "X-Tasks-Version"
+
+#: Ceiling on a single long-poll's hold time (seconds). A client asking to wait longer just gets
+#: a snapshot at the cap and re-requests — keeps a connection from parking indefinitely.
+MAX_WAIT_SECONDS = 60.0
+
+
+class ChangeFeed:
+    """An async broadcast over the store's change counter — the HTTP side of block-until-change.
+
+    The store bumps its synchronous :meth:`~panopticon.core.store.Store.version` on every task
+    mutation and calls :meth:`notify` (a subscribed listener). :meth:`wait` parks a request on an
+    :class:`asyncio.Event` until the next ``notify`` (or a timeout), then returns the current
+    version. The asyncio lives here, not in ``core`` — the store stays clock-free and push-free.
+
+    All mutations arrive over HTTP/MCP and run on the event loop, so ``notify`` (which sets the
+    event) and the waiters share one thread; no locking is needed.
+    """
+
+    def __init__(self, version: Callable[[], int]) -> None:
+        self._version = version
+        self._changed = asyncio.Event()
+
+    def notify(self) -> None:
+        """Wake every parked waiter, then arm a fresh event for the next round (broadcast)."""
+        self._changed.set()
+        self._changed = asyncio.Event()
+
+    async def wait(self, since: int, timeout: float) -> int:
+        """Return the current version once it differs from ``since``, or after ``timeout`` seconds.
+
+        Returns immediately when the version already moved (any difference — including a service
+        restart that reset the counter — counts, so a stale cursor never blocks forever).
+        """
+        if self._version() != since:
+            return self._version()
+        changed = self._changed  # capture before awaiting: notify() swaps in a fresh event
+        with suppress(TimeoutError):
+            await asyncio.wait_for(changed.wait(), timeout)
+        return self._version()
+
+
+def create_app(
+    service: TaskService,
+    *,
+    auth_file: str | None = None,
+    auth_mode: str | None = None,
+    secrets_dir: str | Path | None = None,
+    browser_origins: list[str] | None = None,
+) -> FastAPI:
+    operator_token = os.environ.get("PANOPTICON_OPERATOR_TOKEN")
+    # MCP over streamable HTTP, mounted at /mcp on the same control plane (operations=tools,
+    # artifacts=resources). Its path is set to "/" so the mount point *is* the endpoint (/mcp).
+    # The session manager must run for the app's lifetime, so its context is driven by the
+    # parent FastAPI lifespan (a mounted sub-app's own lifespan isn't run by the parent).
+    # Imported here, not at module scope: mcp.py imports our ``*Out`` schemas (would cycle).
+    from panopticon.taskservice.auth import authenticate_token, load_tokens
+    from panopticon.taskservice.auth_scope import Action, CredentialScopePolicy
+    from panopticon.taskservice.mcp import build_mcp_server
+
+    mode = auth_mode or ("enforced" if auth_file else "disabled")
+    if mode not in {"disabled", "enforced"}:
+        raise ValueError("authentication mode must be disabled or enforced")
+    if mode == "enforced" and auth_file is None:
+        raise ValueError(f"authentication credential file is required in {mode} mode")
+    tokens = load_tokens(auth_file, secrets_dir=secrets_dir) if auth_file is not None else None
+    mcp = build_mcp_server(service)
+    mcp.settings.streamable_http_path = "/"
+    mcp_app = mcp.streamable_http_app()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        installed = (
+            _install_log_redaction((*tokens.read, *tokens.write)) if tokens is not None else None
+        )
+        try:
+            await service.init()
+            async with mcp.session_manager.run():
+                yield
+        finally:
+            if installed is not None:
+                _remove_log_redaction(installed)
+
+    app = FastAPI(title="panopticon task service", version="0.0.3", lifespan=lifespan)
+    policy = CredentialScopePolicy(service, tokens.write if tokens else (), app, mcp)
+    app.state.credential_scope_policy = policy
+    app.state.panopticon_mcp = mcp
+
+    origins = list(browser_origins or [])
+    for origin in origins:
+        try:
+            parsed = urlsplit(origin)
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("browser origin configuration is invalid") from exc
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or origin.endswith("/")
+            or "*" in origin
+            or origin == "null"
+            or (":" in parsed.netloc and port is None and not parsed.netloc.endswith("]"))
+        ):
+            raise ValueError("browser origin configuration is invalid")
+
+    generic_auth_failure = {"detail": "authentication required"}
+
+    def redact_configured_tokens(value: Any) -> Any:
+        if tokens is None:
+            return value
+        configured = sorted((*tokens.read, *tokens.write), key=len, reverse=True)
+        if isinstance(value, str):
+            for token in configured:
+                value = value.replace(token, "[redacted]")
+            return value
+        if isinstance(value, list):
+            return [redact_configured_tokens(item) for item in value]
+        if isinstance(value, dict):
+            return {key: redact_configured_tokens(item) for key, item in value.items()}
+        return value
+
+    def value_contains_configured_token(value: Any) -> bool:
+        if tokens is None:
+            return False
+        configured = (*tokens.read, *tokens.write)
+        if isinstance(value, str):
+            return any(token in value for token in configured)
+        if isinstance(value, bytes):
+            return any(token.encode() in value for token in configured)
+        if isinstance(value, (list, tuple, set, frozenset)):
+            return any(value_contains_configured_token(item) for item in value)
+        if isinstance(value, dict):
+            return any(
+                value_contains_configured_token(key) or value_contains_configured_token(item)
+                for key, item in value.items()
+            )
+        return False
+
+    async def request_contains_configured_token(request: Request) -> bool | None:
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > MAX_AUTH_INSPECTION_BODY_BYTES:
+                return None
+            chunks.append(chunk)
+        body = b"".join(chunks)
+        request._body = body  # preserve the bounded body downstream
+        values: list[Any] = [request.url.path, unquote_plus(request.url.query), body]
+        content_type = request.headers.get("content-type", "").lower()
+        if not content_type or "json" in content_type:
+            with suppress(json.JSONDecodeError, UnicodeDecodeError):
+                values.append(json.loads(body))
+        return value_contains_configured_token(values)
+
+    async def redacted_mcp_app(scope: Scope, receive: Receive, send: Send) -> None:
+        """Redact mounted MCP responses, which bypass the parent exception handlers."""
+        configured = (
+            tuple(
+                sorted(
+                    (token.encode() for token in (*tokens.read, *tokens.write)),
+                    key=len,
+                    reverse=True,
+                )
+            )
+            if tokens
+            else ()
+        )
+        pending = b""
+
+        async def send_redacted(message: Message) -> None:
+            nonlocal pending
+            if message["type"] == "http.response.start" and configured:
+                message = {
+                    **message,
+                    "headers": [
+                        (name, value)
+                        for name, value in message.get("headers", [])
+                        if name.lower() != b"content-length"
+                    ],
+                }
+            elif message["type"] == "http.response.body":
+                more_body = bool(message.get("more_body", False))
+                output, pending = _redact_stream_chunk(
+                    message.get("body", b""),
+                    configured=configured,
+                    pending=pending,
+                    more_body=more_body,
+                )
+                message = {
+                    **message,
+                    "body": output,
+                }
+            await send(message)
+
+        await mcp_app(scope, receive, send_redacted)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": redact_configured_tokens(jsonable_encoder(exc.errors()))},
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": redact_configured_tokens(exc.detail)},
+            headers=exc.headers,
+        )
+
+    @app.middleware("http")
+    async def authenticate(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        route_path = get_route_path(request.scope)
+        if not route_path.startswith("/"):
+            route_path = f"/{route_path}"
+        if mode == "disabled" or (request.method in {"GET", "HEAD"} and route_path == "/healthz"):
+            return await call_next(request)
+        authorization = request.headers.get("authorization")
+        assert tokens is not None
+        presented = ""
+        if authorization is not None and authorization.startswith("Bearer "):
+            candidate = authorization[7:]
+            if candidate and " " not in candidate:
+                presented = candidate
+        principal = authenticate_token(tokens, presented)
+        write = (
+            principal is not None and principal.privilege == "write" and principal.task_id is None
+        )
+        read = principal is not None and principal.privilege == "read"
+        task_subject = principal.task_id if principal is not None else None
+        path_parts = route_path.strip("/").split("/")
+        liveness = (
+            len(path_parts) == 3
+            and path_parts[0] in {"tasks", "runners"}
+            and path_parts[2] == "live"
+        )
+        mutating = (
+            request.method not in {"GET", "HEAD"}
+            or route_path.startswith("/mcp")
+            or liveness
+            or (request.method == "GET" and route_path.endswith("/session/input"))
+        )
+        task_id = path_parts[1] if len(path_parts) > 1 and path_parts[0] == "tasks" else None
+        session_input_create = (
+            request.method == "POST"
+            and len(path_parts) == 4
+            and path_parts[2:] == ["session", "input"]
+        )
+        runner_session_io = (
+            len(path_parts) >= 4
+            and path_parts[0] == "tasks"
+            and path_parts[2] == "session"
+            and (
+                (request.method == "GET" and path_parts[3:] == ["input"]) or request.method == "PUT"
+            )
+        )
+        if session_input_create and task_subject not in (None, task_id):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "credential scope forbids operation"},
+            )
+        if runner_session_io and task_subject is not None:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "credential scope forbids operation"},
+            )
+        if not write and task_subject is None and (mutating or not read):
+            return JSONResponse(
+                status_code=401,
+                content=generic_auth_failure,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        origin = request.headers.get("origin")
+        inspection = await request_contains_configured_token(request)
+        if inspection is None:
+            return JSONResponse(status_code=413, content={"detail": "request too large"})
+        if inspection:
+            if origin is not None:
+                return JSONResponse(
+                    status_code=401,
+                    content=generic_auth_failure,
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            return JSONResponse(status_code=400, content={"detail": "request rejected"})
+        alternate_names = {
+            "token",
+            "access_token",
+            "access-token",
+            "accessToken",
+            "auth_token",
+            "auth-token",
+            "authToken",
+            "api_key",
+            "api-key",
+            "apiKey",
+            "authorization",
+        }
+        alternate_headers = {
+            "x-api-key",
+            "x-auth-token",
+            "x-access-token",
+            "authentication",
+            "proxy-authorization",
+        }
+        if origin is not None and (
+            any(name in request.cookies for name in alternate_names)
+            or any(name in request.headers for name in alternate_headers)
+        ):
+            return JSONResponse(
+                status_code=401,
+                content=generic_auth_failure,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if origin is not None and request.method not in {"GET", "HEAD", "OPTIONS"}:
+            return JSONResponse(
+                status_code=403, content={"detail": "credential scope forbids operation"}
+            )
+        if (
+            origin is not None
+            and request.method in {"GET", "HEAD"}
+            and route_path == "/tasks"
+            and not read
+        ):
+            return JSONResponse(
+                status_code=403, content={"detail": "credential scope forbids operation"}
+            )
+        if task_subject is not None:
+            request.state.principal_task_id = task_subject
+            if request.method == "GET" and route_path == "/tasks":
+                return await call_next(request)
+            if request.method == "GET" and route_path.startswith("/repos/"):
+                repo_id = route_path.removeprefix("/repos/")
+                if "/" not in repo_id:
+                    try:
+                        subject_task = await service.get_task(task_subject)
+                    except NotFound:
+                        subject_task = None
+                    if subject_task is not None and subject_task.repo_id == repo_id:
+                        return await call_next(request)
+                return JSONResponse(
+                    status_code=403, content={"detail": "credential scope forbids operation"}
+                )
+            if request.method == "POST" and route_path == "/tasks":
+                try:
+                    parsed_body = json.loads(await request.body())
+                    body = parsed_body if isinstance(parsed_body, dict) else {}
+                    subject_task = await service.get_task(task_subject)
+                except (json.JSONDecodeError, NotFound):
+                    body = {}
+                    subject_task = None
+                allowed = bool(
+                    subject_task is not None
+                    and service.task_orchestrates(subject_task)
+                    and body.get("governor_task_id") == task_subject
+                    and body.get("repo_id") == subject_task.repo_id
+                )
+                if allowed:
+                    return await call_next(request)
+                return JSONResponse(
+                    status_code=403, content={"detail": "credential scope forbids operation"}
+                )
+            if route_path.startswith("/mcp"):
+                if request.method in {"GET", "DELETE", "OPTIONS"}:
+                    return await call_next(request)
+                try:
+                    parsed_body = json.loads(await request.body())
+                    body = parsed_body if isinstance(parsed_body, dict) else {}
+                except json.JSONDecodeError:
+                    body = {}
+                if policy.is_mcp_protocol_request(body):
+                    return await call_next(request)
+                decision = await policy.authorize_mcp_async(presented, body)
+                if decision.allowed:
+                    return await call_next(request)
+                return JSONResponse(status_code=403, content=decision.body)
+            if request.method == "DELETE" and route_path.startswith("/registrations/"):
+                registration_id = route_path.rsplit("/", 1)[-1]
+                registration = next(
+                    (item for item in service.registrations() if item.id == registration_id), None
+                )
+                target_id = registration.task_id if registration is not None else ""
+                decision = await policy.decide(task_subject, Action.DEREGISTER_CONTAINER, target_id)
+            else:
+                action, matched_target_id = policy._match_rest(request.method, route_path)
+                if action is None or matched_target_id is None:
+                    return JSONResponse(
+                        status_code=403, content={"detail": "credential scope forbids operation"}
+                    )
+                target_id = matched_target_id
+                if action is Action.RESOLVE_RESPONSIBILITY:
+                    try:
+                        parsed_body = json.loads(await request.body())
+                        body = parsed_body if isinstance(parsed_body, dict) else {}
+                    except json.JSONDecodeError:
+                        body = {}
+                    decision = await policy.decide_responsibility(
+                        task_subject, target_id, str(body.get("key", ""))
+                    )
+                elif action is Action.SET_DEPENDENCIES:
+                    try:
+                        parsed_body = json.loads(await request.body())
+                        body = parsed_body if isinstance(parsed_body, dict) else {}
+                    except json.JSONDecodeError:
+                        body = {}
+                    raw_dep_ids = body.get("dep_ids")
+                    dep_ids = (
+                        [str(item) for item in raw_dep_ids] if isinstance(raw_dep_ids, list) else []
+                    )
+                    decision = await policy.decide_dependencies(task_subject, target_id, dep_ids)
+                else:
+                    decision = await policy.decide(task_subject, action, target_id)
+            if not decision.allowed:
+                return JSONResponse(status_code=403, content=decision.body)
+        return await call_next(request)
+
+    # The block-until-change feed: a store mutation bumps the version + wakes parked GET /tasks
+    # long-polls (the seam the daemons/dashboard migrate onto, replacing their interval re-polls).
+    feed = ChangeFeed(service.tasks_version)
+    service.subscribe_to_changes(feed.notify)
+
+    async def _task_out(task: Task) -> TaskOut:
+        """Serialize a task **with** its computed container-lifecycle fields. These aren't domain
+        attributes (the status is composed from ephemeral runner-reported phase + registrations +
+        runner liveness), so they're attached here rather than read off the Task by ``model_validate``.
+        Every task-returning handler routes through this so the dashboard always sees them."""
+        out = TaskOut.model_validate(task)
+        out.terminal = service.task_is_terminal(task)
+        out.container_status = service.container_status(
+            task, dependencies_blocking=await service.dependencies_blocking(task)
+        ).value
+        lifecycle = service.lifecycle(task.id)
+        out.lifecycle_detail = lifecycle.detail if lifecycle is not None else None
+        if task.claimed_by is not None:
+            out.runner_host = service.runner_host(task.claimed_by)
+        return out
+
+    def _task_summary_out(
+        task: Task, tasks_by_id: dict[str, Task], *, has_artifacts: bool
+    ) -> TaskSummaryOut:
+        """Serialize a task to the cheap summary shape (no history), with computed status fields."""
+        out = TaskSummaryOut.model_validate(task)
+        out.terminal = service.task_is_terminal(task)
+        out.container_status = service.container_status(
+            task,
+            dependencies_blocking=service.dependencies_blocking_in_snapshot(task, tasks_by_id),
+        ).value
+        lifecycle = service.lifecycle(task.id)
+        out.lifecycle_detail = lifecycle.detail if lifecycle is not None else None
+        if task.claimed_by is not None:
+            out.runner_host = service.runner_host(task.claimed_by)
+        out.has_artifacts = has_artifacts
+        return out
+
+    # -- error mapping: domain exceptions -> HTTP status --------------------------
+
+    @app.exception_handler(NotFound)
+    async def _not_found(_: Request, exc: NotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": redact_configured_tokens(str(exc))})
+
+    @app.exception_handler(AlreadyExists)
+    async def _conflict(_: Request, exc: AlreadyExists) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": redact_configured_tokens(str(exc))})
+
+    @app.exception_handler(SessionConflict)
+    async def _session_conflict(_: Request, exc: SessionConflict) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": redact_configured_tokens(str(exc))})
+
+    @app.exception_handler(IllegalTransition)
+    async def _illegal(_: Request, exc: IllegalTransition) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": redact_configured_tokens(str(exc))})
+
+    @app.exception_handler(ResponsibilitiesNotMet)
+    async def _responsibilities(_: Request, exc: ResponsibilitiesNotMet) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": redact_configured_tokens(str(exc))})
+
+    @app.exception_handler(NotAuthorized)
+    async def _not_authorized(_: Request, exc: NotAuthorized) -> JSONResponse:
+        return JSONResponse(status_code=403, content={"detail": redact_configured_tokens(str(exc))})
+
+    @app.exception_handler(UnknownWorkflow)
+    async def _unknown_wf(_: Request, exc: UnknownWorkflow) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": redact_configured_tokens(str(exc))})
+
+    @app.exception_handler(InvalidWorkflow)
+    async def _invalid_wf(_: Request, exc: InvalidWorkflow) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": redact_configured_tokens(str(exc))})
+
+    @app.exception_handler(ArtifactError)
+    async def _artifact(_: Request, exc: ArtifactError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": redact_configured_tokens(str(exc))})
+
+    @app.exception_handler(StoreError)
+    async def _store_error(_: Request, exc: StoreError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": redact_configured_tokens(str(exc))})
+
+    # -- health & discovery -------------------------------------------------------
+
+    def health_response(*, include_body: bool) -> JSONResponse:
+        response = JSONResponse({"status": "ok"})
+        if not include_body:
+            # HEAD describes the same representation as GET, including its Content-Length, while
+            # emitting no representation bytes on the ASGI transport.
+            response.body = b""
+        return response
+
+    @app.get("/healthz")
+    async def healthz() -> JSONResponse:
+        return health_response(include_body=True)
+
+    @app.head("/healthz")
+    async def healthz_head() -> JSONResponse:
+        return health_response(include_body=False)
+
+    @app.get("/workflows")
+    async def list_workflows() -> list[WorkflowInfo]:
+        return await service.list_workflow_infos()  # type: ignore[return-value]
+
+    @app.get("/workflow-files")
+    async def list_workflow_files() -> list[WorkflowEditorInfo]:
+        """Registered workflow sources for the dashboard's editor-first workflow UI."""
+        return await service.list_workflow_editor_infos()  # type: ignore[return-value]
+
+    @app.get("/workflows/{name}/image-layer")
+    async def workflow_image_layer(name: str) -> dict[str, str]:
+        """The workflow's Dockerfile layer (ADR 0005); the runner composes it onto the base."""
+        return {"layer": await service.workflow_image_layer(name)}
+
+    @app.get("/workflows/{name}/execution")
+    async def workflow_execution(name: str) -> dict[str, Any]:
+        """How the runner executes this workflow's tasks: ``runner_type`` (``"docker"``/``"shell"``),
+        the shell ``script``, ``clone_repo``, and a shell ``workdir`` override."""
+        return await service.workflow_execution(name)
+
+    # -- repos --------------------------------------------------------------------
+
+    @app.post("/repos", status_code=201)
+    async def create_repo(body: RepoIn) -> RepoOut:
+        try:
+            repo = await service.create_repo(Repo(**body.model_dump()))
+        except ValueError as exc:  # e.g. env_file does not exist
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RepoOut.model_validate(repo)
+
+    @app.get("/repos")
+    async def list_repos() -> list[RepoOut]:
+        return [RepoOut.model_validate(r) for r in await service.list_repos()]
+
+    @app.get("/repos/{repo_id}")
+    async def get_repo(repo_id: str) -> RepoOut:
+        return RepoOut.model_validate(await service.get_repo(repo_id))
+
+    @app.get("/repos/{repo_id}/workflows")
+    async def list_repo_workflows(repo_id: str) -> list[dict[str, str | bool | None]]:
+        """Workflows available for this repo, filtered by its ``enabled_workflows`` /
+        ``disabled_workflows`` preferences and each workflow's ``opt_in`` flag."""
+        return await service.list_workflow_infos_for_repo(repo_id)
+
+    @app.get("/repos/{repo_id}/image-layer")
+    async def repo_image_layer(repo_id: str) -> dict[str, str]:
+        """The repo's Dockerfile layer (ADR 0005), read from its ``image_layer_file`` reference;
+        the runner composes it onto base → workflow. Empty when the repo declares none."""
+        return {"layer": await service.repo_image_layer(repo_id)}
+
+    @app.patch("/repos/{repo_id}")
+    async def update_repo(repo_id: str, body: RepoPatchIn) -> RepoOut:
+        # exclude_unset → only the fields the caller actually sent; the service merges them
+        # onto the stored repo (untouched fields, e.g. image_layer_file/capabilities, are preserved).
+        changes = body.model_dump(exclude_unset=True)
+        try:
+            repo = await service.update_repo(repo_id, changes)
+        except ValueError as exc:  # e.g. attempting to change the id
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RepoOut.model_validate(repo)
+
+    @app.delete("/repos/{repo_id}", status_code=204)
+    async def delete_repo(repo_id: str) -> Response:
+        await service.delete_repo(repo_id)
+        return Response(status_code=204)
+
+    # -- tasks --------------------------------------------------------------------
+
+    @app.post("/tasks", status_code=201)
+    async def create_task(body: CreateTaskIn) -> TaskOut:
+        try:
+            return await _task_out(
+                await service.create_task(
+                    body.repo_id,
+                    body.workflow,
+                    memo=body.memo,
+                    governor_task_id=body.governor_task_id,
+                    initial_prompt=body.initial_prompt,
+                    harness=body.harness,
+                    starting_model=body.starting_model,
+                    artifacts=body.artifacts,
+                    depends_on_task_ids=body.depends_on_task_ids or None,
+                )
+            )
+        except ValueError as exc:  # e.g. an unknown harness
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/tasks")
+    async def list_tasks(
+        request: Request,
+        response: Response,
+        wait: float | None = Query(
+            default=None,
+            ge=0,
+            description="Block up to this many seconds for a change past ?since before returning "
+            f"(capped at {MAX_WAIT_SECONDS:g}s). Omit for an immediate snapshot.",
+        ),
+        since: int = Query(
+            default=0,
+            description="The X-Tasks-Version a client last saw; with ?wait, return once the "
+            "version differs from it (block-until-change).",
+        ),
+        terminal: bool | None = Query(
+            default=None,
+            description="Filter to terminal tasks only (true) or active tasks only (false). "
+            "Omit to return all tasks.",
+        ),
+    ) -> list[TaskSummaryOut]:
+        # Every response carries the current version in X-Tasks-Version so a client can echo it
+        # back as ?since=. With ?wait the request parks until the version moves past ?since (or
+        # the cap elapses); without it, it's an immediate snapshot — today's behaviour.
+        if wait is not None:
+            version = await feed.wait(since=since, timeout=min(wait, MAX_WAIT_SECONDS))
+            all_tasks = await service.list_tasks_summary()
+        else:
+            # Read version and snapshot in a single thread call so no event-loop yield can
+            # interleave a mutation between them — preserving the original atomicity invariant.
+            version, all_tasks = await service._tasks_snapshot()
+        tasks_by_id = {task.id: task for task in all_tasks}
+        principal_task_id = getattr(request.state, "principal_task_id", None)
+        if principal_task_id is not None:
+            principal = tasks_by_id.get(principal_task_id)
+            visible_ids = {principal_task_id} if principal is not None else set()
+            if service.task_orchestrates(principal):
+                changed = True
+                while changed:
+                    before = len(visible_ids)
+                    visible_ids.update(
+                        task.id for task in all_tasks if task.governor_task_id in visible_ids
+                    )
+                    changed = len(visible_ids) != before
+            all_tasks = [task for task in all_tasks if task.id in visible_ids]
+            tasks_by_id = {task.id: task for task in all_tasks}
+        tasks_raw = (
+            all_tasks
+            if terminal is None
+            else [task for task in all_tasks if service.task_is_terminal(task) == terminal]
+        )
+        artifact_names = await asyncio.gather(
+            *(service.list_artifacts(task.id) for task in tasks_raw)
+        )
+        tasks = [
+            _task_summary_out(task, tasks_by_id, has_artifacts=bool(names))
+            for task, names in zip(tasks_raw, artifact_names, strict=True)
+        ]
+        response.headers[TASKS_VERSION_HEADER] = str(version)
+        return tasks
+
+    @app.get("/tasks/{task_id}")
+    async def get_task(task_id: str) -> TaskOut:
+        return await _task_out(await service.get_task(task_id))
+
+    @app.get("/tasks/{task_id}/transitions")
+    async def list_transitions(task_id: str) -> list[str]:
+        return await service.legal_transitions(task_id)
+
+    @app.get("/tasks/{task_id}/operations")
+    async def list_operations(task_id: str) -> dict[str, str]:
+        return await service.operations(task_id)
+
+    @app.post("/tasks/{task_id}/operations/{operation}")
+    async def apply_operation(task_id: str, operation: str) -> TaskOut:
+        return await _task_out(await service.apply_operation(task_id, operation))
+
+    @app.get("/tasks/{task_id}/states")
+    async def list_states(task_id: str) -> list[str]:
+        return await service.workflow_states(task_id)
+
+    @app.get("/tasks/{task_id}/skills")
+    async def list_skills(task_id: str) -> list[SkillOut]:
+        return [SkillOut.model_validate(s) for s in await service.skills(task_id)]
+
+    @app.get("/tasks/{task_id}/briefing")
+    async def get_briefing(task_id: str) -> dict[str, str]:
+        """The agent's current-phase briefing (the container's user-prompt hook emits it)."""
+        return {"briefing": await service.briefing(task_id)}
+
+    @app.get("/tasks/{task_id}/history/{entry_index}/wake")
+    async def get_stage_entry_wake(task_id: str, entry_index: int) -> dict[str, str]:
+        try:
+            briefing = await service.stage_entry_briefing(task_id, entry_index)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"briefing": briefing}
+
+    @app.put("/tasks/{task_id}/history/{entry_index}/wake")
+    async def record_stage_entry_wake(
+        task_id: str, entry_index: int, body: StageEntryWakeIn
+    ) -> TaskOut:
+        try:
+            task = await service.record_stage_entry_wake(task_id, entry_index, body.status)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return await _task_out(task)
+
+    def _session_input_out(value: Any) -> SessionInputOut:
+        return SessionInputOut(
+            id=value.id,
+            status=value.status,
+            submit=value.submit,
+            byte_count=len(value.text.encode("utf-8")),
+            created_at=value.created_at,
+            settled_at=value.settled_at,
+            failure_reason=value.failure_reason,
+        )
+
+    @app.post(
+        "/tasks/{task_id}/session/input",
+        status_code=202,
+        response_model=SessionInputOut,
+        description="Accept input for runner delivery. Client retries are idempotent. A runner "
+        "crash or settlement-write failure after the tmux side effect can cause a duplicate delivery.",
+    )
+    async def create_session_input(task_id: str, body: SessionInputIn) -> SessionInputOut:
+        value = await service.create_session_input(
+            task_id,
+            text=body.text,
+            submit=body.submit,
+            idempotency_key=body.idempotency_key,
+        )
+        return _session_input_out(value)
+
+    @app.get("/tasks/{task_id}/session/input/{delivery_id}")
+    async def get_session_input(task_id: str, delivery_id: str) -> SessionInputOut:
+        return _session_input_out(await service.get_session_input(task_id, delivery_id))
+
+    @app.get("/tasks/{task_id}/session/input", response_model=list[RunnerSessionInputOut])
+    async def pending_session_input(task_id: str, runner_id: str) -> list[RunnerSessionInputOut]:
+        task = await service.get_task(task_id)
+        if task.claimed_by != runner_id:
+            raise SessionConflict("runner does not own task")
+        return [
+            RunnerSessionInputOut(**_session_input_out(value).model_dump(), text=value.text)
+            for value in await service.list_session_inputs(task_id)
+            if value.status is SessionInputStatus.PENDING
+        ]
+
+    @app.put("/tasks/{task_id}/session/input/{delivery_id}")
+    async def settle_session_input(
+        task_id: str, delivery_id: str, body: SessionInputSettleIn
+    ) -> SessionInputOut:
+        return _session_input_out(
+            await service.settle_session_input(
+                task_id,
+                delivery_id,
+                runner_id=body.runner_id,
+                status=body.status,
+                failure_reason=body.failure_reason,
+            )
+        )
+
+    @app.put("/tasks/{task_id}/session/transcript")
+    async def publish_session_transcript(
+        task_id: str, body: SessionTranscriptIn
+    ) -> SessionTranscriptOut:
+        assert body.text is not None
+        value = await service.publish_session_transcript(
+            task_id,
+            runner_id=body.runner_id,
+            text=body.text,
+            columns=body.columns,
+            rows=body.rows,
+            truncated=body.truncated,
+        )
+        return SessionTranscriptOut(**value.__dict__, stale=False)
+
+    @app.get(
+        "/tasks/{task_id}/session/transcript",
+        description="Return unredacted pane text. It may contain arbitrary terminal output, "
+        "including credentials or other secrets printed in the pane.",
+    )
+    async def get_session_transcript(task_id: str) -> SessionTranscriptOut:
+        try:
+            value = await service.get_session_transcript(task_id)
+        except NotFound as exc:
+            if str(exc) == "session transcript unavailable":
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            raise
+        task = await service.get_task(task_id)
+        return SessionTranscriptOut(
+            **value.__dict__, stale=service.container_status(task) is not ContainerStatus.LIVE
+        )
+
+    @app.get("/tasks/{task_id}/workflow-overview")
+    async def get_workflow_overview(task_id: str) -> dict[str, str]:
+        """The whole-workflow map (the agent launcher puts it in claude's system prompt)."""
+        return {"overview": await service.workflow_overview(task_id)}
+
+    @app.put("/tasks/{task_id}/state")
+    async def set_state(task_id: str, body: StateIn) -> TaskOut:
+        return await _task_out(await service.set_state(task_id, body.state))
+
+    @app.post("/tasks/{task_id}/transition")
+    async def transition(task_id: str, body: TransitionIn) -> TaskOut:
+        return await _task_out(
+            await service.request_transition(
+                task_id, body.to_state, trigger=body.trigger, note=body.note
+            )
+        )
+
+    @app.post("/tasks/{task_id}/responsibilities")
+    async def resolve_responsibility(task_id: str, body: ResponsibilityIn) -> TaskOut:
+        try:
+            task = await service.resolve_responsibility(
+                task_id, body.key, status=body.status, comment=body.comment
+            )
+        except ValueError as exc:  # unknown key / PENDING / FAILED without a comment
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return await _task_out(task)
+
+    @app.put("/tasks/{task_id}/slug")
+    async def set_slug(task_id: str, body: SlugIn) -> TaskOut:
+        return await _task_out(await service.set_slug(task_id, body.slug))
+
+    @app.put("/tasks/{task_id}/url")
+    async def set_url(task_id: str, body: UrlIn) -> TaskOut:
+        return await _task_out(await service.set_url(task_id, body.url))
+
+    @app.put("/tasks/{task_id}/tokens-used")
+    async def set_tokens_used(task_id: str, body: TokensUsedIn) -> TaskOut:
+        return await _task_out(await service.set_tokens_used(task_id, body.tokens_used))
+
+    @app.put("/tasks/{task_id}/token-estimate")
+    async def set_token_estimate(task_id: str, body: TokenEstimateIn) -> TaskOut:
+        return await _task_out(await service.set_token_estimate(task_id, body.token_estimate))
+
+    @app.put("/tasks/{task_id}/turn")
+    async def set_turn(task_id: str, body: TurnIn) -> TaskOut:
+        return await _task_out(await service.set_turn(task_id, body.turn))
+
+    @app.put("/tasks/{task_id}/blocked")
+    async def set_blocked(task_id: str, body: BlockedIn) -> TaskOut:
+        return await _task_out(await service.set_blocked(task_id, body.blocked))
+
+    @app.put("/tasks/{task_id}/attention")
+    async def set_attention(task_id: str, body: AttentionIn) -> TaskOut:
+        return await _task_out(await service.set_attention(task_id, body.attention))
+
+    @app.put("/tasks/{task_id}/snooze")
+    async def set_snooze(task_id: str, body: SnoozeIn) -> TaskOut:
+        return await _task_out(await service.set_snooze(task_id, body.until))
+
+    @app.put("/tasks/{task_id}/governor")
+    async def set_governor(task_id: str, body: GovernorIn) -> TaskOut:
+        return await _task_out(await service.set_governor(task_id, body.governor_task_id))
+
+    @app.put("/tasks/{task_id}/dependencies")
+    async def set_dependencies(task_id: str, body: DependenciesIn) -> TaskOut:
+        try:
+            task = await service.set_dependencies(task_id, body.dep_ids)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except NotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return await _task_out(task)
+
+    @app.put("/tasks/{task_id}/claim")
+    async def claim(task_id: str, body: ClaimIn) -> TaskOut:
+        try:  # a runner claims an unclaimed task before spawning its container (ADR 0008)
+            task = await service.claim(task_id, body.runner_id)
+        except (AlreadyClaimed, NotReady) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return await _task_out(task)
+
+    @app.delete("/tasks/{task_id}/claim")
+    async def release(task_id: str) -> TaskOut:
+        return await _task_out(await service.release(task_id))
+
+    @app.put("/tasks/{task_id}/provisioning")
+    async def record_provisioning(task_id: str, body: ProvisioningIn) -> TaskOut:
+        try:  # the session service reports the host branch + per-task clone it created (ADR 0011)
+            task = await service.record_provisioning(
+                task_id,
+                body.branch,
+                body.clone,
+                body.runner_id,
+                body.workspace_verified,
+            )
+        except ValueError as exc:  # slug not set yet
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except NotReady as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return await _task_out(task)
+
+    @app.put("/tasks/{task_id}/migration")
+    async def record_migration(
+        task_id: str,
+        body: MigrationIn,
+        supplied_token: str | None = Header(None, alias="X-Panopticon-Operator-Token"),
+    ) -> TaskOut:
+        if operator_token is None:
+            raise HTTPException(
+                status_code=503, detail="operator migration token is not configured"
+            )
+        if supplied_token is None or not secrets.compare_digest(
+            supplied_token.encode(), operator_token.encode()
+        ):
+            raise HTTPException(status_code=403, detail="operator authorization required")
+        try:
+            task = await service.record_migration(
+                task_id,
+                body.source_runner,
+                body.destination_runner,
+                body.workspace_disposition,
+                body.session_history_disposition,
+                body.discarded_changes,
+                body.discard_authorized_by,
+                body.workspace_method,
+            )
+        except (ValueError, NotReady) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except NotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return await _task_out(task)
+
+    # -- artifacts ----------------------------------------------------------------
+
+    @app.put("/tasks/{task_id}/artifacts/{name}", status_code=204)
+    async def put_artifact(task_id: str, name: str, request: Request) -> Response:
+        await service.put_artifact(task_id, name, await request.body())
+        return Response(status_code=204)
+
+    @app.get("/tasks/{task_id}/artifacts")
+    async def list_artifacts(task_id: str) -> list[str]:
+        return await service.list_artifacts(task_id)
+
+    @app.get("/tasks/{task_id}/artifacts/{name}")
+    async def get_artifact(task_id: str, name: str) -> Response:
+        content = await service.get_artifact(task_id, name)
+        if content is None:
+            raise HTTPException(status_code=404, detail=f"artifact {name!r} not found")
+        return Response(content=content, media_type="application/octet-stream")
+
+    # -- liveness -----------------------------------------------------------------
+
+    @app.get("/tasks/{task_id}/live")
+    async def live(
+        task_id: str, request: Request, container_id: str, runner_id: str | None = None
+    ) -> StreamingResponse:
+        """The liveness connection: a container holds this stream open for its whole lifetime.
+
+        Registering happens on connect and is removed on disconnect — the open connection *is* the
+        signal that the container is alive. When the container dies (clean exit, ``docker stop``,
+        ``SIGKILL``/``docker rm --force``, crash) the stream drops and Starlette cancels the body
+        generator, so the ``finally`` deregisters **immediately** — no heartbeat, no TTL. A flaky
+        network drop reaps the registration too, but the container re-opens this connection (its
+        reconnect loop), so a transient blip self-heals into a brief ``down`` flicker.
+        """
+        await service.get_task(task_id)  # 404 if the task is unknown
+        reg = await service.register(task_id, container_id, runner_id)
+
+        async def hold() -> AsyncIterator[bytes]:
+            try:
+                yield b":ok\n"  # flush headers + confirm liveness is established
+                while True:
+                    await _wait_for_liveness_keepalive()
+                    yield b":keepalive\n"
+            finally:  # client disconnected (Starlette cancels us) or the loop ended — reap now
+                await service.deregister(reg.id)
+
+        return StreamingResponse(hold(), media_type="text/event-stream")
+
+    @app.post("/tasks/{task_id}/registrations", status_code=201)
+    async def register(task_id: str, body: RegisterIn) -> RegistrationOut:
+        return RegistrationOut.model_validate(
+            await service.register(task_id, body.container_id, body.runner_id)
+        )
+
+    @app.get("/tasks/{task_id}/registrations")
+    async def list_registrations(task_id: str) -> list[RegistrationOut]:
+        await service.get_task(task_id)  # 404 if the task is unknown
+        return [RegistrationOut.model_validate(r) for r in service.registrations(task_id)]
+
+    @app.delete("/registrations/{registration_id}", status_code=204)
+    async def deregister(registration_id: str) -> Response:
+        await service.deregister(registration_id)
+        return Response(status_code=204)
+
+    # -- container lifecycle (the session service reports its spawn progress) ----------
+    #
+    # The runner pushes its spawn phase here as it claims → prepares → builds → starts a container,
+    # so the dashboard can surface the steps to becoming live (and a failure) instead of guessing.
+    # Folded into TaskOut.container_status; cleared on claim release/reclaim (see the service).
+
+    @app.put("/tasks/{task_id}/lifecycle")
+    async def report_lifecycle(task_id: str, body: LifecycleIn) -> TaskOut:
+        await service.report_lifecycle(task_id, body.runner_id, body.phase, body.detail)
+        return await _task_out(await service.get_task(task_id))
+
+    @app.delete("/tasks/{task_id}/lifecycle")
+    async def clear_lifecycle(task_id: str) -> TaskOut:
+        await service.get_task(task_id)  # 404 if the task is unknown
+        service.clear_lifecycle(task_id)
+        return await _task_out(await service.get_task(task_id))
+
+    # -- host (runner) liveness + reclaim ----------------------------------------------
+    #
+    # Container liveness one layer up: the session-service daemon holds ``/runners/{id}/live`` open
+    # for its whole life, so the control plane knows which hosts are alive. ``GET /runners`` surfaces
+    # the live set; ``POST /runners/{id}/reclaim`` is the operator-gated release of a dead host's
+    # claims (so a healthy host respawns them) — see :meth:`TaskService.reclaim`.
+
+    @app.get("/runners/{runner_id}/live")
+    async def runner_live(
+        runner_id: str,
+        request: Request,
+        host: str | None = Query(default=None),
+    ) -> StreamingResponse:
+        """The host-liveness connection: a runner holds this stream open for its whole lifetime.
+
+        Mirrors ``/tasks/{id}/live`` one layer up. Registering happens on connect and is removed on
+        disconnect — the open connection *is* the signal the runner is alive. When the daemon dies
+        (clean stop or crash) the stream drops and Starlette cancels the body generator, so the
+        ``finally`` removes it from ``live_runners`` **immediately** — no heartbeat, no TTL. A flaky
+        drop removes it too, but the daemon re-opens this connection (its reconnect loop), so a
+        transient blip self-heals. The optional ``host`` query param records the runner's hostname
+        so the terminal supervisor can ssh-attach to its tasks.
+        """
+        reg = await service.register_runner(runner_id, host=host)
+
+        async def hold() -> AsyncIterator[bytes]:
+            try:
+                yield b":ok\n"  # flush headers + confirm host liveness is established
+                while True:
+                    await _wait_for_liveness_keepalive()
+                    yield b":keepalive\n"
+            finally:  # daemon disconnected (Starlette cancels us) or the loop ended — drop it now
+                await service.deregister_runner(reg.id)
+
+        return StreamingResponse(hold(), media_type="text/event-stream")
+
+    @app.get("/runners")
+    async def list_runners() -> list[RunnerOut]:
+        """The runners currently holding a host-liveness connection (sorted by id, for stable reads)."""
+        return [RunnerOut(id=r.runner_id, host=r.host) for r in service.live_runner_registrations()]
+
+    @app.get("/runners/{runner_id}")
+    async def get_runner(runner_id: str) -> RunnerOut:
+        """The registration details for a single live runner, or 404 if not connected."""
+        if runner_id not in service.live_runners():
+            raise HTTPException(status_code=404, detail=f"runner {runner_id!r} is not connected")
+        return RunnerOut(id=runner_id, host=service.runner_host(runner_id))
+
+    @app.post("/runners/{runner_id}/reclaim")
+    async def reclaim(runner_id: str) -> list[TaskOut]:
+        """Release a (dead) runner's non-terminal claims so a healthy host respawns them."""
+        return [await _task_out(t) for t in await service.reclaim(runner_id)]
+
+    # In-container agents connect here for task operations + artifacts. The mounted app does not
+    # inherit the parent's exception handlers, so keep its response redactor at this boundary.
+    app.mount("/mcp", redacted_mcp_app)
+    if origins:
+        app.add_middleware(
+            cast(Any, _StrictCORSMiddleware),
+            allow_origins=origins,
+            allow_credentials=False,
+            allow_methods=["GET", "HEAD", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type"],
+            max_age=600,
+        )
+    return app
