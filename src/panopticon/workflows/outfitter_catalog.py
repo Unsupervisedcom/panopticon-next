@@ -5,14 +5,22 @@ Outfitter publishes organization workflows as typed graphs (``workflows/<id>/wor
 **actors**; **environments**; **integrations**; and a DAG of **nodes** that each perform an
 ``action`` or delegate to a nested ``workflow``. Outfitter validates and distributes these
 packages; it never schedules or executes them. Panopticon *is* an execution engine for exactly
-this shape of lifecycle, so this module projects the three canonical implementation-plan
-packages — ``founder``, ``engineer``, and ``software-factory`` — onto the workflow interface.
+this shape of lifecycle, so this module projects **every package the operator's ``.agents``
+root carries** onto the workflow interface — no per-package Python class, and no code change
+to adopt a new package.
 
-The packages are **vendored byte-for-byte** under ``workflows/outfitter/`` from the pinned
-community-profiles release (:data:`CATALOG_RELEASE`) and hash-pinned in :data:`CATALOG_SHA256`,
-so a drifted copy is rejected at load time and an upgrade is an explicit, reviewable change to
-both the file and its digest. The ``adversarial-review`` package is vendored too because the
-three workflows nest it: a nested reference must resolve by slug, as Outfitter requires.
+The packages are **resolved through the operator's Outfitter ``.agents`` root**
+(``$PANOPTICON_AGENTS``, default ``~/.agents``) at workflow instantiation, the same layered
+graph Outfitter resolves: the root's own ``workflows/<id>/workflow.yaml`` first, then each
+``sources`` entry of ``settings.yml`` (``settings.local.yml`` replaces the list wholesale) in
+listed order, a remote source living at the checkout Outfitter caches under
+``cache/repos/<base64url(uri#ref)>``. The pin is therefore the source ref in the ``.agents``
+settings, and upgrading the catalog is an ``.agents`` change, not a Panopticon release. Nothing is vendored into this repository, and a host whose
+root provides no packages registers no Outfitter workflows. A package that is present but
+off-contract, or whose nodes do not form the single chain Panopticon projects, is skipped with
+a diagnostic — one broken or fan-out package never blocks the rest of the catalog or service
+startup. A nested reference (``adversarial-review`` in the canonical packages) must resolve by
+slug from the same directory, as Outfitter requires.
 
 **Workflows are code (ADR 0004).** The catalog YAML supplies the *declarative* half — the node
 chain, descriptions, actors, environments, and integrations — while the Python classes below
@@ -44,9 +52,11 @@ description for the operator to pick.
 
 from __future__ import annotations
 
-import hashlib
+import base64
+import logging
+import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -55,27 +65,17 @@ import yaml
 
 from panopticon.core.models import Actor, Responsibility, Skill, Tool
 from panopticon.core.state import BaseState, Complete, InitialState, State
-from panopticon.core.workflow import InvalidWorkflow
+from panopticon.core.workflow import InvalidWorkflow, WorkflowUnavailable
 from panopticon.workflows.github_forge import GithubForgeWorkflow
 
-#: Where the vendored packages live: ``outfitter/<id>/workflow.yaml`` beside this module.
-CATALOG_DIR: Path = Path(__file__).with_name("outfitter")
-#: The catalog the packages are vendored from, and the exact release they are pinned to.
-CATALOG_REPOSITORY = "ai-outfitter/community-profiles"
-CATALOG_RELEASE = "v1.6.0"
-CATALOG_COMMIT = "dd09281c986332c1ce7b40289b2e3c9c3b5c3b88"
-#: SHA-256 of each vendored ``workflow.yaml``. Loading a package whose digest differs fails:
-#: the copy must match the pinned release, and an upgrade edits this table alongside the file.
-CATALOG_SHA256: Mapping[str, str] = {
-    "adversarial-review": "c0e17842b0a90eb66a75db495c247efa6bbba0325572dbc550b40fae816fe130",
-    "engineer": "087cd7d0792cc53a734a4f5e1d9b662c8824d7e18f4bb39b9ef8ec166ffd32e9",
-    "founder": "5545c5e2c7437141de6f3ffea489db65992ea9cff440b5278e407eb172922056",
-    "software-factory": "b5e2b7aeb76e0c17a50e5930128744fa6642cf2bcf004f97fd8c7c6ada5c1189",
-}
+#: Environment override for the Outfitter ``.agents`` root the packages are resolved from.
+AGENTS_ENV = "PANOPTICON_AGENTS"
 
 #: Outfitter's ``id`` pattern for workflows and nodes (``workflow.schema.json``).
 _SLUG = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _ACTOR_KINDS = frozenset({"human", "agent", "tool", "system"})
+
+_log = logging.getLogger(__name__)
 
 #: Which forge skills (from :class:`GithubForgeWorkflow`) a catalog action is carried out with.
 _ACTION_SKILLS: Mapping[str, tuple[str, ...]] = {
@@ -102,6 +102,64 @@ _PUSH_BRANCH_SKILL = Skill(
 
 class InvalidCatalogWorkflow(InvalidWorkflow):
     """Raised when a catalog package is unreadable, off-contract, or not projectable."""
+
+
+class CatalogUnavailable(InvalidCatalogWorkflow, WorkflowUnavailable):
+    """Raised when the ``.agents`` root provides no such package — discovery skips, not fails."""
+
+
+def agents_root() -> Path:
+    """The Outfitter ``.agents`` root: ``$PANOPTICON_AGENTS`` → ``~/.agents``."""
+    override = os.environ.get(AGENTS_ENV)
+    return Path(override) if override else Path.home() / ".agents"
+
+
+def _configured_sources(root: Path) -> tuple[Mapping[str, Any], ...]:
+    """The ``sources`` list in effect: ``settings.local.yml``'s replaces ``settings.yml``'s wholesale."""
+    for name in ("settings.local.yml", "settings.yml"):
+        path = root / name
+        if not path.is_file():
+            continue
+        try:
+            document = yaml.safe_load(path.read_text())
+        except (OSError, yaml.YAMLError) as error:
+            raise InvalidCatalogWorkflow(f"{path}: unreadable settings: {error}") from error
+        if not isinstance(document, Mapping) or "sources" not in document:
+            continue
+        sources = document["sources"] or []
+        if not isinstance(sources, list) or not all(isinstance(item, Mapping) for item in sources):
+            raise InvalidCatalogWorkflow(f"{path}: `sources` must be a list of mappings")
+        return tuple(cast("Mapping[str, Any]", item) for item in sources)
+    return ()
+
+
+def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
+    """Where one ``sources`` entry's payload lives on disk (Outfitter's checkout-cache layout).
+
+    A remote source (``github``/``uri`` + optional ``ref``) is cached by Outfitter under
+    ``<root>/cache/repos/`` keyed by the unpadded URL-safe base64 of ``<uri>#<ref>``, a
+    ``github`` shorthand normalizing to ``git+https://github.com/<owner>/<repo>.git``. A local
+    source's ``path`` (absolute, or relative to the root) is the payload itself. An optional
+    ``path`` on a remote source selects a subdirectory of the checkout.
+    """
+    subpath = source.get("path")
+    uri = source.get("uri")
+    github = source.get("github")
+    if uri is None and github is None:  # a local source: `path` is the payload
+        if not isinstance(subpath, str) or not subpath:
+            raise InvalidCatalogWorkflow(f"agents source {source!r}: a local source needs a `path`")
+        local = Path(subpath)
+        return local if local.is_absolute() else root / local
+    target = uri if isinstance(uri, str) else f"git+https://github.com/{github}.git"
+    ref = source.get("ref") or ""
+    key = base64.urlsafe_b64encode(f"{target}#{ref}".encode()).decode().rstrip("=")
+    checkout = root / "cache" / "repos" / key
+    return checkout / subpath if isinstance(subpath, str) and subpath else checkout
+
+
+def catalog_layers(root: Path) -> tuple[Path, ...]:
+    """Every directory that may provide ``workflows/<id>/``, highest precedence first."""
+    return (root, *(_source_checkout(root, source) for source in _configured_sources(root)))
 
 
 @dataclass(frozen=True)
@@ -320,31 +378,37 @@ def _chain(nodes: Mapping[str, CatalogNode], *, source: str) -> tuple[CatalogNod
     return tuple(ordered)
 
 
-def _package_path(workflow_id: str) -> Path:
-    return CATALOG_DIR / workflow_id / "workflow.yaml"
+def _package_path(workflow_id: str, root: Path) -> Path:
+    """The first layer providing ``workflows/<id>/workflow.yaml`` wins; none is unavailability."""
+    layers = catalog_layers(root)
+    for layer in layers:
+        path = layer / "workflows" / workflow_id / "workflow.yaml"
+        if path.is_file():
+            return path
+    raise CatalogUnavailable(
+        f"catalog package {workflow_id!r} is not provided by the agents root {root} "
+        f"(searched its workflows/ directory and {len(layers) - 1} configured source(s))"
+    )
 
 
-def load_catalog_workflow(workflow_id: str, *, catalog_dir: Path | None = None) -> CatalogWorkflow:
-    """Read, hash-check, parse, and validate one vendored package (and resolve its nesting).
+def load_catalog_workflow(workflow_id: str, *, root: Path | None = None) -> CatalogWorkflow:
+    """Resolve, read, parse, and validate one package from the ``.agents`` root (and its nesting).
 
-    ``catalog_dir`` overrides :data:`CATALOG_DIR` (tests). The digest check applies to the
-    vendored catalog only; an override directory is trusted as given.
+    ``root`` defaults to :func:`agents_root`. Resolution follows Outfitter's own precedence:
+    the root's ``workflows/`` directory, then each ``settings.yml`` source in listed order at
+    its cached checkout. A package no layer provides raises
+    :class:`CatalogUnavailable` (discovery skips the workflow); one that is present but
+    off-contract raises :class:`InvalidCatalogWorkflow` — a hard error, because a broken
+    catalog should be fixed, not silently ignored.
     """
-    path = (catalog_dir or CATALOG_DIR) / workflow_id / "workflow.yaml"
+    base = root if root is not None else agents_root()
+    path = _package_path(workflow_id, base)
     try:
         content = path.read_bytes()
     except OSError as error:
         raise InvalidCatalogWorkflow(
             f"catalog package {workflow_id!r} is not readable at {path}: {error}"
         ) from error
-    if catalog_dir is None:
-        expected = CATALOG_SHA256.get(workflow_id)
-        actual = hashlib.sha256(content).hexdigest()
-        if expected is None or actual != expected:
-            raise InvalidCatalogWorkflow(
-                f"catalog package {workflow_id!r} at {path} does not match the pinned "
-                f"{CATALOG_REPOSITORY} {CATALOG_RELEASE} digest (expected {expected}, got {actual})"
-            )
     try:
         document = yaml.safe_load(content)
     except yaml.YAMLError as error:
@@ -354,11 +418,11 @@ def load_catalog_workflow(workflow_id: str, *, catalog_dir: Path | None = None) 
         raise InvalidCatalogWorkflow(
             f"{path}: package id {workflow.id!r} does not match its directory {workflow_id!r}"
         )
-    return _resolve_nested(workflow, catalog_dir=catalog_dir, stack=(workflow_id,))
+    return _resolve_nested(workflow, root=base, stack=(workflow_id,))
 
 
 def _resolve_nested(
-    workflow: CatalogWorkflow, *, catalog_dir: Path | None, stack: tuple[str, ...]
+    workflow: CatalogWorkflow, *, root: Path, stack: tuple[str, ...]
 ) -> CatalogWorkflow:
     """Every ``workflow:`` reference must resolve to a valid package, without cycles."""
     for node in workflow.nodes:
@@ -369,8 +433,8 @@ def _resolve_nested(
                 f"catalog package {workflow.id!r}: nested workflow {node.workflow!r} forms a cycle "
                 f"({' -> '.join((*stack, node.workflow))})"
             )
-        nested = load_catalog_workflow(node.workflow, catalog_dir=catalog_dir)
-        _resolve_nested(nested, catalog_dir=catalog_dir, stack=(*stack, nested.id))
+        nested = load_catalog_workflow(node.workflow, root=root)
+        _resolve_nested(nested, root=root, stack=(*stack, nested.id))
     return workflow
 
 
@@ -436,34 +500,47 @@ def project_states(workflow: CatalogWorkflow) -> tuple[type[BaseState], ...]:
 class OutfitterCatalogWorkflow(GithubForgeWorkflow):
     """Abstract base: a concrete subclass names its ``catalog_id`` and gets its states projected.
 
-    Not registrable on its own (no ``name``). Subclass creation loads the vendored package,
-    projects the chain onto nested state classes, attaches them to the class (so the workflow
-    interface's nested-state discovery finds them), and sets ``initial``. Everything else — the
-    forge plumbing, the plan convention it inherits (unused: these packages plan outside the
-    task), ``opt_in`` — is ordinary workflow code.
+    Not registrable by class scanning (no ``name``/``catalog_id`` on the base): discovery calls
+    this module's :func:`workflow_provider`, which subclasses it per package found under the
+    ``.agents`` root — the registry is built at service start, so that is when the catalog is
+    read. The package is (re)read from the root at instantiation; instantiating when the root
+    no longer provides it raises :class:`CatalogUnavailable`, which discovery treats as "skip
+    this workflow", never a startup failure. Everything else — the forge plumbing, the plan convention it inherits
+    (unused: these packages plan outside the task), ``opt_in`` — is ordinary workflow code.
     """
 
-    #: The vendored package (``outfitter/<catalog_id>/workflow.yaml``) this workflow projects.
+    #: The catalog package (``workflows/<catalog_id>/workflow.yaml``) this workflow projects.
     catalog_id: ClassVar[str]
-    #: The validated package, loaded at class creation.
+    #: The validated package, loaded at instantiation.
     catalog: ClassVar[CatalogWorkflow]
+    #: State-class attribute names from the previous materialization (replaced by the next).
+    _projected: ClassVar[tuple[str, ...]] = ()
 
     opt_in: ClassVar[bool] = True
 
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        if "catalog_id" not in cls.__dict__:
-            return
-        cls.catalog = load_catalog_workflow(cls.catalog_id)
-        states = project_states(cls.catalog)
+    def __init__(self) -> None:
+        type(self)._materialize()
+        super().__init__()
+
+    @classmethod
+    def _materialize(cls) -> None:
+        """(Re)load the package and attach its projected states to the class.
+
+        Runs on every instantiation: the load is a handful of small YAML files, and
+        re-projecting keeps the class honest when the agents root differs between
+        instantiations (tests; an operator repointing ``$PANOPTICON_AGENTS``).
+        """
+        catalog = load_catalog_workflow(cls.catalog_id)
+        states = project_states(catalog)
+        for stale in cls._projected:
+            if stale in cls.__dict__:
+                delattr(cls, stale)
         for state in states:
             setattr(cls, state.__name__, state)
+        cls.catalog = catalog
         cls.initial = states[0]
-        cls.name = f"outfitter-{cls.catalog.id}"
-        cls.when_to_use = (
-            f"{cls.catalog.title} ({CATALOG_REPOSITORY} {CATALOG_RELEASE}): "
-            f"{cls.catalog.description}"
-        )
+        cls._projected = tuple(state.__name__ for state in states)
+        cls.when_to_use = f"{catalog.title} (Outfitter catalog): {catalog.description}"
 
     def _actions(self) -> frozenset[str]:
         return frozenset(node.action for node in self.catalog.nodes if node.action)
@@ -489,20 +566,53 @@ class OutfitterCatalogWorkflow(GithubForgeWorkflow):
         return super().tools() if github else ()
 
 
-class OutfitterFounder(OutfitterCatalogWorkflow):
-    """``founder``: implement and verify locally, commit, get an independent review, push as the human."""
+def catalog_workflow(workflow_id: str) -> OutfitterCatalogWorkflow:
+    """One package projected as a registrable workflow named ``outfitter-<id>``.
 
-    catalog_id: ClassVar[str] = "founder"
+    Builds (and instantiates, which loads and validates) a dedicated
+    :class:`OutfitterCatalogWorkflow` subclass for the package. Raises
+    :class:`InvalidCatalogWorkflow` — :class:`CatalogUnavailable` when the root does not
+    provide the package — exactly like :func:`load_catalog_workflow`.
+    """
+    cls = type(
+        f"Outfitter_{re.sub(r'[.-]', '_', workflow_id)}",
+        (OutfitterCatalogWorkflow,),
+        {
+            "name": f"outfitter-{workflow_id}",
+            "catalog_id": workflow_id,
+            "__module__": __name__,
+            "__qualname__": f"catalog_workflow.{workflow_id}",
+        },
+    )
+    return cast(OutfitterCatalogWorkflow, cls())
 
 
-class OutfitterEngineer(OutfitterCatalogWorkflow):
-    """``engineer``: research, implement, open a draft PR as the human, get reviewed, merge as the human."""
+def workflow_provider() -> Iterator[OutfitterCatalogWorkflow]:
+    """Every package the ``.agents`` root provides, projected — discovery's catalog hook.
 
-    catalog_id: ClassVar[str] = "engineer"
-
-
-class OutfitterSoftwareFactory(OutfitterCatalogWorkflow):
-    """``software-factory``: a resident engineer takes a typed issue through CI-gated review to a
-    platform-performed merge."""
-
-    catalog_id: ClassVar[str] = "software-factory"
+    Enumerates ``workflows/*/workflow.yaml`` across the root and every ``settings.yml`` source
+    checkout (per layer sorted, first layer to name an id claims it) and yields one workflow
+    per package that loads, validates, and projects. A package that
+    fails — off-contract, fan-in/fan-out nodes, an unresolvable nested reference — is skipped
+    with a diagnostic so the rest of the catalog still registers; a missing or empty root
+    yields nothing.
+    """
+    root = agents_root()
+    try:
+        layers = catalog_layers(root)
+    except InvalidCatalogWorkflow as error:
+        _log.warning("outfitter catalog disabled: %s", error)
+        return
+    seen: set[str] = set()
+    for layer in layers:
+        workflows_dir = layer / "workflows"
+        if not workflows_dir.is_dir():
+            continue
+        for package_dir in sorted(workflows_dir.iterdir()):
+            if package_dir.name in seen or not (package_dir / "workflow.yaml").is_file():
+                continue
+            seen.add(package_dir.name)
+            try:
+                yield catalog_workflow(package_dir.name)
+            except InvalidCatalogWorkflow as error:
+                _log.warning("skipping catalog package %r: %s", package_dir.name, error)

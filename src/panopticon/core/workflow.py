@@ -35,6 +35,15 @@ class InvalidWorkflow(Exception):
     """Raised when a workflow's states/transitions are inconsistent or unresolvable."""
 
 
+class WorkflowUnavailable(Exception):
+    """Raised by a workflow's instantiation when an external prerequisite is absent.
+
+    Discovery registers what it can: a workflow raising this is skipped with a warning instead
+    of failing the whole registry build (e.g. a catalog-backed workflow on a host whose
+    ``.agents`` root does not provide its package).
+    """
+
+
 class IllegalTransition(Exception):
     """Raised when a requested transition is not permitted for a task's current state."""
 
