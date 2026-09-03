@@ -14,6 +14,7 @@ dependencies = [
     "textual>=8.2.7",
     "mcp>=1.27.2",
     "aiosqlite>=0.20",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
@@ -26,6 +27,7 @@ dev = [
     "mypy>=1.11",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.6",
+    "types-pyyaml>=6.0",
 ]
 
 [build-system]
@@ -41,6 +43,7 @@ include = [
   "src/panopticon/sessionservice/task_lib.sh",
   "src/panopticon/workflows/setup_repo.sh",
   "src/panopticon/workflows/setup_repo_lib.sh",
+  "src/panopticon/workflows/outfitter/*/workflow.yaml",
 ]
 
 [tool.pytest.ini_options]

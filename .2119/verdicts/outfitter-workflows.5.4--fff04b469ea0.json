@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.5.4--fff04b469ea0",
+  "requirementId": "outfitter-workflows.5.4",
+  "hash": "fff04b469ea0",
+  "verdict": "pass",
+  "summary": "test_gh_tool_only_with_a_github_integration builds a package with only a git-transport integration (no gh/github) and asserts tools() == (), a genuine negative-direction check against the real tools() implementation with no mocking.",
+  "timestamp": "2026-09-03T04:00:38.057Z"
+}

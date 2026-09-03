@@ -20,6 +20,9 @@ lifecycle — see [Tasks](../tasks.md).
 | [`local-git-self-reviewed`](local-git-self-reviewed.md) | Keeps the work **local**: commits to a branch and merges it, with no GitHub, PR, or CI. Use when the change never leaves the machine. | A local branch merged into the base |
 | [`spike`](spike.md) | **Open-ended** agent work with no gates. Use for exploration, debugging, and research, until you call it done. | Nothing lands on its own |
 | [`orchestrator`](orchestrator.md) | An agent that **decomposes a goal into child tasks**, each pre-planned and handed to you ready to approve. Use to fan work out across agents. | New pre-planned child tasks |
+| [`outfitter-founder`](outfitter-catalog.md) | The Outfitter community catalog's **founder** package: work and commit locally, get an independent review, then push as the human. Vendored from community-profiles v1.6.0. | A reviewed branch pushed to the forge |
+| [`outfitter-engineer`](outfitter-catalog.md) | The catalog's **engineer** package: research, develop, open a draft PR, get an independent review, then merge as the human. | A GitHub PR (independently reviewed) |
+| [`outfitter-software-factory`](outfitter-catalog.md) | The catalog's **software-factory** package: a resident engineer takes one typed issue through CI and independent review to a platform-performed merge. | A GitHub PR merged by the platform |
 | [`setup-repo`](setup-repo.md) | A host-side **setup utility** (no container) that dispatches auth setup for the repo's default harness. Launched from the repos screen, not the task picker. | Harness auth in the repo's env-file or credential directory |
 
 Any task can also be **dropped** at any time (dashboard `x`), which moves it to `DROPPED`
@@ -55,8 +58,8 @@ Each state is advanced by either **you** or the **agent**:
 ## How workflows are offered
 
 - **Default-on vs. opt-in.** `spike` and `orchestrator` are shown for every repo by
-  default. `github-peer-reviewed`, `github-self-reviewed`, and `local-git-self-reviewed`
-  are **opt-in**: enable them per repo (in the repo's workflow settings) before they show
+  default. `github-peer-reviewed`, `github-self-reviewed`, `local-git-self-reviewed`, and
+  the three `outfitter-*` workflows are **opt-in**: enable them per repo (in the repo's workflow settings) before they show
   up in the task-creation picker.
 - **Hidden utilities.** `setup-repo` is hidden from the pickers entirely; you launch it
   from the repos screen's setup hotkey, not by creating an ordinary task.

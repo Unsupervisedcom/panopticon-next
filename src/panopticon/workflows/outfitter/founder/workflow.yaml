@@ -1,0 +1,16 @@
+version: 1
+id: founder
+title: Founder
+description: Ship a verified local change as a human-authenticated founder agent with independent review.
+actors:
+  founder: {kind: agent, profile: founder}
+environments: {workstation: local}
+integrations:
+  gh: {kind: cli}
+  git: {kind: transport}
+  worktree: {kind: transport}
+nodes:
+  - {id: work, action: implement-locally, description: Implement and verify the approved change locally., actor: founder, environment: workstation, uses: [gh, git, worktree]}
+  - {id: commit, action: commit-locally, description: Record the verified change locally., actor: founder, environment: workstation, needs: [work], uses: [worktree]}
+  - {id: review, workflow: adversarial-review, description: Get an independent review before pushing., needs: [commit]}
+  - {id: push, action: push-as-human, description: Publish the approved commit as the human., actor: founder, environment: workstation, needs: [review], uses: [gh, git]}

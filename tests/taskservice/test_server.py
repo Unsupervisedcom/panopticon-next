@@ -295,6 +295,9 @@ def test_build_app_serves_default_wiring(tmp_path: Path) -> None:
         "github-self-reviewed",
         "local-git-self-reviewed",
         "orchestrator",
+        "outfitter-founder",
+        "outfitter-engineer",
+        "outfitter-software-factory",
     }
 
 

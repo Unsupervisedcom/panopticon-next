@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.3.2--f0e1637c7a50",
+  "requirementId": "outfitter-workflows.3.2",
+  "hash": "f0e1637c7a50",
+  "verdict": "pass",
+  "summary": "test_action_nodes_are_agent_work_with_one_responsibility checks real vendored nodes with action != id and asserts exact single-tuple equality (key=action, description=raw node.description, distinct from the enriched state description), genuinely rejecting extra/missing responsibilities or wrong key/description.",
+  "timestamp": "2026-09-03T04:00:38.390Z"
+}

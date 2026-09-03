@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.5.1--cf994dad7314",
+  "requirementId": "outfitter-workflows.5.1",
+  "hash": "cf994dad7314",
+  "verdict": "pass",
+  "summary": "test_skills_follow_the_package_actions exercises real (unmocked) skills() on engineer/software-factory packages whose 'draft' node uses action open-draft-pr, asserting both open-pr and babysit-ci (real GithubForgeWorkflow skills with substantive instructions) are present, while founder (no draft-PR action) omits them, confirming the mapping is behavior-driven not tautological.",
+  "timestamp": "2026-09-03T04:01:06.086Z"
+}

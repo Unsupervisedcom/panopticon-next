@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.1--71570302f488",
+  "requirementId": "outfitter-workflows.1.1",
+  "hash": "71570302f488",
+  "verdict": "pass",
+  "summary": "Digest-mismatch test mutates real bytes and asserts real sha256 check, error names package and CATALOG_RELEASE; mutation-killed by removing the check, and unknown packages get the same treatment via empty pin table.",
+  "timestamp": "2026-09-03T04:00:10.516Z"
+}

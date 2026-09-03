@@ -26,6 +26,9 @@ def test_every_shipped_workflow_layer_matches_audited_content(tmp_path: Path) ->
         "2119-auto-sol": codex_only_layer,
         "2119-human-spec": codex_only_layer,
         "spike": empty_layer,
+        "outfitter-founder": empty_layer,
+        "outfitter-engineer": empty_layer,
+        "outfitter-software-factory": empty_layer,
     }
     actual = {
         name: hashlib.sha256(workflow.image_layer().encode()).hexdigest()
