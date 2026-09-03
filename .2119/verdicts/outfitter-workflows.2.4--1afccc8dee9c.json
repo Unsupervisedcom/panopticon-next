@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.2.4--1afccc8dee9c",
+  "requirementId": "outfitter-workflows.2.4",
+  "hash": "1afccc8dee9c",
+  "verdict": "pass",
+  "summary": "test_an_agent_actor_needs_a_profile directly calls parse_catalog_workflow with an agent-kind actor missing profile (rejected, exact message) and a human-kind actor missing profile (accepted), genuinely discriminating the boundary the requirement draws, with no mocking of the validation path.",
+  "timestamp": "2026-09-03T04:00:05.038Z"
+}

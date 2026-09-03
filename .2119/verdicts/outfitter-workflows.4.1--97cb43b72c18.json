@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.1--97cb43b72c18",
+  "requirementId": "outfitter-workflows.4.1",
+  "hash": "97cb43b72c18",
+  "verdict": "pass",
+  "summary": "test_discovery_registers_the_three_opt_in_workflows runs real discover_workflows (no mocking), asserts all three names are present in the registry with opt_in is True, hidden is False, and when_to_use naming the pinned release; verified a forced opt_in=False violation makes the assertion fail.",
+  "timestamp": "2026-09-03T04:01:05.983Z"
+}

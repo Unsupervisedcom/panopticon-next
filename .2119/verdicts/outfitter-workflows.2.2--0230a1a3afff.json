@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.2.2--0230a1a3afff",
+  "requirementId": "outfitter-workflows.2.2",
+  "hash": "0230a1a3afff",
+  "verdict": "pass",
+  "summary": "test_a_node_needs_exactly_one_of_action_and_workflow covers both violating cases (both action+workflow, neither) via parse_catalog_workflow raising InvalidCatalogWorkflow, plus a positive control for the valid one-of case; implementation's (action is None) == (nested is None) check is genuinely exercised, not mocked or tautological",
+  "timestamp": "2026-09-03T03:59:42.174Z"
+}

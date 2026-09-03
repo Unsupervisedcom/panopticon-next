@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.2.5--7f3b948f0d2f",
+  "requirementId": "outfitter-workflows.2.5",
+  "hash": "7f3b948f0d2f",
+  "verdict": "pass",
+  "summary": "test_non_chain_graphs_are_rejected isolates each of the 4 disjuncts (2 roots, 2-need node, 2-dependent node, unreachable cycle) with distinct inputs and message-specific pytest.raises against unmocked parse_catalog_workflow, matching the implementation's 4 distinct check branches",
+  "timestamp": "2026-09-03T04:00:14.211Z"
+}

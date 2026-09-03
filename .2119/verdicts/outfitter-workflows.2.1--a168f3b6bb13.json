@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.2.1--a168f3b6bb13",
+  "requirementId": "outfitter-workflows.2.1",
+  "hash": "a168f3b6bb13",
+  "verdict": "pass",
+  "summary": "test_a_non_v1_package_is_rejected calls the real parse_catalog_workflow (no mocking) with version=2 and version=None, asserting InvalidCatalogWorkflow is raised; verified the test fails (DID NOT RAISE) when the version check is disabled, so it genuinely enforces the MUST-reject rule for both a wrong-value and a missing-value boundary.",
+  "timestamp": "2026-09-03T04:02:16.801Z"
+}

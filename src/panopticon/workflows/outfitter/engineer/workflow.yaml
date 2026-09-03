@@ -1,0 +1,16 @@
+version: 1
+id: engineer
+title: Engineer
+description: Research, implement, review, and merge changes through a human-authenticated engineering agent.
+actors:
+  engineer: {kind: agent, profile: engineer}
+environments: {workstation: local}
+integrations:
+  gh: {kind: cli}
+  git: {kind: transport}
+nodes:
+  - {id: research, action: research-locally, description: Investigate the problem and solution space., actor: engineer, environment: workstation, uses: [gh]}
+  - {id: develop, action: implement-and-verify, description: Implement and refine the change locally., actor: engineer, environment: workstation, needs: [research], uses: [git]}
+  - {id: draft, action: open-draft-pr, description: Open a draft pull request as the human., actor: engineer, environment: workstation, needs: [develop], uses: [gh, git]}
+  - {id: review, workflow: adversarial-review, description: Request an independent review after CI passes., needs: [draft]}
+  - {id: merge, action: merge-as-human, description: Merge the approved pull request as the human., actor: engineer, environment: workstation, needs: [review], uses: [gh]}

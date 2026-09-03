@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.2--c055e098e13a",
+  "requirementId": "outfitter-workflows.4.2",
+  "hash": "c055e098e13a",
+  "verdict": "pass",
+  "summary": "Direct attribute check on OutfitterFounder/Engineer/SoftwareFactory (same plain instantiation discover_workflows uses); review_harness/review_model default to None on the base Workflow class and no Outfitter subclass overrides them, so declaring one (as other workflow fixtures in the repo do) would genuinely fail this assertion.",
+  "timestamp": "2026-09-03T04:00:51.142Z"
+}

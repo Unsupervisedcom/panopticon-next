@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.3.1--5a233c121686",
+  "requirementId": "outfitter-workflows.3.1",
+  "hash": "5a233c121686",
+  "verdict": "pass",
+  "summary": "ordered_phases() genuinely walks the projected advance-transition graph for all three real catalogs (order + terminal COMPLETE) and a synthetic dotted/hyphenated/underscored node id confirms the exact upper-case-and-replace label transform; no mocking, no tautology.",
+  "timestamp": "2026-09-03T04:02:39.041Z"
+}

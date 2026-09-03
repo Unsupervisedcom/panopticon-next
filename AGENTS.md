@@ -30,7 +30,12 @@ src/panopticon/
                    # SetupRepo = a `runner_type="shell"` workflow — no container, the session service runs
                    # its shell_script in a host tmux session (here: `claude setup-token`)) +
                    # Spec2119Human/Spec2119Auto/Spec2119AutoSol = spec-driven forge lifecycles with
-                   # human-gated, automatic, and Sol-only-review variants; discovery.py = scan the
+                   # human-gated, automatic, and Sol-only-review variants;
+                   # outfitter_catalog.py = the Outfitter community-profiles founder / engineer /
+                   # software-factory packages (workflow.yaml vendored byte-for-byte under
+                   # outfitter/, hash-pinned to v1.6.0) projected onto lifecycles: one state per
+                   # node, action nodes agent-advanced, the nested adversarial-review node the
+                   # user-advanced REVIEW gate, forge skills selected by action; discovery.py = scan the
                    # package + an optional path for Workflow subclasses
                    # (the registry build_app runs on; drop a module in → registered, ADR 0004)
   harnesses/       # agent-CLI harnesses (M3): the Harness interface + the registry (a literal

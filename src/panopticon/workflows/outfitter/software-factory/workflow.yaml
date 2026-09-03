@@ -1,0 +1,30 @@
+version: 1
+id: software-factory
+title: Software factory
+description: Delegate typed issues to a resident engineer for CI-gated implementation and independent review.
+actors:
+  resident: {kind: agent, profile: resident-engineer}
+  platform: {kind: system}
+environments: {delegated: delegated-runtime, actions: github-actions}
+integrations:
+  github: {kind: mcp, server: github-write}
+  git: {kind: transport}
+  actions-runner:
+    kind: artifact
+    repository: ai-outfitter/actions
+    path: action.yml
+    ref: 991cc550d0532adfbce7d6b424a0ac525b4cf761
+    sha256: 94d32a670da604fb28796040d9ead64d8daca3e06363789183e8e3015b7c8030
+  operator-deploy:
+    kind: artifact
+    repository: ai-outfitter/agent-operator
+    path: actions/deploy-catalog/action.yml
+    ref: 255a84fb6391b331c085a15b69b97ccce07d2f94
+    sha256: e2327231bbe02401a6cf00206f40617b77956c5da51f44d551f700dc0da28c1d
+nodes:
+  - {id: prepare, action: receive-typed-issue, description: Accept one typed issue., actor: resident, environment: delegated, uses: [github, operator-deploy]}
+  - {id: implement, action: implement-and-verify, description: Implement and verify the requested change on a semantic branch., actor: resident, environment: delegated, needs: [prepare], uses: [github, git]}
+  - {id: draft, action: open-draft-pr, description: Publish the verified implementation as a draft pull request., actor: resident, environment: delegated, needs: [implement], uses: [github]}
+  - {id: ci, action: wait-for-required-ci, description: Wait for required checks to pass., actor: resident, environment: actions, needs: [draft], uses: [github, actions-runner]}
+  - {id: review, workflow: adversarial-review, description: Request an independent review., needs: [ci]}
+  - {id: merge, action: merge-after-approval, description: Let the platform merge after every required gate., actor: platform, environment: actions, needs: [review]}

@@ -1,0 +1,14 @@
+version: 1
+id: adversarial-review
+title: Adversarial review
+description: Assign a distinct review agent to inspect a change and return one actionable verdict.
+actors:
+  reviewer: {kind: agent, profile: code-review}
+environments: {delegated: delegated-runtime}
+integrations:
+  github: {kind: mcp, server: github-write}
+  worktree: {kind: transport}
+nodes:
+  - {id: inspect, action: inspect-change, description: Inspect the requested change for defects and regressions., actor: reviewer, environment: delegated, skill: code-review, prompt_fragment: prompts/practice.adversarial-review.md, uses: [github, worktree]}
+  - {id: decide, action: decide-verdict, description: Choose one evidence-backed verdict., actor: reviewer, environment: delegated, needs: [inspect]}
+  - {id: deliver, action: deliver-verdict, description: Return the verdict through the caller's review channel., actor: reviewer, environment: delegated, needs: [decide], uses: [github]}

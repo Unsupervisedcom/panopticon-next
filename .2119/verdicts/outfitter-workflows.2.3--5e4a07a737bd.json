@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.2.3--5e4a07a737bd",
+  "requirementId": "outfitter-workflows.2.3",
+  "hash": "5e4a07a737bd",
+  "verdict": "pass",
+  "summary": "test_dangling_node_references_are_rejected exercises real parse_catalog_workflow (no mocks) with an undeclared actor/environment/integration/needed-node for each of the requirement's four conjuncts, asserting the specific InvalidCatalogWorkflow raised by the matching validation branch; declared references elsewhere pass without raising, so removing any one check would make the test fail.",
+  "timestamp": "2026-09-03T03:59:53.196Z"
+}

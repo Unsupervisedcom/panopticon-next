@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.27.1--cb68d17867cb",
+  "requirementId": "REQ-035.27.1",
+  "hash": "cb68d17867cb",
+  "verdict": "pass",
+  "summary": "Real subprocess/build_app tests assert INFO-logged 'mode: enforced' and WARNING-level 'mode: disabled' (levelno checked), plus docs/auth.md string match for the steady-state claim; all four match source at __main__.py:158-160 and pass; the gained outfitter-* workflow names are in an unrelated, untagged test.",
+  "timestamp": "2026-09-03T04:09:57.235Z"
+}

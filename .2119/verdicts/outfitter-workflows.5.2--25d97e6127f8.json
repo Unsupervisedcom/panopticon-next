@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.5.2--25d97e6127f8",
+  "requirementId": "outfitter-workflows.5.2",
+  "hash": "25d97e6127f8",
+  "verdict": "pass",
+  "summary": "test_skills_follow_the_package_actions exercises real YAML-parsed packages: engineer/software-factory (merge-as-human/merge-after-approval) assert babysit-merge present, founder (no merge action) asserts it absent; confirmed the test fails when the merge->babysit-merge mapping is removed.",
+  "timestamp": "2026-09-03T04:01:22.249Z"
+}
