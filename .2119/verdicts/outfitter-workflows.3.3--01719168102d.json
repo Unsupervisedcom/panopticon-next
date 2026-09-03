@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.3.3--01719168102d",
+  "requirementId": "outfitter-workflows.3.3",
+  "hash": "01719168102d",
+  "verdict": "pass",
+  "summary": "test_nested_workflow_nodes_are_user_gates checks advanced_by==USER on real vendored REVIEW nodes (no actor), which only holds because project_states' elif node.workflow branch explicitly sets USER instead of falling into the AGENT else-branch, so the assertion genuinely fails if that branch is removed or inverted",
+  "timestamp": "2026-09-03T04:01:01.872Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-022.2.1--a96f905e094e",
+  "requirementId": "REQ-022.2.1",
+  "hash": "a96f905e094e",
+  "verdict": "pass",
+  "summary": "New outfitter-* workflows inherit the empty default image_layer(); test_images.py's live regex scan over discover_workflows() and test_workflow_image_layers.py's exact per-workflow hash gate both catch a reintroduced gh install (verified by monkeypatching a violating layer, which both tests would flag).",
+  "timestamp": "2026-09-03T04:09:35.121Z"
+}

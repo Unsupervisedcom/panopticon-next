@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.2--db473856c918",
+  "requirementId": "outfitter-workflows.1.2",
+  "hash": "db473856c918",
+  "verdict": "pass",
+  "summary": "test_vendored_packages_match_their_pins_and_load runs the real load path (digest check, YAML parse, contract validation) for all 4 packages and asserts node ids against an independent PINNED_NODE_IDS table, not derived from the code under test; confirmed by inspecting load_catalog_workflow (no mocking) and cross-checking vendored YAML node lists.",
+  "timestamp": "2026-09-03T04:01:43.876Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.5.3--10970e4d2ece",
+  "requirementId": "outfitter-workflows.5.3",
+  "hash": "10970e4d2ece",
+  "verdict": "pass",
+  "summary": "test_skills_follow_the_package_actions asserts OutfitterFounder().skills() == ['push-branch'] against the real vendored founder package (push-as-human node) with substantive instructions checked, and confirms engineer/software-factory (no push-as-human node) omit it — a genuine, non-mocked behavioral check.",
+  "timestamp": "2026-09-03T04:01:08.100Z"
+}

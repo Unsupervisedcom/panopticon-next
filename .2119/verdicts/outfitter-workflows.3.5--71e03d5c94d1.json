@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.3.5--71e03d5c94d1",
+  "requirementId": "outfitter-workflows.3.5",
+  "hash": "71e03d5c94d1",
+  "verdict": "pass",
+  "summary": "Test exercises real vendored catalog packages end-to-end and distinguishes profile (resident-engineer) from actor id (resident), so a bug that named the actor instead of its profile would be caught.",
+  "timestamp": "2026-09-03T04:00:55.727Z"
+}
