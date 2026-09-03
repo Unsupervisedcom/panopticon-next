@@ -5,7 +5,8 @@ organization workflows as typed graphs (`workflows/<id>/workflow.yaml`): who act
 tool, or system actors), where (environments), with what (integrations), and a DAG of nodes that
 each perform an action or delegate to a nested workflow. Outfitter validates and distributes these
 packages and deliberately never executes them. Panopticon runs lifecycles of exactly this shape,
-so its three canonical implementation-plan packages ship here as workflows:
+so **every package your `.agents` root provides registers as a workflow named `outfitter-<id>`** —
+no per-package code. The canonical implementation-plan packages look like:
 
 | Workflow | Package | Lifecycle |
 |---|---|---|
@@ -15,11 +16,16 @@ so its three canonical implementation-plan packages ship here as workflows:
 
 (plus `DROPPED`, reachable from any state.)
 
-The packages are vendored **byte-for-byte** from community-profiles
-[v1.6.0](https://github.com/ai-outfitter/community-profiles/releases/tag/v1.6.0) under
-`src/panopticon/workflows/outfitter/` and hash-pinned in `outfitter_catalog.py`. A drifted copy
-fails to load; upgrading is an explicit change to the file and its digest. The `adversarial-review`
-package is vendored too, because all three nest it.
+The packages are resolved through the operator's Outfitter **`.agents` root**
+(`$PANOPTICON_AGENTS`, default `~/.agents`) when the service builds its workflow registry — the
+same layered graph Outfitter resolves: the root's own `workflows/` directory first, then each
+`sources` entry of `settings.yml` (`settings.local.yml` replaces the list wholesale) in listed
+order, a remote source at the checkout Outfitter caches under `cache/repos/`. Nothing is
+vendored: the pin is the source ref in the `.agents` settings, so upgrading the catalog is an
+`.agents` change, not a Panopticon release. On a host
+whose root does not provide the packages, discovery skips these workflows with a log line — never
+a startup failure. The `adversarial-review` package must be present too, because all three nest
+it.
 
 All three are **opt-in**: enable them for a repo before they appear in the task-creation picker.
 
@@ -35,7 +41,9 @@ Panopticon's, not the catalog's:
 | Actor is a `human` | Your work: entered on your turn, user-advanced, no agent responsibilities. |
 | Actor is a `system` (the platform merging after every gate) | Observed by the agent, which advances once the platform has acted. |
 
-Packages whose nodes fan in or out are rejected: a Panopticon happy path is a line.
+Packages whose nodes fan in or out are skipped with a log line (a Panopticon happy path is a
+line), as is any package that fails Outfitter's contract — one broken package never blocks the
+rest of the catalog or service startup.
 
 ## Lifecycles
 
@@ -92,7 +100,8 @@ lifecycle without Outfitter's composed profile.
 
 ## What is not projected
 
-Panopticon does not sync or resolve an Outfitter catalog at runtime, and it does not compose the
+Panopticon never fetches or syncs a catalog itself — it reads only what Outfitter has already
+checked out under the `.agents` root — and it does not compose the
 packages' agent profiles, skills, prompt fragments, or MCP declarations. Environments and
 integrations are surfaced in the state descriptions for the agent, not provisioned.
 

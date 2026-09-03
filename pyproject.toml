@@ -43,7 +43,6 @@ include = [
   "src/panopticon/sessionservice/task_lib.sh",
   "src/panopticon/workflows/setup_repo.sh",
   "src/panopticon/workflows/setup_repo_lib.sh",
-  "src/panopticon/workflows/outfitter/*/workflow.yaml",
 ]
 
 [tool.pytest.ini_options]

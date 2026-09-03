@@ -5,9 +5,11 @@
 Outfitter's community catalog publishes organization workflows as typed graphs
 (`workflows/<id>/workflow.yaml`): actors, environments, integrations, and a DAG of nodes that each
 perform an action or delegate to a nested workflow. Outfitter validates and distributes these
-packages but never executes them. Panopticon runs lifecycles of exactly this shape, so the three
-canonical implementation-plan packages — `founder`, `engineer`, and `software-factory` — are
-vendored from a pinned community-profiles release and projected onto Panopticon workflows.
+packages but never executes them. Panopticon runs lifecycles of exactly this shape, so every package the
+operator's Outfitter `.agents` root provides is read and projected onto a Panopticon workflow —
+no per-package code. Nothing is vendored: whatever catalog the root's `workflows/` directory
+carries is what runs; the canonical implementation-plan packages (`founder`, `engineer`,
+`software-factory`) are the motivating examples.
 
 The projection keeps ADR 0004's rule that a workflow is code: the package supplies the node chain
 and its descriptions, while Python owns the gate policy, the skills, and the tools. Each node
@@ -17,14 +19,19 @@ declared reviewer launch pair engages the governed review task of `REQ-013` on e
 
 ## Requirements
 
-### 1: Pinned vendored packages
+### 1: Catalog resolution
 
-1. Loading a vendored package whose content digest differs from its pinned digest MUST fail with
-   an error that names the package and the pinned catalog release.
-2. The vendored `founder`, `engineer`, `software-factory`, and `adversarial-review` packages MUST
-   each load with the node ids the pinned community-profiles release declares for them.
-3. Loading a package whose node references a nested workflow that is not a loadable vendored
-   package MUST fail.
+1. A package MUST be resolved through the Outfitter `.agents` root — `$PANOPTICON_AGENTS`,
+   defaulting to `~/.agents` — never from files shipped inside this repository.
+2. Resolution MUST take the first `workflows/<id>/workflow.yaml` provided by the root itself and
+   then by each `settings.yml` source in listed order.
+3. A remote source MUST resolve at the root's `cache/repos/` checkout keyed by the unpadded
+   URL-safe base64 of `<uri>#<ref>`, a `github` shorthand normalizing to
+   `git+https://github.com/<owner>/<repo>.git`.
+4. A `sources` list in `settings.local.yml` MUST replace the `settings.yml` list wholesale.
+5. Loading a package that no layer provides MUST fail with an error naming the package and the
+   root.
+6. Loading a package whose node references a nested workflow that no layer provides MUST fail.
 
 ### 2: Contract validation
 
@@ -51,9 +58,13 @@ declared reviewer launch pair engages the governed review task of `REQ-013` on e
 
 ### 4: Registration
 
-1. Workflow discovery MUST register `outfitter-founder`, `outfitter-engineer`, and
-   `outfitter-software-factory` as opt-in workflows.
+1. Workflow discovery MUST register `outfitter-<id>` as an opt-in workflow for every package the
+   `.agents` root provides that loads, validates, and projects — with no per-package code.
 2. Each registered Outfitter workflow MUST leave `review_harness` and `review_model` unset.
+3. When the `.agents` root provides no packages, discovery MUST complete without failing and
+   without registering any Outfitter workflow.
+4. A provided package that fails validation or projection MUST be skipped with a diagnostic,
+   leaving every other package and workflow registered.
 
 ### 5: Skills and tools
 
@@ -67,8 +78,9 @@ declared reviewer launch pair engages the governed review task of `REQ-013` on e
 
 ## Non-goals
 
-- Panopticon does not sync, resolve, or execute an Outfitter catalog at runtime; the packages are
-  vendored and upgraded by an explicit change to the file and its digest.
+- Panopticon never fetches or syncs a catalog itself: it reads only what Outfitter has already
+  checked out under the `.agents` root, and upgrading the catalog is a change to that root's
+  pinned sources, not to Panopticon.
 - Outfitter's agent profiles, skills, prompt fragments, and MCP declarations are not composed by
   Panopticon; a task's harness and model remain the operator's choice.
 - Packages whose nodes fan in or fan out are outside this change.

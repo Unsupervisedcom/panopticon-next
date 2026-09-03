@@ -1,6 +1,8 @@
 """Discover ``Workflow`` subclasses on a package/path — the registry the task service runs on (Slice 8).
 
-Scans the built-in :mod:`panopticon.workflows` package, then
+Scans the built-in :mod:`panopticon.workflows` package (a module may also expose a
+``workflow_provider()`` yielding ready-made instances — e.g. one per Outfitter catalog package
+found under the operator's ``.agents`` root), then
 ``$XDG_CONFIG_HOME/panopticon/workflows/`` (``~/.config/panopticon/workflows/`` when unset,
 if it exists), then an optional extra directory for concrete ``Workflow`` subclasses, instantiates
 each (instantiation **validates** it — states, transitions, the required terminal state), and keys
@@ -23,7 +25,7 @@ from pathlib import Path
 from types import ModuleType
 
 from panopticon.core.dirs import user_config_dir
-from panopticon.core.workflow import Workflow
+from panopticon.core.workflow import Workflow, WorkflowUnavailable
 from panopticon.harnesses import HARNESSES
 
 #: Module namespace for directory-discovered workflows (kept distinct from the package's).
@@ -90,11 +92,29 @@ def discover_workflows(
     if path:
         modules += list(_directory_modules(Path(path)))
     registry: dict[str, Workflow] = {}
-    for module in modules:
+
+    def instantiated(module: ModuleType) -> Iterator[tuple[Workflow, str]]:
         for cls in _concrete_workflows(module):
-            workflow = cls()  # instantiation validates the workflow (raises InvalidWorkflow)
+            try:
+                # instantiation validates the workflow (raises InvalidWorkflow)
+                yield cls(), f"{cls.__module__}.{cls.__name__}"
+            except WorkflowUnavailable as unavailable:
+                _log.warning(
+                    "skipping unavailable workflow %s.%s: %s",
+                    cls.__module__,
+                    cls.__name__,
+                    unavailable,
+                )
+        provider = getattr(module, "workflow_provider", None)
+        if callable(provider):
+            for workflow in provider():  # the provider skips/raises per its own contract
+                yield workflow, f"{module.__name__}.workflow_provider"
+
+    for module in modules:
+        for workflow, provenance in instantiated(module):
             workflow.validate_registration(HARNESSES)
             if workflow.name in registry:
+                cls = type(workflow)
                 source = inspect.getsourcefile(cls)
                 if (
                     source is not None
@@ -108,14 +128,9 @@ def discover_workflows(
                     )
                 if _skip_duplicates:
                     _log.warning(
-                        "skipping duplicate workflow name %r from %s.%s",
-                        workflow.name,
-                        cls.__module__,
-                        cls.__name__,
+                        "skipping duplicate workflow name %r from %s", workflow.name, provenance
                     )
                     continue
-                raise ValueError(
-                    f"duplicate workflow name {workflow.name!r} (from {cls.__module__}.{cls.__name__})"
-                )
+                raise ValueError(f"duplicate workflow name {workflow.name!r} (from {provenance})")
             registry[workflow.name] = workflow
     return registry
