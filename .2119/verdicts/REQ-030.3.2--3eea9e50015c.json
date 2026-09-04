@@ -1,8 +1,0 @@
-{
-  "reviewId": "REQ-030.3.2--3eea9e50015c",
-  "requirementId": "REQ-030.3.2",
-  "hash": "3eea9e50015c",
-  "verdict": "pass",
-  "summary": "All four call sites (local/shell runner spawn, dashboard ensure, start-sessions) plus the console has-session probe assert -f precedes new-session and the -f config carries history-limit 50000; the nearest violation (-f after new-session → stock 2000 pane) fails the index assertion; command-runner injection is the designed seam, not over-mocking.",
-  "timestamp": "2026-09-04T10:29:15.420Z"
-}

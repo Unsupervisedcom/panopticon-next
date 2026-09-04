@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.5.1--3e1319900a27",
+  "requirementId": "REQ-030.5.1",
+  "hash": "3e1319900a27",
+  "verdict": "pass",
+  "summary": "Both runner variants are exercised with tmux_socket=None and assert their complete emitted tmux command sequences; adding any -f/set-option/bind-key path for any REQ-030.1/.2 default would fail the exact-sequence checks (and the shell command hash).",
+  "timestamp": "2026-09-04T11:46:34.647Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.3.2--0c49ab60dd84",
+  "requirementId": "REQ-030.3.2",
+  "hash": "0c49ab60dd84",
+  "verdict": "pass",
+  "summary": "Every Panopticon pane-creating path loads a config containing history-limit 50000 via -f before new-session; bare list/kill probes create no pane and a fresh sessionless server exits, so no used pane can precede the option.",
+  "timestamp": "2026-09-04T11:47:31.131Z"
+}

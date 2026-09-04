@@ -1,8 +1,0 @@
-{
-  "reviewId": "REQ-030.1.1--ba067c4f3f79",
-  "requirementId": "REQ-030.1.1",
-  "hash": "ba067c4f3f79",
-  "verdict": "pass",
-  "summary": "Real-tmux integration tests create a session on the dedicated -L socket and assert 'mouse on' (globally and effective on the session) via the production config; a non-skipped unit test asserts the shipped config sets 'mouse on'; stock mouse-off and non-socket sessions (REQ-030.5.1) are rejected.",
-  "timestamp": "2026-09-04T10:25:22.177Z"
-}

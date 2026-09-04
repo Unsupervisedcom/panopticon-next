@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.47.1--8d2c3e3bf4e0",
+  "requirementId": "REQ-035.47.1",
+  "hash": "8d2c3e3bf4e0",
+  "verdict": "pass",
+  "summary": "Runner evidence preserves upper/lower proxy-bypass entries and overrides the env-file with the service host; real native MCP traffic proves the proxy is not contacted.",
+  "timestamp": "2026-09-04T11:45:58.625Z"
+}

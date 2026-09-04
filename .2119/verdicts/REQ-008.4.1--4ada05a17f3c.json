@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-008.4.1--4ada05a17f3c",
+  "requirementId": "REQ-008.4.1",
+  "hash": "4ada05a17f3c",
+  "verdict": "pass",
+  "summary": "Claude's native UserPromptSubmit wiring invokes the synchronous agent-turn callback, and a gated client proves the hook cannot exit before a successful write completes; background-task suppression is rejected.",
+  "timestamp": "2026-09-04T11:46:38.273Z"
+}

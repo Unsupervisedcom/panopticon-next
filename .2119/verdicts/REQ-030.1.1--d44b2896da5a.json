@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.1.1--d44b2896da5a",
+  "requirementId": "REQ-030.1.1",
+  "hash": "d44b2896da5a",
+  "verdict": "pass",
+  "summary": "Generated config requires mouse on, real-tmux tests verify it globally and effectively on fresh dedicated-socket sessions, and production container/shell creation paths assert the same outcome.",
+  "timestamp": "2026-09-04T11:46:39.991Z"
+}

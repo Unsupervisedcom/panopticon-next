@@ -59,7 +59,6 @@ def _volume_sources_for(argv: list[str], destination: str) -> list[str]:
     return sources
 
 
-# 2119: enforced-mode-cutover-runbook.5.1, enforced-mode-cutover-runbook.5.2
 def test_config_volume_inspection_counts_both_docker_mount_syntaxes() -> None:
     destination = "/home/panopticon/.codex"
     command = [
@@ -356,7 +355,6 @@ def test_spawn_mounts_the_per_task_clone_as_the_workspace() -> None:
     assert docker_run[docker_run.index("--workdir") + 1] == "/workspace"  # the agent's working dir
 
 
-# 2119: enforced-mode-cutover-runbook.5.1
 def test_stop_and_respawn_preserve_the_config_volume_for_claude_history() -> None:
     rec = _Recorder()
     runner = LocalRunner("http://svc", run=rec)
@@ -370,7 +368,6 @@ def test_stop_and_respawn_preserve_the_config_volume_for_claude_history() -> Non
     assert not any(call[0][:2] == ["docker", "volume"] for call in rec.calls)
 
 
-# 2119: enforced-mode-cutover-runbook.5.2
 def test_stop_and_respawn_preserve_the_config_volume_for_codex_history() -> None:
     rec = _Recorder()
     runner = LocalRunner("http://svc", run=rec)

@@ -7,5 +7,8 @@ if [[ ! -d "${source_root}" ]]; then
 fi
 
 purelib="${PANOPTICON_PURELIB:-$(python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')}"
-rm --recursive --force "${purelib}/panopticon"
-cp --archive "${source_root}" "${purelib}/panopticon"
+# This asset runs in Linux images and in the host-side package replacement test. macOS's BSD
+# userland does not implement GNU's --recursive/--force/--archive spellings; -rf/-a preserve the
+# same remove-then-copy semantics on both hosts.
+rm -rf -- "${purelib}/panopticon"
+cp -a "${source_root}" "${purelib}/panopticon"

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.3.1--b2d9dbd28078",
+  "requirementId": "REQ-030.3.1",
+  "hash": "b2d9dbd28078",
+  "verdict": "pass",
+  "summary": "Container, shell, integrated-stack, and dashboard creators each load the complete tested defaults config via -f before new-session; real tmux validates application and the AST guard rejects bypass constructors.",
+  "timestamp": "2026-09-04T11:46:41.388Z"
+}
