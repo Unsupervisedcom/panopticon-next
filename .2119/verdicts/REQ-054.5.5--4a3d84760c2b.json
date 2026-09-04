@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.5.5--4a3d84760c2b",
+  "requirementId": "REQ-054.5.5",
+  "hash": "4a3d84760c2b",
+  "verdict": "pass",
+  "summary": "Tests reject unsafe secrets dir (0755) and env pathname (0644/dir/symlink), asserting the path appears in the error; creates-test is the safe-path positive control proving the raise is conditional. No over-mocking (only user_config_dir redirected; real fs safety checks run).",
+  "timestamp": "2026-09-04T10:30:10.682Z"
+}

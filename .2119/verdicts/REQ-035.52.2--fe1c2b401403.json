@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.52.2--fe1c2b401403",
+  "requirementId": "REQ-035.52.2",
+  "hash": "fe1c2b401403",
+  "verdict": "pass",
+  "summary": "Disabled-mode test invokes real _ensure_integrated_auth on a real fs and asserts both conjuncts: no credential created (not lexists destination) and no implicit selection (SERVICE_AUTH_FILE absent from environ); each violation is rejected.",
+  "timestamp": "2026-09-04T09:41:50.864Z"
+}

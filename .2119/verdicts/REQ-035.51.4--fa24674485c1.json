@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.51.4--fa24674485c1",
+  "requirementId": "REQ-035.51.4",
+  "hash": "fa24674485c1",
+  "verdict": "pass",
+  "summary": "Real 8-thread concurrent test on a shared secrets dir asserts all callers converge on one credential (references agree, no leftover .task-service-auth-* temps), the file is complete (load_tokens/_parse_tokens re-parses it), and it holds exactly one write token (read==(), len(write)==1); torn writes, token accumulation, and temp leaks each fail it.",
+  "timestamp": "2026-09-04T10:07:12.994Z"
+}

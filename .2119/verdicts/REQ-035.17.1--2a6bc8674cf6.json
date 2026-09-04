@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.17.1--2a6bc8674cf6",
+  "requirementId": "REQ-035.17.1",
+  "hash": "2a6bc8674cf6",
+  "verdict": "pass",
+  "summary": "Docker+shell no-env_file spawns are verified end-to-end: real LocalRunner/ShellRunner inject the credential via a separate mounted /run/secrets file or exported auth-file snapshot (never argv/--env-file), and executed sh+curl fakes confirm the injected token is used for shared-client, liveness, and shell-library requests; each conjunct has a rejecting assertion.",
+  "timestamp": "2026-09-04T11:31:46.002Z"
+}

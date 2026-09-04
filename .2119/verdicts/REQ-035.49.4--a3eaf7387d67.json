@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.49.4--a3eaf7387d67",
+  "requirementId": "REQ-035.49.4",
+  "hash": "a3eaf7387d67",
+  "verdict": "pass",
+  "summary": "test_configured_credential_without_mode_selects_enforced drives real _ensure_integrated_auth: asserts mode becomes enforced, configured file preserved (inode/bytes/mode/uid), env token drawn from that file, and no new credential appears in secrets dir; nearest violations fail.",
+  "timestamp": "2026-09-04T10:32:23.638Z"
+}

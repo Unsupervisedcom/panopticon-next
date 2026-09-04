@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.3.3--b6a48fbf10be",
+  "requirementId": "REQ-054.3.3",
+  "hash": "b6a48fbf10be",
+  "verdict": "pass",
+  "summary": "Ordering test drives real main() routing for all three named commands (tasks/dashboard/console), asserting _select_existing_integrated_auth runs before _make_client; a companion test pins that the selection actually resolves the bootstrap credential. Reversing order or skipping selection fails.",
+  "timestamp": "2026-09-04T09:59:58.747Z"
+}

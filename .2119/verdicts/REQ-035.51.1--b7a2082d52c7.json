@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.51.1--b7a2082d52c7",
+  "requirementId": "REQ-035.51.1",
+  "hash": "b7a2082d52c7",
+  "verdict": "pass",
+  "summary": "Real-filesystem test creates a valid bootstrap credential, calls ensure_bootstrap_credential again, and asserts same reference plus unchanged st_ino/st_mode/st_uid and byte-identical contents (which entails token order); would fail on any rewrite, reorder, chmod, or chown. No mocks; not tautological.",
+  "timestamp": "2026-09-04T10:03:00.516Z"
+}

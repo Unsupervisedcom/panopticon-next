@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.20.1--2caba3b724b3",
+  "requirementId": "REQ-035.20.1",
+  "hash": "2caba3b724b3",
+  "verdict": "pass",
+  "summary": "Test exercises real setup_repo_lib functions with a credential file carrying distinct read/write tokens; asserts all three calls (task GET, repo GET, credential-dir PATCH) carry the write token via stdin config and that the token never appears in captured argv. Counterexamples (read-token reuse, missing operation, token in --header) each fail an assertion.",
+  "timestamp": "2026-09-04T11:30:26.727Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.28.1--f655468e2c07",
+  "requirementId": "REQ-035.28.1",
+  "hash": "f655468e2c07",
+  "verdict": "pass",
+  "summary": "LocalRunner/ShellRunner/host.main tests parametrize missing+non-file (dir/fifo/socket/symlink) refs: assert ValueError, injected command-runner records zero docker/tmux calls (fail-before), missing path stays absent, and non-file entries unchanged via inode/stat compare. All three conjuncts genuinely verified; not tautological or over-mocked.",
+  "timestamp": "2026-09-04T08:59:16.298Z"
+}

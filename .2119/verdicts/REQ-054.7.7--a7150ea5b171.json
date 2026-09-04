@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.7--a7150ea5b171",
+  "requirementId": "REQ-054.7.7",
+  "hash": "a7150ea5b171",
+  "verdict": "pass",
+  "summary": "Driver enacts every post-setup task mutation only via the PTY (n/picker/prompt for creation; /advance|$advance to the real agent) and uses task-service REST solely for GET reads (write_token never writes); no mutating REST/MCP call, fixture, or seeded task exists, and the state-wait gates have no mutation fallback, so a green run is only reachable if real user inputs drove the transitions.",
+  "timestamp": "2026-09-04T11:34:16.891Z"
+}

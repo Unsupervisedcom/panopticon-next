@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.6.3--0b22b7cf89ef",
+  "requirementId": "REQ-054.6.3",
+  "hash": "0b22b7cf89ef",
+  "verdict": "pass",
+  "summary": "Real subprocess-invoked 'panopticon stop' run twice against on-disk repo config, credentials, task DB, and retained artifacts; snapshot of bytes+inode+mode+uid asserted unchanged, so any delete/modify/replace fails the test. Stop impl only removes containers/tmux (mocked), touching no files.",
+  "timestamp": "2026-09-04T10:35:33.935Z"
+}

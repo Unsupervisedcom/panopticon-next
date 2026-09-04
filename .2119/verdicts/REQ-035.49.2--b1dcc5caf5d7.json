@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.49.2--b1dcc5caf5d7",
+  "requirementId": "REQ-035.49.2",
+  "hash": "b1dcc5caf5d7",
+  "verdict": "pass",
+  "summary": "Test drives real zero-config bootstrap with both env vars unset (conftest fixture), then asserts AUTH_FILE=task-service-auth.json and AUTH_MODE=enforced and reads the credential back via environment_token/load_tokens, which resolve under _secrets_dir; wrong filename, wrong mode, or a file outside the secrets dir all fail. Non-tautological, not over-mocked.",
+  "timestamp": "2026-09-04T09:49:04.304Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-005.4.1--ffaf8839d09c",
+  "requirementId": "REQ-005.4.1",
+  "hash": "ffaf8839d09c",
+  "verdict": "pass",
+  "summary": "test_harness_auth_dispatch_routes_outfitter_through_pi runs the real dispatch_harness_auth (only setup_pi_auth is stubbed) and asserts profiles.is_dir() with 0o700 across all-missing, root-exists, and outfitter-exists depths, plus a rerun proving idempotency ('including when it already exists'); would fail if mkdir -p were broken or non-idempotent.",
+  "timestamp": "2026-09-04T11:28:22.674Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.6--626d489bc4d9",
+  "requirementId": "REQ-054.7.6",
+  "hash": "626d489bc4d9",
+  "verdict": "pass",
+  "summary": "Live journey creates the coding task via dashboard 'n'/repo-picker/workflow-select/prompt PTY inputs and drives both human approvals (PLANNING→ITERATING, ITERATING→MERGING) by typing the harness advance command into the attached agent pane; API reads are observation-only and any broken UI path fails via timeout.",
+  "timestamp": "2026-09-04T11:33:14.820Z"
+}

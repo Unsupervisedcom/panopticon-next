@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.3.2--335b48ccba83",
+  "requirementId": "REQ-054.3.2",
+  "hash": "335b48ccba83",
+  "verdict": "pass",
+  "summary": "Restart test supplies a valid credential with run=session-exists(rc0) and asserts AUTH_FILE=reference + MODE=enforced unchanged, rejecting a refuse-when-session-exists impl (paired with 49.6 gating refusal on credential absence); entrypoint test parametrizes start/host/quickstart and proves each routes into _ensure_integrated_auth. Real credential reuse, only the tmux probe faked — genuine, not tautological.",
+  "timestamp": "2026-09-04T09:58:03.150Z"
+}

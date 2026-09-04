@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.52.4--f95242e03a6c",
+  "requirementId": "REQ-035.52.4",
+  "hash": "f95242e03a6c",
+  "verdict": "pass",
+  "summary": "test_disabled_integrated_service_defaults_to_loopback drives real _start_sessions with AUTH_MODE=disabled and no PANOPTICON_HOST, asserting --host 127.0.0.1 across darwin/linux/win32; the Linux/Windows cases are genuine counterexamples since enforced default is 0.0.0.0, so a non-loopback bind would fail.",
+  "timestamp": "2026-09-04T09:06:00.338Z"
+}

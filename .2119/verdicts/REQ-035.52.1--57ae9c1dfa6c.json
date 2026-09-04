@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.52.1--57ae9c1dfa6c",
+  "requirementId": "REQ-035.52.1",
+  "hash": "57ae9c1dfa6c",
+  "verdict": "pass",
+  "summary": "test_explicit_disabled_mode_does_not_touch_the_bootstrap_path runs the real _ensure_integrated_auth with PANOPTICON_SERVICE_AUTH_MODE=disabled and asserts the mode stays 'disabled'; a violating impl that forced bootstrap/enforced (the function's own default path sets enforced) would flip the env var and fail the assertion.",
+  "timestamp": "2026-09-04T10:08:09.790Z"
+}

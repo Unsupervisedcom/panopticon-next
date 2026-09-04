@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-005.2.1--4b6759f4f2b0",
+  "requirementId": "REQ-005.2.1",
+  "hash": "4b6759f4f2b0",
+  "verdict": "pass",
+  "summary": "test_outfitter_uses_real_pi_auth_conditions sources the real setup_pi_auth and real pi_repo_auth_configured (not stubbed) and asserts outfitter's output equals pi's byte-for-byte (minus the notice line) across all three offer/skip-determining inputs: env-file API key (skip), credential_dir auth.json (skip), and neither (offer prompt); divergence in any condition would fail the equality.",
+  "timestamp": "2026-09-04T11:29:06.199Z"
+}

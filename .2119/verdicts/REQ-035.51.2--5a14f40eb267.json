@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.51.2--5a14f40eb267",
+  "requirementId": "REQ-035.51.2",
+  "hash": "5a14f40eb267",
+  "verdict": "pass",
+  "summary": "Real-FS parametrized test rejects each enumerated bad-object kind (invalid/insecure/directory/symlink-to-valid-target) with ValueError and asserts inode/mode/uid/bytes/symlink-target unchanged, so a repair-and-proceed violation would fail; no mocks.",
+  "timestamp": "2026-09-04T10:04:11.906Z"
+}

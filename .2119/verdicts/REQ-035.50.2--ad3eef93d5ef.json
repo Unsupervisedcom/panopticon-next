@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.50.2--ad3eef93d5ef",
+  "requirementId": "REQ-035.50.2",
+  "hash": "ad3eef93d5ef",
+  "verdict": "pass",
+  "summary": "Genuine: test asserts lstat-based non-symlink + S_ISREG regular-file + exact 0o600 mode + st_uid==geteuid on a really-written credential (lstat correctly defeats a symlink-to-0600-file); atomicity's observable consequences covered by sibling 51.4/50.4 tests.",
+  "timestamp": "2026-09-04T09:59:28.593Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.49.5--ed7890a23d75",
+  "requirementId": "REQ-035.49.5",
+  "hash": "ed7890a23d75",
+  "verdict": "pass",
+  "summary": "Covering test rejects both triggers (enforced mode with unset auth-file reference -> 'credential file is required'; unrecognized mode -> 'mode must be disabled or enforced') and enforces the fail-before-session obligation via an injected run callback that fails if tmux is probed; not tautological/over-mocked.",
+  "timestamp": "2026-09-04T09:54:49.483Z"
+}

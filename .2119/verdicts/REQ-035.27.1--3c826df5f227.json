@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.27.1--3c826df5f227",
+  "requirementId": "REQ-035.27.1",
+  "hash": "3c826df5f227",
+  "verdict": "pass",
+  "summary": "All three conjuncts covered: enforced/disabled mode reported (exact-string asserts in subprocess + build_app tests), disabled reported at WARNING level (level-exact list assert rejects INFO near-miss), and docs/auth.md documents enforced as steady-state while rejecting permissive; real subprocess + caplog, no mocks or tautologies.",
+  "timestamp": "2026-09-04T10:30:48.112Z"
+}

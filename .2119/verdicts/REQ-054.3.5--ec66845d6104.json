@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.3.5--ec66845d6104",
+  "requirementId": "REQ-054.3.5",
+  "hash": "ec66845d6104",
+  "verdict": "pass",
+  "summary": "Genuine read-path coverage: _select_existing_integrated_auth actually reads (env token matches loaded write token), then before/after lstat asserts st_ino (create/replace), read_bytes (modify), st_mode (chmod), and st_uid (chown) all unchanged; real tmpfs, no mocking of the constrained behavior.",
+  "timestamp": "2026-09-04T10:02:05.791Z"
+}

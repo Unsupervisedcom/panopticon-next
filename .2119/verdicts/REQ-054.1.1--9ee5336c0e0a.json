@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.1.1--9ee5336c0e0a",
+  "requirementId": "REQ-054.1.1",
+  "hash": "9ee5336c0e0a",
+  "verdict": "pass",
+  "summary": "Test reads real README.md and getting-started.md, requires the immutable pin 'pipx install panopticon-app==0.0.6' in both, and rejects mutable alternatives (@main, git+); unpinned/mutable docs would fail.",
+  "timestamp": "2026-09-04T10:34:27.579Z"
+}

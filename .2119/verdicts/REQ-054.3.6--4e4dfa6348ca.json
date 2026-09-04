@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.3.6--4e4dfa6348ca",
+  "requirementId": "REQ-054.3.6",
+  "hash": "4e4dfa6348ca",
+  "verdict": "pass",
+  "summary": "test_client_only_selection_rejects_unsafe_bootstrap_without_mutation drives the real _select_existing_integrated_auth over a real (symlink / 0644-insecure) default credential and asserts it raises ValueError before returning; the helper constructs no client, and REQ-054.3.3's ordering test proves auth-select runs before _make_client, so an invalid credential genuinely fails before client construction. Real filesystem, no over-mocking; a regression that accepted the bad credential would fail the raises assertion.",
+  "timestamp": "2026-09-04T10:04:03.575Z"
+}

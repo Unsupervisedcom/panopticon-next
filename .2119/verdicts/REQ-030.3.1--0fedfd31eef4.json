@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.3.1--0fedfd31eef4",
+  "requirementId": "REQ-030.3.1",
+  "hash": "0fedfd31eef4",
+  "verdict": "pass",
+  "summary": "All four named paths (container/shell runner, integrated-stack _start_sessions, dashboard) assert argv 'tmux -L panopticon -f <config> new-session' with config == full server_default_config_text; .3.2 pins -f before new-session; AST scope test forbids any bypassing 'new-session' literal outside tmux_defaults.py. Nearest violations fail.",
+  "timestamp": "2026-09-04T10:27:35.364Z"
+}

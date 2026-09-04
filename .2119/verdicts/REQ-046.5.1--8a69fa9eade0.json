@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-046.5.1--8a69fa9eade0",
+  "requirementId": "REQ-046.5.1",
+  "hash": "8a69fa9eade0",
+  "verdict": "pass",
+  "summary": "Test unwraps the docs/auth.md paragraph (splitlines+join) and asserts exact equality to the required verbatim text; string equality is the correct criterion for a verbatim-text MUST, and changed/added/removed text or a missing paragraph all fail.",
+  "timestamp": "2026-09-04T09:44:22.723Z"
+}

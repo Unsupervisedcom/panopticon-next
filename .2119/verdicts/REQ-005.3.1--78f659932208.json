@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-005.3.1--78f659932208",
+  "requirementId": "REQ-005.3.1",
+  "hash": "78f659932208",
+  "verdict": "pass",
+  "summary": "Genuine: real dispatch_harness_auth sourced (only setup_pi_auth stubbed); len(lines)==2 + notice in lines[0] rejects both no-notice and multi-line-notice counterexamples, verifying the one-line 'Outfitter uses Pi credentials' notice.",
+  "timestamp": "2026-09-04T11:28:12.123Z"
+}

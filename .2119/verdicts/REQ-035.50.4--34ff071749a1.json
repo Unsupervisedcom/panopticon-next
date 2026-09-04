@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.50.4--34ff071749a1",
+  "requirementId": "REQ-035.50.4",
+  "hash": "34ff071749a1",
+  "verdict": "pass",
+  "summary": "All five conjuncts (stdout, stderr, logs, process args, exception text) rejected with a fixed-sentinel generated token: capsys checks out/err, caplog checks logs, patched subprocess.run asserted not-called for process args, and a forced os.link failure asserts the token is absent from exception text; no tautology or bypassing mocks.",
+  "timestamp": "2026-09-04T10:02:00.747Z"
+}

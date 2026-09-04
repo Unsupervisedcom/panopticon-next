@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.29.1--e7343ea65b65",
+  "requirementId": "REQ-035.29.1",
+  "hash": "e7343ea65b65",
+  "verdict": "pass",
+  "summary": "Genuine coverage of all three conjuncts: Linux integrated non-disabled bind=0.0.0.0 (test_integrated_service_uses_static_platform_default + test_integrated_stack_explicitly_exposes_service_to_linux_containers), standalone stays 127.0.0.1 (test_standalone_service_retains_loopback_default via real uvicorn.run kwarg), disabled integrated stays 127.0.0.1 (test_disabled_integrated_service_defaults_to_loopback). Darwin/disabled counterexamples asserted-rejected, empty PANOPTICON_HOST tested as the nonempty boundary; host value computed by real code, only tmux faked.",
+  "timestamp": "2026-09-04T09:01:35.442Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.8--c6b6f8d35039",
+  "requirementId": "REQ-054.7.8",
+  "hash": "c6b6f8d35039",
+  "verdict": "pass",
+  "summary": "Live PTY acceptance drives real 'panopticon quickstart', presses 't' and asserts the sole tmux client moves to the task session, sends the documented Ctrl-b d chord, and proves return via pane-id equality to the pre-excursion dashboard (rejects a respawned dashboard).",
+  "timestamp": "2026-09-04T11:35:37.511Z"
+}

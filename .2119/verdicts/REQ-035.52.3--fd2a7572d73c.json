@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.52.3--fd2a7572d73c",
+  "requirementId": "REQ-035.52.3",
+  "hash": "fd2a7572d73c",
+  "verdict": "pass",
+  "summary": "Disabled-mode _ensure_integrated_auth returns before any credential write; test pre-seeds a valid bootstrap file and asserts existence, contents, inode, mode, uid, and size all unchanged, rejecting any rewrite/delete/replace/chmod violation.",
+  "timestamp": "2026-09-04T10:33:26.032Z"
+}

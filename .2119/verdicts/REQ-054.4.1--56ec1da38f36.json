@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.4.1--56ec1da38f36",
+  "requirementId": "REQ-054.4.1",
+  "hash": "56ec1da38f36",
+  "verdict": "pass",
+  "summary": "Union genuinely tested: setup_repo dedup test starts from [custom, github-peer-reviewed] and asserts persisted [custom, github-peer-reviewed, github-self-reviewed] (survives prior entry, adds missing forge workflow, no duplicate); local-path cases reject the non-GitHub boundary.",
+  "timestamp": "2026-09-04T10:44:07.594Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.50.3--82f32a94884c",
+  "requirementId": "REQ-035.50.3",
+  "hash": "82f32a94884c",
+  "verdict": "pass",
+  "summary": "test_bootstrap_never_repairs_or_replaces_an_invalid_destination exercises all four destination kinds (invalid/insecure/directory/symlink) on the real FS: asserts lstat (dev/ino/mode/uid/size) + bytes unchanged (proves no replace) and requires ValueError with symlink target bytes unchanged (proves no follow-through); each conjunct has a rejected counterexample.",
+  "timestamp": "2026-09-04T10:00:44.254Z"
+}

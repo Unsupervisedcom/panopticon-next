@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.3.7--96839cdc9780",
+  "requirementId": "REQ-054.3.7",
+  "hash": "96839cdc9780",
+  "verdict": "pass",
+  "summary": "Test plants a recognizable token in an invalid client-only credential (insecure + symlink), drives the real _select_existing_integrated_auth, and asserts the token is absent from the raised failure; genuinely rejects credential-contents leaking into the failure, no over-mocking or tautology.",
+  "timestamp": "2026-09-04T10:05:49.076Z"
+}

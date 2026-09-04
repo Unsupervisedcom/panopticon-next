@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.30.1--c69dc7793c22",
+  "requirementId": "REQ-035.30.1",
+  "hash": "c69dc7793c22",
+  "verdict": "pass",
+  "summary": "Test drives a real enforced-auth app under root_path=/proxy (and via raw ASGI for /runners), asserting read tokens get 401 while write tokens pass on liveness + MCP GET/POST/DELETE; the read->401 assertion fails if authz classified on the full prefixed path. Adds root_path=/ parity and collision-prefix (/task,/runner,/m) boundary cases. No mocks.",
+  "timestamp": "2026-09-04T09:03:30.126Z"
+}

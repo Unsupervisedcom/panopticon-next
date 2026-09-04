@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.2.1--d44b9c58c4c9",
+  "requirementId": "REQ-054.2.1",
+  "hash": "d44b9c58c4c9",
+  "verdict": "pass",
+  "summary": "End-to-end quickstart test drives real cli.main with real detect_git_url (unmocked), stubs all side effects, and asserts side_effects==[] for both outside-worktree and missing-origin; both conjuncts and the before-any-side-effect ordering are rejected on violation.",
+  "timestamp": "2026-09-04T10:38:22.688Z"
+}

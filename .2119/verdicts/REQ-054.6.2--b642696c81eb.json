@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.6.2--b642696c81eb",
+  "requirementId": "REQ-054.6.2",
+  "hash": "b642696c81eb",
+  "verdict": "pass",
+  "summary": "Real 'panopticon stop' subprocess (only external tmux faked at PATH) asserts exact socket-scoped 'tmux -L panopticon kill-server' on every invocation; rejects missing/wrong-socket kills — the canonical, deterministic destruction of the dedicated server.",
+  "timestamp": "2026-09-04T10:34:31.127Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.3.8--3fbbc4015981",
+  "requirementId": "REQ-054.3.8",
+  "hash": "3fbbc4015981",
+  "verdict": "pass",
+  "summary": "Test rejects both invalid-credential kinds (insecure 0644 file, symlink) after a forced clause-6 failure, asserting st_ino/st_mode/st_uid via lstat and follow-through read_bytes are unchanged; catches chmod-repair, rewrite, and symlink replacement (inode equality proves the immutable link target is unchanged).",
+  "timestamp": "2026-09-04T09:41:11.879Z"
+}

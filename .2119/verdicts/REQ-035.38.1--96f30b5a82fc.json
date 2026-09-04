@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.38.1--96f30b5a82fc",
+  "requirementId": "REQ-035.38.1",
+  "hash": "96f30b5a82fc",
+  "verdict": "pass",
+  "summary": "Test sources the real task_lib.sh under 'set -x' and asserts the write token is absent from captured stderr (the xtrace stream); removing the set +x guard or moving the token to argv both make the trace leak it and fail the assertion. Genuine behavioral verification, faked curl does not bypass the traced shell execution.",
+  "timestamp": "2026-09-04T09:09:21.141Z"
+}

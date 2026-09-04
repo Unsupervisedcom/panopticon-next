@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.49.3--33d505c5763e",
+  "requirementId": "REQ-035.49.3",
+  "hash": "33d505c5763e",
+  "verdict": "pass",
+  "summary": "Genuine: test asserts the resolved auth file+mode are published to the shared PANOPTICON_SERVICE_AUTH_FILE/_MODE env channel every component reads, and that environment_token() (the initiating client's actual token-load path per client.py:44) resolves to the bootstrap credential's write token; a resolve-but-don't-propagate violation fails the assertions.",
+  "timestamp": "2026-09-04T09:51:36.903Z"
+}

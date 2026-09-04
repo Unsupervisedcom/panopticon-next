@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-005.1.1--6eea2aaee358",
+  "requirementId": "REQ-005.1.1",
+  "hash": "6eea2aaee358",
+  "verdict": "pass",
+  "summary": "Tests run the real dispatch_harness_auth: routing outfitter asserts exactly 2 lines with no 'unsupported' (fails if the case fell through to return 1), the profile-error test proves support survives ancillary mkdir failure, and the unknown-harness test confirms the 'unsupported' signal genuinely fires.",
+  "timestamp": "2026-09-04T11:28:03.453Z"
+}

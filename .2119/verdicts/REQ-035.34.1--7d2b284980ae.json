@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.34.1--7d2b284980ae",
+  "requirementId": "REQ-035.34.1",
+  "hash": "7d2b284980ae",
+  "verdict": "pass",
+  "summary": "Genuine: real-chmod tests reject all six group/other r/w/x bits (0o640/620/610/604/602/601) and honest fstat-uid monkeypatch rejects foreign owner, across both startup (load_tokens/build_app) and runner preflight (Local+Shell); 0o400/0o600 positive controls with valid content rule out blanket/content-based rejection.",
+  "timestamp": "2026-09-04T09:07:59.051Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.10.1--0a1d5626d67e",
+  "requirementId": "REQ-035.10.1",
+  "hash": "0a1d5626d67e",
+  "verdict": "pass",
+  "summary": "Enforced-mode unauthenticated GET /healthz asserts 200 (rejects auth-gating) and exact body == {\"status\":\"ok\"} (rejects extra payload; matches real health_response), plus a proxy-root variant; non-tautological, no auth-bypassing mocks.",
+  "timestamp": "2026-09-04T08:56:05.231Z"
+}

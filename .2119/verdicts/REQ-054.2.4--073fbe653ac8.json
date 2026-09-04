@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.2.4--073fbe653ac8",
+  "requirementId": "REQ-054.2.4",
+  "hash": "073fbe653ac8",
+  "verdict": "pass",
+  "summary": "Both failure modes run real (unmocked) git validation via detect_git_url; test asserts exit==1 and side_effects==[] with every state-mutating step (auth/migrate/sessions/secrets/setup/console) instrumented, so any config/db/tmux/container/image mutation before git-failure is rejected.",
+  "timestamp": "2026-09-04T10:42:53.717Z"
+}

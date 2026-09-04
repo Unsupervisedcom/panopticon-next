@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.51.3--ecccaecc9dc4",
+  "requirementId": "REQ-035.51.3",
+  "hash": "ecccaecc9dc4",
+  "verdict": "pass",
+  "summary": "test_bootstrap_never_repairs_or_replaces_an_invalid_destination parametrizes over invalid/insecure/directory/symlink and asserts (st_ino,st_mode,st_uid,st_size)+bytes+symlink-target unchanged after a raised ValueError, so any repair (chmod 0644->0600), truncate, or replace of the forbidden destination fails it; no mocks, real fs.",
+  "timestamp": "2026-09-04T10:05:40.288Z"
+}

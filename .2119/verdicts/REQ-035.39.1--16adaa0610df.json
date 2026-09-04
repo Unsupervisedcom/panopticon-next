@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.39.1--16adaa0610df",
+  "requirementId": "REQ-035.39.1",
+  "hash": "16adaa0610df",
+  "verdict": "pass",
+  "summary": "test_runner_injects_only_the_subject_task_capability genuinely verifies it: the Docker /run/secrets snapshot is asserted exactly equal to {\"task\": expected} where expected is an independently-computed HMAC over the newest (active) write token loaded at spawn, with all raw read/write tokens absent and the derived capability round-tripped (200 self, 403 sibling) against a restarted service. A wrong-token or extra-token snapshot fails the exact-dict and independent-MAC checks. (test_runtime_snapshot_contains_only_active_write_token is mis-scoped: it exercises snapshot_tokens, not the Docker task-capability snapshot, but coverage is genuine via the runner test.)",
+  "timestamp": "2026-09-04T09:11:16.983Z"
+}

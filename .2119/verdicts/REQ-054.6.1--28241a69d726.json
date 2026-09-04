@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.6.1--28241a69d726",
+  "requirementId": "REQ-054.6.1",
+  "hash": "28241a69d726",
+  "verdict": "pass",
+  "summary": "Test drives real 'panopticon stop' via subprocess (only docker/tmux faked) and asserts it enumerates panopticon.task-labeled containers and force-removes ALL returned IDs; dropping/partial-removal breaks the load-bearing count==1 assertion.",
+  "timestamp": "2026-09-04T10:33:01.762Z"
+}

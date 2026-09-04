@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.50.1--1cab8ad7e5dd",
+  "requirementId": "REQ-035.50.1",
+  "hash": "1cab8ad7e5dd",
+  "verdict": "pass",
+  "summary": "Test pins secrets.token_urlsafe(32)=256 bits (calls==[32] rejects weaker/non-CSPRNG) and exact dict {read:[],write:[token]} rejects non-empty read or wrong write count; asserted shape is exactly the 035.14 accepted structure and mock token satisfies 24/33/40 grammar/length/collision.",
+  "timestamp": "2026-09-04T09:58:20.753Z"
+}

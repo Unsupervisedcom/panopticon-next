@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.31.1--ece4ca7078ca",
+  "requirementId": "REQ-035.31.1",
+  "hash": "ece4ca7078ca",
+  "verdict": "pass",
+  "summary": "All three conjuncts genuinely verified: service+runner sessions (test_integrated_sessions) and dashboard session (test_integrated_dashboard) each receive resolved FILE/MODE/CONFIG, and test_session_command_replaces_stale_real_tmux_environment proves stale-clearing behaviorally against a real tmux server (present value overrides stale global, absent value clears to None), not mere argv shape.",
+  "timestamp": "2026-09-04T09:05:36.054Z"
+}

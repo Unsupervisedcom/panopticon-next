@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.1.2--780b694bcae1",
+  "requirementId": "REQ-054.1.2",
+  "hash": "780b694bcae1",
+  "verdict": "pass",
+  "summary": "CI smoke-test job (runs on every PR) builds the wheel, installs into a fresh .wheel-venv, cds to /tmp, and runs the venv-scoped panopticon --version and a venv-python import — a real hard gate on isolated-install behavior; the pytest test locks in exactly those four isolation conjuncts (fresh-venv wheel install, cd out of checkout, venv-path executable, venv-path python import) so the check cannot be silently weakened.",
+  "timestamp": "2026-09-04T10:36:19.729Z"
+}

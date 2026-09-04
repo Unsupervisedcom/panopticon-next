@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.49.6--bae41dae0266",
+  "requirementId": "REQ-035.49.6",
+  "hash": "bae41dae0266",
+  "verdict": "pass",
+  "summary": "Genuine: test sets the exact trigger (no credential + injected tmux probe reporting a session exists), driving real decision logic; asserts RuntimeError matching 'panopticon stop' and that no credential is created. Fails on violation; sibling credential-present test guards the 'would create' boundary.",
+  "timestamp": "2026-09-04T09:56:24.960Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.3.4--4cd1a2a6ed61",
+  "requirementId": "REQ-054.3.4",
+  "hash": "4cd1a2a6ed61",
+  "verdict": "pass",
+  "summary": "test_client_only_selection_does_not_create_a_missing_bootstrap calls the real _select_existing_integrated_auth() with an empty PANOPTICON_CONFIG (missing credential) and asserts the file is not created and no auth env var is set; a create-on-missing regression (falling through to ensure_bootstrap_credential) fails it. No mocking; env isolated by autouse conftest fixture.",
+  "timestamp": "2026-09-04T10:01:15.763Z"
+}
