@@ -5,6 +5,18 @@
 Panopticon is a terminal-native control plane for running multiple coding agents. It drives Claude
 Code, Codex, or pi for each task and gives you one place to supervise the fleet.
 
+## Quick install
+
+```sh
+pipx install panopticon-next==0.0.6
+panopticon doctor
+cd /path/to/your/repo
+panopticon quickstart
+```
+
+Run quickstart from the Git repository you want Panopticon to manage. If `pipx`, Docker, tmux, Git,
+or an agent harness is not ready yet, see [Requirements](#requirements) and [Install](#install).
+
 - **A live dashboard** of all your tasks, showing which agents are working and which are blocked
   waiting on you, so you stop cycling through terminals to find the one that's stuck.
 - **[Configurable workflows](docs/workflows/README.md)** that make approval points explicit and

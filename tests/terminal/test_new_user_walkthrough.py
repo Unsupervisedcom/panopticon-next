@@ -20,8 +20,8 @@ def test_install_docs_name_one_immutable_distribution_version() -> None:
     # 2119: REQ-054.1.1
     command = "pipx install panopticon-next==0.0.6"
     for document in (README, WALKTHROUGH):
-        assert document.count(command) == 1
-        remaining = document.replace(command, "", 1)
+        assert command in document
+        remaining = document.replace(command, "")
         remaining = remaining.replace("pipx install ./panopticon_next-0.0.6-py3-none-any.whl", "")
         assert "pipx install " not in remaining
         assert "panopticon-next @ git+" not in document
