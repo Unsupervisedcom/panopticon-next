@@ -33,7 +33,7 @@ import termios
 import threading
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
@@ -43,6 +43,8 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _WALKTHROUGH_PATH = _ROOT / "docs" / "getting-started.md"
+_WALKTHROUGH_SHA256 = "8a38fcbb93a4989d8368ab557c9b1a7fc4a68d6649a3e115739c5da5c7b24ffd"
+_ACCEPTANCE_SOURCE_AST_SHA256 = "97147eb0032c397b10977b20d42fd6c4f72bed80add43108c022edc414265b01"
 _OPT_IN = "I_AM_RUNNING_ON_A_DISPOSABLE_HOST"
 _REQUIRED = (
     "PANOPTICON_NEW_USER_ACCEPTANCE",
@@ -63,6 +65,7 @@ _ADVANCE_COMMAND = {"claude": "/advance", "codex": "$advance"}
 _PTY_ROWS = 45
 _PTY_COLUMNS = 180
 _PTY_BUFFER_LIMIT = 128 * 1024
+_SESSION_SWITCH_PROBE_KEYS = b"\x00"
 _DIAGNOSTIC_LIMIT = 12_000
 _HASHED_LOCAL_WHEEL = re.compile(
     r"panopticon-app @ file:///\S+\.whl#sha256=[0-9a-f]{64}\Z", re.IGNORECASE
@@ -130,10 +133,10 @@ class LiveConfiguration:
     install_spec: str
     repo_url: str
     base_sha: str
-    github_token: str
+    github_token: str = field(repr=False)
     harness: str
     harness_auth_env: str
-    harness_auth_token: str
+    harness_auth_token: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -239,6 +242,64 @@ _ALLOWED_POST_SETUP_CALLS = frozenset(
         "time.sleep",
         "visible_artifacts.index",
         "workflow_names.index",
+    }
+)
+_ALLOWED_PRE_SETUP_CALLS = frozenset(
+    {
+        "Path",
+        "_PostSetupRequestAudit",
+        "_PtyProcess.start",
+        "_WALKTHROUGH_PATH.read_text",
+        "_api_get",
+        "_assert_expected_origin",
+        "_assert_installed_walkthrough_version",
+        "_assert_no_legacy_worktree_state",
+        "_assert_no_panopticon_tmux_server",
+        "_complete_setup_task",
+        "_documented_local_wheel",
+        "_documented_walkthrough",
+        "_github_get",
+        "_github_status",
+        "_run",
+        "_wait_until",
+        "askpass.chmod",
+        "askpass.write_text",
+        "auth_file.is_file",
+        "auth_file.read_text",
+        "browser.chmod",
+        "browser.write_text",
+        "driver.send",
+        "driver.wait_for_text",
+        "env.get",
+        "get",
+        "httpx.Client",
+        "is_file",
+        "json.loads",
+        "line.lower",
+        "line.partition",
+        "list",
+        "mkdir",
+        "next",
+        "opener.chmod",
+        "opener.write_text",
+        "os.pathsep.join",
+        "package.splitlines",
+        "panopticon.is_file",
+        "path.exists",
+        "path.removesuffix",
+        "quote",
+        "recorder_bin.mkdir",
+        "repo.startswith",
+        "repository.get",
+        "shutil.which",
+        "split",
+        "splitlines",
+        "startswith",
+        "stdout.strip",
+        "str",
+        "strip",
+        "subprocess.run",
+        "urlsplit",
     }
 )
 _ALLOWED_DRIVER_INPUTS = frozenset(
@@ -452,6 +513,30 @@ def _allowed_observation_command(call_path: str, node: ast.Call) -> bool:
     )
 
 
+def _allowed_pre_setup_command(call_path: str, node: ast.Call) -> bool:
+    if not node.args:
+        return False
+    argument = ast.unparse(node.args[0])
+    if call_path == "_run":
+        return argument in {
+            "['git', 'clone', '--branch', default_branch, '--single-branch', config.repo_url, str(worktree)]",
+            "['git', 'rev-parse', 'HEAD']",
+            "['panopticon', '--version']",
+            "['panopticon', 'doctor']",
+            "['pipx', 'ensurepath']",
+            "['pipx', 'runpip', 'panopticon-app', 'show', 'panopticon-app']",
+            "install_argv",
+        }
+    if call_path == "subprocess.run":
+        return argument in {
+            "['docker', 'info']",
+            "['docker', 'ps', '--all', '--quiet']",
+            "['tmux', '-L', 'panopticon', 'has-session', '-t', session]",
+            "[login_shell, '-ic', 'command -v panopticon']",
+        }
+    return False
+
+
 def _allowed_wait_probe(node: ast.Call) -> bool:
     if len(node.args) < 2:
         return False
@@ -482,13 +567,15 @@ def _allowed_user_approval_call(node: ast.Call) -> bool:
 
 
 def _allowed_session_switch_call(node: ast.Call) -> bool:
-    if len(node.args) != 5 or node.keywords:
+    if len(node.args) not in {5, 6} or node.keywords:
         return False
     if [ast.unparse(argument) for argument in node.args[:3]] != ["env", "worktree", "driver"]:
         return False
     return [ast.unparse(argument) for argument in node.args[3:]] in (
         ["'dashboard'", "walkthrough.attach_key"],
         ["task_session", "walkthrough.detach_keys"],
+        ["'dashboard'", "walkthrough.attach_key", "True"],
+        ["task_session", "walkthrough.detach_keys", "True"],
     )
 
 
@@ -498,6 +585,94 @@ def _allowed_opener_key_call(node: ast.Call) -> bool:
     return [ast.unparse(argument) for argument in node.args] in (
         ["artifact_log", "driver", "walkthrough.artifact_key"],
         ["browser_log", "driver", "walkthrough.pull_request_key"],
+    )
+
+
+def _allowed_post_setup_consumer(call_path: str, node: ast.Call) -> bool:
+    """Permit only iterator consumers whose executable body is visible at the call site."""
+    if node.keywords or not node.args:
+        return False
+    argument = node.args[0]
+    if call_path == "next":
+        return isinstance(argument, ast.GeneratorExp) and (
+            len(node.args) == 1
+            or (
+                len(node.args) == 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value is None
+            )
+        )
+    if call_path == "any":
+        return len(node.args) == 1 and isinstance(argument, ast.GeneratorExp)
+    if call_path == "dict":
+        return len(node.args) == 1 and ast.unparse(argument) == "env"
+    if call_path == "sorted":
+        return len(node.args) == 1 and ast.unparse(argument) == "workflow_names"
+    return True
+
+
+def _allowed_post_setup_loop(node: ast.For | ast.AsyncFor) -> bool:
+    """Allow the one fixed-name cleanup loop; arbitrary iterators remain forbidden."""
+    return (
+        isinstance(node, ast.For)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "name"
+        and isinstance(node.iter, ast.Tuple)
+        and all(
+            isinstance(item, ast.Constant) and isinstance(item.value, str)
+            for item in node.iter.elts
+        )
+        and [item.value for item in node.iter.elts if isinstance(item, ast.Constant)]
+        == [
+            "PANOPTICON_SERVICE_AUTH_FILE",
+            "PANOPTICON_SERVICE_AUTH_MODE",
+            "PANOPTICON_SERVICE_AUTH_TOKEN",
+        ]
+    )
+
+
+def _direct_task_mutation_call(node: ast.Call) -> bool:
+    """Recognize direct mutation channels even when code is placed before the setup boundary."""
+    call_path = _call_path(node.func)
+    argv = _literal_argv(node)
+    if call_path in {"_run", "subprocess.run"} and argv and argv[0] == "curl":
+        return True
+    if call_path.rsplit(".", 1)[-1] in {"delete", "patch", "post", "put"}:
+        return True
+    if call_path.rsplit(".", 1)[-1] == "request":
+        return not (
+            node.args
+            and isinstance(node.args[0], ast.Constant)
+            and str(node.args[0].value).upper() in {"GET", "HEAD"}
+        )
+    return (
+        call_path.startswith(("mcp.", "task_fixture."))
+        or call_path == "transport.call_tool"
+        or call_path in {"change_state", "seed_task"}
+    )
+
+
+def _direct_task_mutation_reference(node: ast.expr) -> bool:
+    """Recognize references that could hide a mutation behind an arbitrary local alias."""
+    call_path = _call_path(node)
+    return (
+        call_path.rsplit(".", 1)[-1] in {"delete", "patch", "post", "put", "request"}
+        or call_path.startswith(("mcp.", "task_fixture."))
+        or call_path == "transport.call_tool"
+        or call_path in {"change_state", "seed_task"}
+    )
+
+
+def _pre_setup_deferred_expression_is_immediate(
+    node: ast.Lambda | ast.GeneratorExp, parents: Mapping[ast.AST, ast.AST]
+) -> bool:
+    """Allow only deferred expressions consumed synchronously at their definition site."""
+    parent = parents.get(node)
+    if not isinstance(parent, ast.Call) or node not in parent.args:
+        return False
+    call_path = _call_path(parent.func)
+    return (isinstance(node, ast.Lambda) and call_path == "_wait_until") or (
+        isinstance(node, ast.GeneratorExp) and call_path == "next"
     )
 
 
@@ -549,7 +724,8 @@ def _observer_helper_violations(tree: ast.Module) -> list[str]:
                         )
                         or (
                             helper_name == "_send_session_switch_while_attached"
-                            and ast.unparse(node.args[0]) != "keys"
+                            and ast.unparse(node.args[0])
+                            not in {"keys", "_SESSION_SWITCH_PROBE_KEYS"}
                         )
                         or (
                             helper_name == "_send_opener_key_while_unopened"
@@ -570,6 +746,35 @@ def _observer_helper_violations(tree: ast.Module) -> list[str]:
 def _post_setup_direct_mutations(source: str) -> list[str]:
     """Reject every post-setup call or state write outside the reviewed UI/read-only surface."""
     tree = ast.parse(source)
+    normalized_body: list[ast.stmt] = []
+    digest_assignment_count = 0
+    digest_assignment_is_literal = False
+    for module_node in tree.body:
+        is_digest_assignment = isinstance(module_node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "_ACCEPTANCE_SOURCE_AST_SHA256"
+            for target in module_node.targets
+        )
+        if not is_digest_assignment:
+            normalized_body.append(module_node)
+            continue
+        assert isinstance(module_node, ast.Assign)
+        digest_assignment_count += 1
+        digest_assignment_is_literal = isinstance(module_node.value, ast.Constant) and isinstance(
+            module_node.value.value, str
+        )
+        if digest_assignment_is_literal:
+            normalized_body.append(
+                ast.Assign(
+                    targets=module_node.targets,
+                    value=ast.Constant(value="<normalized-digest>"),
+                )
+            )
+        else:
+            normalized_body.append(module_node)
+    normalized_tree = ast.Module(body=normalized_body, type_ignores=[])
+    source_digest = hashlib.sha256(
+        ast.dump(normalized_tree, include_attributes=False).encode()
+    ).hexdigest()
     functions = [
         node
         for node in tree.body
@@ -578,6 +783,15 @@ def _post_setup_direct_mutations(source: str) -> list[str]:
     ]
     if len(functions) != 1:
         return ["acceptance source must define exactly one _run_live_new_user_journey"]
+    source_digest_violations = []
+    if digest_assignment_count != 1 or not digest_assignment_is_literal:
+        source_digest_violations.append(
+            "acceptance source digest must be assigned exactly once as a string literal"
+        )
+    if source_digest != _ACCEPTANCE_SOURCE_AST_SHA256:
+        source_digest_violations.append(
+            "acceptance source changed; review the complete executable surface and update its pinned AST digest"
+        )
     function = functions[0]
     setup_calls = [
         node
@@ -590,10 +804,38 @@ def _post_setup_direct_mutations(source: str) -> list[str]:
         setup_calls[0].end_lineno or setup_calls[0].lineno,
         setup_calls[0].end_col_offset or setup_calls[0].col_offset,
     )
-    violations = _observer_helper_violations(tree)
+    violations = source_digest_violations + _observer_helper_violations(tree)
+    parents = {
+        child: parent for parent in ast.walk(function) for child in ast.iter_child_nodes(parent)
+    }
     for node in ast.walk(function):
         line = getattr(node, "lineno", 0)
         before_or_at_setup = (line, getattr(node, "col_offset", 0)) <= phase_end
+        if isinstance(node, ast.Call) and _direct_task_mutation_call(node):
+            violations.append(f"line {line}: direct mutation call {_call_path(node.func)}")
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            value = node.value
+            hidden_references = (
+                [
+                    candidate
+                    for candidate in ast.walk(value)
+                    if isinstance(candidate, (ast.Name, ast.Attribute))
+                    and _direct_task_mutation_reference(candidate)
+                ]
+                if value is not None
+                else []
+            )
+            if hidden_references:
+                violations.append(
+                    f"line {line}: mutation-capable reference cannot be assigned or aliased"
+                )
+        if before_or_at_setup and node is not function:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                violations.append(f"line {line}: pre-setup deferred executable scope")
+            if isinstance(node, (ast.Lambda, ast.GeneratorExp)) and not (
+                _pre_setup_deferred_expression_is_immediate(node, parents)
+            ):
+                violations.append(f"line {line}: pre-setup deferred expression can escape")
         if (
             isinstance(node, ast.Name)
             and isinstance(node.ctx, (ast.Store, ast.Del))
@@ -604,11 +846,34 @@ def _post_setup_direct_mutations(source: str) -> list[str]:
         ):
             violations.append(f"line {line}: protected name rebind {node.id}")
         if before_or_at_setup:
+            if isinstance(node, ast.Call):
+                call_path = _call_path(node.func)
+                if (
+                    call_path not in _ALLOWED_PRE_SETUP_CALLS
+                    or (
+                        call_path in {"_run", "subprocess.run"}
+                        and not _allowed_pre_setup_command(call_path, node)
+                    )
+                    or (
+                        call_path == "driver.send"
+                        and (not node.args or ast.unparse(node.args[0]) != "b'\\r'")
+                    )
+                    or (call_path == "next" and not _allowed_post_setup_consumer(call_path, node))
+                ):
+                    violations.append(
+                        f"line {line}: unreviewed pre-setup call {call_path or '<dynamic>'}"
+                    )
             continue
+        if isinstance(node, (ast.For, ast.AsyncFor)) and not _allowed_post_setup_loop(node):
+            violations.append(f"line {line}: post-setup loop can execute a deferred iterator")
         if isinstance(node, ast.Call):
             call_path = _call_path(node.func)
             if (
                 call_path not in _ALLOWED_POST_SETUP_CALLS
+                or (
+                    call_path in {"any", "dict", "next", "sorted"}
+                    and not _allowed_post_setup_consumer(call_path, node)
+                )
                 or (
                     call_path in {"_run", "subprocess.run"}
                     and not _allowed_observation_command(call_path, node)
@@ -752,6 +1017,8 @@ def _local_wheel_matches(wheel_path: Path, expected_hash: str) -> bool:
 def _walkthrough_contract_errors(contents: str) -> list[str]:
     """Return missing, duplicated, or out-of-order steps that would desync the live driver."""
     errors: list[str] = []
+    if hashlib.sha256(contents.encode()).hexdigest() != _WALKTHROUGH_SHA256:
+        errors.append("walkthrough text changed; review the driver and update its pinned digest")
     positions: list[int] = []
     for fragment in _WALKTHROUGH_SEQUENCE:
         count = contents.count(fragment)
@@ -1250,13 +1517,20 @@ def _send_session_switch_while_attached(
     driver: _PtyProcess,
     expected_session: str,
     keys: bytes,
+    challenge_wrong_key: bool = False,
     *,
     observation_window: float = 1.0,
 ) -> None:
-    """Reject a session switch that occurs before the documented terminal input."""
+    """Reject a session switch before or in response to a harmless wrong input."""
     input_delivered = threading.Event()
     monitor_ready = threading.Event()
     failures: list[str] = []
+
+    initial_sessions = _client_sessions(env, cwd)
+    if initial_sessions != [expected_session]:
+        pytest.fail(
+            f"terminal left {expected_session!r} before documented input: {initial_sessions!r}"
+        )
 
     def monitor_attachment() -> None:
         monitor_ready.set()
@@ -1272,6 +1546,8 @@ def _send_session_switch_while_attached(
     monitor_thread = threading.Thread(target=monitor_attachment, daemon=True)
     monitor_thread.start()
     assert monitor_ready.wait(timeout=5)
+    if challenge_wrong_key:
+        driver.send(_SESSION_SWITCH_PROBE_KEYS)
     time.sleep(observation_window)
     if failures:
         pytest.fail(failures[0])
@@ -1871,6 +2147,20 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
             assert _pane_id(env, worktree, "dashboard") == dashboard_pane
             assert _pane_pid(env, worktree, "dashboard") == dashboard_pid
 
+            # The first round above proves both documented inputs work without a hidden precursor.
+            # Repeat the round with an inert NUL challenge and prove that challenge does not switch
+            # either direction before the documented key is delivered.
+            _send_session_switch_while_attached(
+                env, worktree, driver, "dashboard", walkthrough.attach_key, True
+            )
+            _wait_for_client_session(task_session, env=env, cwd=worktree)
+            _send_session_switch_while_attached(
+                env, worktree, driver, task_session, walkthrough.detach_keys, True
+            )
+            _wait_for_client_session("dashboard", env=env, cwd=worktree)
+            assert _pane_id(env, worktree, "dashboard") == dashboard_pane
+            assert _pane_pid(env, worktree, "dashboard") == dashboard_pid
+
             planned = _wait_until(
                 "the agent's plan and planning handoff",
                 lambda: (
@@ -2315,6 +2605,31 @@ def test_post_setup_acceptance_driver_has_no_direct_mutation_channels() -> None:
     assert _post_setup_direct_mutations(Path(__file__).read_text()) == []
 
 
+def test_acceptance_source_digest_rejects_unreviewed_executable_changes() -> None:
+    source = Path(__file__).read_text()
+    changed = source.replace(
+        "def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> None:\n",
+        "def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> None:\n    pass\n",
+    )
+    assert changed != source
+
+    assert "acceptance source changed" in " ".join(_post_setup_direct_mutations(changed))
+
+
+def test_acceptance_source_digest_rejects_an_executable_digest_assignment() -> None:
+    source = Path(__file__).read_text()
+    changed = source.replace(
+        f'_ACCEPTANCE_SOURCE_AST_SHA256 = "{_ACCEPTANCE_SOURCE_AST_SHA256}"',
+        "_ACCEPTANCE_SOURCE_AST_SHA256 = "
+        f'(unreviewed_executable_change(), "{_ACCEPTANCE_SOURCE_AST_SHA256}")[1]',
+    )
+    assert changed != source
+
+    assert "assigned exactly once as a string literal" in " ".join(
+        _post_setup_direct_mutations(changed)
+    )
+
+
 @pytest.mark.parametrize(
     "shortcut",
     (
@@ -2372,6 +2687,92 @@ def test_post_setup_mutation_guard_rejects_same_line_shortcut() -> None:
     )
 
     assert any("client.post" in finding for finding in _post_setup_direct_mutations(source))
+
+
+@pytest.mark.parametrize(
+    "deferred_mutation",
+    (
+        'client.post("/tasks", json={})',
+        "mcp.transition_task(task_id)",
+        "seed_task()",
+        "task_fixture.mutate()",
+    ),
+)
+def test_post_setup_mutation_guard_rejects_precreated_deferred_generators(
+    deferred_mutation: str,
+) -> None:
+    source = (
+        "def _complete_setup_task():\n"
+        "    pass\n"
+        "def _run_live_new_user_journey(tmp_path, config):\n"
+        f"    deferred = ({deferred_mutation} for _ in [None])\n"
+        "    _complete_setup_task()\n"
+        "    next(deferred)\n"
+    )
+
+    assert any("call next" in finding for finding in _post_setup_direct_mutations(source))
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    (
+        "any(item for item in deferred)",
+        "next(item for item in deferred)",
+        "[item for item in deferred]",
+        "[*deferred]",
+        "first, *rest = deferred",
+    ),
+)
+def test_post_setup_mutation_guard_rejects_indirect_deferred_generator_consumers(
+    consumer: str,
+) -> None:
+    source = (
+        "def _complete_setup_task():\n"
+        "    pass\n"
+        "def _run_live_new_user_journey(tmp_path, config):\n"
+        '    deferred = (client.post("/tasks", json={}) for _ in [None])\n'
+        "    _complete_setup_task()\n"
+        f"    {consumer}\n"
+    )
+
+    assert any(
+        "pre-setup deferred expression can escape" in finding
+        for finding in _post_setup_direct_mutations(source)
+    )
+
+
+@pytest.mark.parametrize(
+    "shortcut",
+    (
+        'client.post("/tasks", json={})',
+        'mutate = client.post\n    mutate("/tasks", json={})',
+        'mutate = client.request\n    mutate("POST", "/tasks", json={})',
+        'subprocess.run(["curl", "-X", "POST", "http://127.0.0.1:8000/tasks"])',
+        'subprocess.run(["sh", "-c", "curl -X POST http://127.0.0.1:8000/tasks"])',
+        'subprocess.run(["bash", "-lc", "curl -X POST http://127.0.0.1:8000/tasks"])',
+        'subprocess.run(["env", "curl", "-X", "POST", "http://127.0.0.1:8000/tasks"])',
+        'os.system("curl -X POST http://127.0.0.1:8000/tasks")',
+        'mutate = getattr(httpx, "post")\n    mutate("http://127.0.0.1:8000/tasks")',
+    ),
+)
+def test_mutation_guard_rejects_undocumented_pre_setup_rest_shortcuts(
+    shortcut: str,
+) -> None:
+    source = (
+        "def _complete_setup_task():\n"
+        "    pass\n"
+        "def _run_live_new_user_journey(tmp_path, config):\n"
+        f"    {shortcut}\n"
+        "    _complete_setup_task()\n"
+    )
+
+    assert _post_setup_direct_mutations(source)
+
+
+def test_walkthrough_contract_rejects_an_unreviewed_natural_language_step() -> None:
+    contents = _WALKTHROUGH_PATH.read_text() + "\nCall the HTTP API to create another task.\n"
+
+    assert "walkthrough text changed" in " ".join(_walkthrough_contract_errors(contents))
 
 
 @pytest.mark.parametrize(
@@ -2568,6 +2969,37 @@ def test_terminal_switch_rejects_an_automatic_move_before_input(
     assert sent == []
 
 
+def test_terminal_switch_rejects_a_move_caused_by_the_wrong_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[bytes] = []
+    switched = threading.Event()
+
+    class RecordingDriver:
+        def send(self, data: bytes) -> None:
+            sent.append(data)
+            if data == _SESSION_SWITCH_PROBE_KEYS:
+                switched.set()
+
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_client_sessions",
+        lambda _env, _cwd: ["panopticon-task-id"] if switched.is_set() else ["dashboard"],
+    )
+    with pytest.raises(pytest.fail.Exception, match="left 'dashboard' before documented input"):
+        _send_session_switch_while_attached(
+            {},
+            Path("."),
+            RecordingDriver(),  # type: ignore[arg-type]
+            "dashboard",
+            b"t",
+            True,
+            observation_window=0.05,
+        )
+
+    assert sent == [_SESSION_SWITCH_PROBE_KEYS]
+
+
 def test_opener_key_rejects_an_automatic_handoff_before_input(tmp_path: Path) -> None:
     sent: list[bytes] = []
     opener_log = tmp_path / "artifact-opened"
@@ -2603,6 +3035,24 @@ def test_live_diagnostics_are_bounded_and_redact_both_credentials() -> None:
     assert harness_token not in diagnostic
     assert f"...{github_token[-4:]}" not in diagnostic
     assert f"...{harness_token[-4:]}" not in diagnostic
+
+
+def test_live_configuration_repr_omits_both_credentials() -> None:
+    config = LiveConfiguration(
+        install_spec="panopticon-app==1.2.3",
+        repo_url="https://github.com/acme/panopticon-acceptance-disposable.git",
+        base_sha="a" * 40,
+        github_token="github-secret",
+        harness="codex",
+        harness_auth_env="OPENAI_API_KEY",
+        harness_auth_token="harness-secret",
+    )
+
+    rendered = repr(config)
+    assert "github-secret" not in rendered
+    assert "harness-secret" not in rendered
+    assert "github_token" not in rendered
+    assert "harness_auth_token" not in rendered
 
 
 def test_pty_process_has_the_fixed_terminal_size_and_drains_output(tmp_path: Path) -> None:

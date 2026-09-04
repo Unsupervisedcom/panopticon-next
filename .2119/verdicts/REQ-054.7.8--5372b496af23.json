@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.8--5372b496af23",
+  "requirementId": "REQ-054.7.8",
+  "hash": "5372b496af23",
+  "verdict": "pass",
+  "summary": "Live journey (2119: REQ-054.7.8, lines 2122-2162) drives real PTY quickstart + real tmux: sends walkthrough.attach_key (asserted ==b't') then _wait_for_client_session confirms the sole client moved dashboard->panopticon-<task_id>, sends detach_keys (asserted ==b'\\x02d', Ctrl-b d) then confirms return to dashboard; _send_session_switch_while_attached's monitor rejects any switch before the documented key (automatic-move and NUL wrong-key challenge, backed by standalone guard tests) and dashboard _pane_id/_pane_pid equality across the round-trip proves the same still-running dashboard. No mocking of the behavior under test; post-setup REST audit + AST guard forbid backdoor mutations.",
+  "timestamp": "2026-09-04T16:56:09.195Z"
+}

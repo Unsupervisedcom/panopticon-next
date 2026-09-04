@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.1--d241849af84c",
+  "requirementId": "REQ-054.7.1",
+  "hash": "d241849af84c",
+  "verdict": "pass",
+  "summary": "Live preflight runs before install/quickstart and rejects existing effective config/data/cache paths, a Panopticon tmux session or stale socket, any running or stopped container, unsupported or non-disposable GitHub state, and a missing or mismatched exact origin.",
+  "timestamp": "2026-09-04T16:47:02.510Z"
+}

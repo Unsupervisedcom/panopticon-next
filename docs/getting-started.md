@@ -183,6 +183,11 @@ must start with `panopticon-acceptance-` and it must carry
 the `panopticon-acceptance-disposable` topic; the base SHA makes an unreviewed repository change
 fail closed.
 
+The gate first proves the documented attach and detach inputs without any precursor. It then
+repeats that round with an inert NUL challenge before each documented key and requires the client
+to remain in its original session after the challenge. The challenge is a maintainer-only
+causality check; evaluators do not enter it during the walkthrough.
+
 Use new, purpose-limited tokens supplied explicitly for this run. The gate never imports a native
 harness login or reads a personal credential file. The install spec must identify the supplied
 local evaluator wheel with an absolute `file:///` URL and its SHA-256 fragment. The gate rejects a

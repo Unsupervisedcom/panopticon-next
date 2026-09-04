@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.9--55a383a45358",
+  "requirementId": "REQ-054.7.9",
+  "hash": "55a383a45358",
+  "verdict": "pass",
+  "summary": "Both blocks observe the real host opener (xdg-open/$BROWSER recorders on PATH): documented keys parsed from getting-started.md trigger the opens, _send_opener_key_while_unopened rejects any open before the key, and exact-equality assertions prove the artifact path (data_root/artifacts/task_id/plan.md, plus byte match) and PR URL (== task url, canonical pattern) handed to the opener.",
+  "timestamp": "2026-09-04T16:56:05.908Z"
+}
