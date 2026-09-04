@@ -109,7 +109,7 @@ cd /path/to/your/repo
 pipx install panopticon-next && panopticon quickstart
 ```
 
-You can verify the installed release with `panopticon --version`; it should print `panopticon 0.2.7`
+You can verify the installed release with `panopticon --version`; it should print `panopticon 0.2.8`
 without requiring a checkout or `uv`.
 
 The distribution is **`panopticon-next`**, but the command you run and the package you import are

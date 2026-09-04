@@ -30,7 +30,7 @@ build is supplied as a wheel beside this walkthrough. Open the extracted evaluat
 directory in the new terminal and install that wheel in an isolated environment:
 
 ```sh
-pipx install ./panopticon_next-0.2.7-py3-none-any.whl
+pipx install ./panopticon_next-0.2.8-py3-none-any.whl
 panopticon --version
 panopticon doctor
 ```
@@ -39,7 +39,7 @@ The public one-line command is `pipx install panopticon-next && panopticon quick
 the latest published release and immediately enters onboarding. The local wheel path above remains
 available for an offline or independently checksummed evaluation.
 
-Expected result: `panopticon --version` prints `panopticon 0.2.7` without requiring a source
+Expected result: `panopticon --version` prints `panopticon 0.2.8` without requiring a source
 checkout, and `doctor` ends with `All prerequisites satisfied.` Do not continue until both checks
 pass. `doctor` checks Python 3.11+, Git, the Docker CLI and daemon, tmux, and at least one agent
 harness. Follow the corrective action printed beneath any failed check, then rerun it.
@@ -196,7 +196,7 @@ above from the wheel's directory.
 
 ```sh
 export PANOPTICON_NEW_USER_ACCEPTANCE=I_AM_RUNNING_ON_A_DISPOSABLE_HOST
-export PANOPTICON_ACCEPTANCE_INSTALL_SPEC='panopticon-next @ file:///absolute/path/to/panopticon_next-0.2.7-py3-none-any.whl#sha256=<reviewed-wheel-sha256>'
+export PANOPTICON_ACCEPTANCE_INSTALL_SPEC='panopticon-next @ file:///absolute/path/to/panopticon_next-0.2.8-py3-none-any.whl#sha256=<reviewed-wheel-sha256>'
 export PANOPTICON_ACCEPTANCE_GITHUB_REPO='https://github.com/example/panopticon-acceptance-demo.git'
 export PANOPTICON_ACCEPTANCE_BASE_SHA='<reviewed 40-character default-branch SHA>'
 export PANOPTICON_ACCEPTANCE_HARNESS='codex'

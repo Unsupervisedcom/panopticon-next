@@ -23,7 +23,7 @@ def test_install_docs_name_one_public_install_and_onboarding_command() -> None:
         assert command in document
         remaining = document.replace(command, "")
         remaining = remaining.replace("pipx install panopticon-next", "")
-        remaining = remaining.replace("pipx install ./panopticon_next-0.2.7-py3-none-any.whl", "")
+        remaining = remaining.replace("pipx install ./panopticon_next-0.2.8-py3-none-any.whl", "")
         assert "pipx install " not in remaining
         assert "panopticon-next @ git+" not in document
         assert "@main" not in document

@@ -1,6 +1,6 @@
 [project]
 name = "panopticon-next"
-version = "0.2.7"
+version = "0.2.8"
 description = "Self-hosted control plane for running a fleet of coding agents in isolated containers, governed by configurable workflows."
 readme = "README.md"
 requires-python = ">=3.11"

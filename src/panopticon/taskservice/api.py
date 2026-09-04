@@ -34,6 +34,7 @@ from starlette._utils import get_route_path
 from starlette.middleware.cors import CORSMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from panopticon import __version__
 from panopticon.core.artifacts import ArtifactError
 from panopticon.core.liveness import LIVENESS_KEEPALIVE_SECONDS
 from panopticon.core.models import (
@@ -749,7 +750,7 @@ def create_app(
             if installed is not None:
                 _remove_log_redaction(installed)
 
-    app = FastAPI(title="panopticon task service", version="0.0.3", lifespan=lifespan)
+    app = FastAPI(title="panopticon task service", version=__version__, lifespan=lifespan)
     policy = CredentialScopePolicy(service, tokens.write if tokens else (), app, mcp)
     app.state.credential_scope_policy = policy
     app.state.panopticon_mcp = mcp

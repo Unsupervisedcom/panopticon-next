@@ -43,5 +43,5 @@ jobs:
           uv venv --python 3.13 .wheel-venv
           uv pip install --python .wheel-venv/bin/python dist/*.whl
           cd /tmp
-          "$GITHUB_WORKSPACE/.wheel-venv/bin/panopticon" --version | grep --fixed-strings "panopticon 0.2.7"
+          "$GITHUB_WORKSPACE/.wheel-venv/bin/panopticon" --version | grep --fixed-strings "panopticon 0.2.8"
           "$GITHUB_WORKSPACE/.wheel-venv/bin/python" -c "from pathlib import Path; from panopticon.taskservice.__main__ import build_app; app = build_app(db='sqlite+aiosqlite:///:memory:', artifacts_root='/tmp/panopticon-artifacts', layers_root='/tmp/panopticon-layers', _home_workflows=Path('/tmp/panopticon-workflows')); assert any(route.path == '/healthz' for route in app.routes)"

@@ -43,8 +43,8 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _WALKTHROUGH_PATH = _ROOT / "docs" / "getting-started.md"
-_WALKTHROUGH_SHA256 = "927196a422bde9e22a7eda1fb24cc6de84d194acc5feb0f5dc8ad942d60bd08a"
-_ACCEPTANCE_SOURCE_AST_SHA256 = "c7a8fdbe0ebbcb1d0ce5338b9f90246cd72ce06f5734af78e8b47ba0bc591b7f"
+_WALKTHROUGH_SHA256 = "8713cbf75de3f217d8e7d013c295b737dabc3dee5d42b813c4f654376133ece1"
+_ACCEPTANCE_SOURCE_AST_SHA256 = "7299702d1c55e0d39ea3f739f668fa29f8f4390bbdaaca10e6ee74952ac17314"
 _OPT_IN = "I_AM_RUNNING_ON_A_DISPOSABLE_HOST"
 _REQUIRED = (
     "PANOPTICON_NEW_USER_ACCEPTANCE",
@@ -73,7 +73,7 @@ _HASHED_LOCAL_WHEEL = re.compile(
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _LEGACY_WORKTREE_STATE = ("panopticon.db", "artifacts", "layers", "cache", "tasks")
 _WALKTHROUGH_SEQUENCE = (
-    "pipx install ./panopticon_next-0.2.7-py3-none-any.whl",
+    "pipx install ./panopticon_next-0.2.8-py3-none-any.whl",
     "panopticon --version",
     "panopticon doctor",
     "panopticon quickstart",
@@ -1033,7 +1033,7 @@ def _walkthrough_contract_errors(contents: str) -> list[str]:
     user_walkthrough = contents.split("## Maintainer:", 1)[0]
     allowed_commands = {
         "panopticon --version",
-        "panopticon 0.2.7",
+        "panopticon 0.2.8",
         "panopticon doctor",
         "panopticon quickstart",
         "panopticon stop",
@@ -1045,7 +1045,7 @@ def _walkthrough_contract_errors(contents: str) -> list[str]:
         "sudo apt-get update",
         "sudo apt-get install --yes pipx",
         "pipx ensurepath",
-        "pipx install ./panopticon_next-0.2.7-py3-none-any.whl",
+        "pipx install ./panopticon_next-0.2.8-py3-none-any.whl",
         "panopticon --version",
         "panopticon doctor",
         "cd /path/to/disposable-repo",
@@ -2418,7 +2418,7 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
 
 
 def _valid_local_install_spec(tmp_path: Path) -> str:
-    wheel = tmp_path / "panopticon_next-0.2.7-py3-none-any.whl"
+    wheel = tmp_path / "panopticon_next-0.2.8-py3-none-any.whl"
     wheel.write_bytes(b"reviewed evaluator wheel")
     digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
     return f"panopticon-next @ {wheel.as_uri()}#sha256={digest}"
@@ -2468,11 +2468,11 @@ def test_live_driver_consumes_the_current_documented_walkthrough_contract() -> N
     # 2119: REQ-054.7.2
     walkthrough = _documented_walkthrough(_WALKTHROUGH_PATH.read_text())
 
-    assert walkthrough.install_version == "0.2.7"
+    assert walkthrough.install_version == "0.2.8"
     assert walkthrough.install_argv == (
         "pipx",
         "install",
-        "./panopticon_next-0.2.7-py3-none-any.whl",
+        "./panopticon_next-0.2.8-py3-none-any.whl",
     )
     assert walkthrough.quickstart_argv == ("panopticon", "quickstart")
     assert walkthrough.task_prompt == (
@@ -2499,7 +2499,7 @@ def test_live_install_version_is_bound_to_the_user_walkthrough() -> None:
 
 def test_live_install_command_is_bound_to_the_documented_wheel(tmp_path: Path) -> None:
     walkthrough = _documented_walkthrough(_WALKTHROUGH_PATH.read_text())
-    correct = tmp_path / "panopticon_next-0.2.7-py3-none-any.whl"
+    correct = tmp_path / "panopticon_next-0.2.8-py3-none-any.whl"
     wrong = tmp_path / "panopticon_next-1.2.3-py3-none-any.whl"
 
     wheel_path, argv = _documented_local_wheel(

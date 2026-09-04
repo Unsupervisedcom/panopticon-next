@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+import panopticon
 import panopticon.docker as _docker_pkg
 import panopticon.sessionservice.images as _images
 from panopticon.sessionservice.images import (
@@ -483,7 +484,7 @@ def test_build_base_if_missing_builds_when_inspect_returns_empty_string() -> Non
     assert build_cmd[:4] == ["docker", "build", "--tag", "panopticon-base"]
     assert "--build-arg" in build_cmd
     version_arg = build_cmd[build_cmd.index("--build-arg") + 1]
-    assert version_arg.startswith("PANOPTICON_VERSION=")
+    assert version_arg == f"PANOPTICON_VERSION={panopticon.__version__}"
     assert "--file" in build_cmd
     file_arg = build_cmd[build_cmd.index("--file") + 1]
     assert file_arg.endswith("Dockerfile")
@@ -500,7 +501,7 @@ def test_build_base_unconditional() -> None:
     assert build_cmd[:4] == ["docker", "build", "--tag", "panopticon-base"]
     assert "--build-arg" in build_cmd
     build_args = _build_args(build_cmd)
-    assert any(arg.startswith("PANOPTICON_VERSION=") for arg in build_args)
+    assert f"PANOPTICON_VERSION={panopticon.__version__}" in build_args
     assert f"PANOPTICON_BASE_FINGERPRINT={_base_fingerprint()}" in build_args
     assert "--file" in build_cmd
     file_arg = build_cmd[build_cmd.index("--file") + 1]
