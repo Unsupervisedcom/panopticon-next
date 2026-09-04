@@ -28,8 +28,7 @@ transitions; they do not restrict the commands an agent can execute. Use least-p
 credentials and forge branch protection as hard controls. Containers separate workspaces but are
 not a security boundary against a malicious or compromised agent. Quickstart reuses one shared
 `panopticon.env` by default; configure a distinct environment file per repo when credential
-separation matters. Panopticon is a ground-up rewrite of the
-[cloude-cade](https://github.com/tildesrc/cloude-cade) prototype and is in active development.
+separation matters.
 
 New here? Follow the [new-user walkthrough](docs/getting-started.md). For the mental model behind
 the dashboard, read [`docs/overview.md`](docs/overview.md).
