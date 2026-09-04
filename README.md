@@ -8,7 +8,6 @@ Code, Codex, or pi for each task and gives you one place to supervise the fleet.
 ## Quick install
 
 ```sh
-cd /path/to/your/repo
 pipx install panopticon-next && panopticon quickstart
 ```
 
