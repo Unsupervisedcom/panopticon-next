@@ -99,6 +99,28 @@ uv run pytest
 
 So `make check` locally reproduces the PR gate — get it green before you push.
 
+## Releases
+
+Release Please reads Conventional Commit headers after each push to `main` and opens or updates a
+release PR. Merging an approved release PR creates a `v<version>` GitHub release. That published
+release builds both Python distributions, publishes them to PyPI with trusted publishing, and
+publishes the same release wheel in a multi-platform base image at
+`ghcr.io/unsupervisedcom/panopticon-next:<version>`. Non-prereleases also update the `latest` tag.
+
+GitHub Actions MUST have access to a `RELEASE_PLEASE_TOKEN` secret whose token can write contents,
+issues, and pull requests. This follows the dedicated-PAT convention used by the ai-outfitter
+repositories because organization policy can prevent the default `GITHUB_TOKEN` from opening PRs.
+PyPI MUST configure `Unsupervisedcom/panopticon-next`, workflow `release.yml`, and environment
+`pypi` as a trusted publisher before the first release.
+
+The image job uses the release wheel rather than resolving an unpinned package from the index. It
+MUST verify that the release tag, wheel metadata, image CLI version, and base-image fingerprint all
+agree before pushing the immutable version tag. It publishes `linux/amd64` and `linux/arm64` under
+the repository-scoped `GITHUB_TOKEN` with `packages: write` permission.
+
+Every release PR MUST receive review before merge. A major version or any breaking-change marker
+MUST NOT be authored or merged without explicit user approval; see [`AGENTS.md`](../AGENTS.md).
+
 ## Where to go deeper
 
 - [`AGENTS.md`](../AGENTS.md) — the operating manual: the determinism invariant, module map,

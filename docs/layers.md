@@ -40,6 +40,12 @@ Dockerfile, entrypoint, and Panopticon release, rebuilding the static `panoptico
 is missing or stale. Docker layer-caches that rebuild and the composed image, so unchanged inputs
 are cheap. Change a layer and the next spawn rebuilds only the affected steps.
 
+Each published Panopticon release also produces a multi-platform copy of that base image at
+`ghcr.io/unsupervisedcom/panopticon-next:<version>` and updates `latest` for a non-prerelease. The
+published image is built from the same release wheel and carries the same base fingerprint, so it
+is an immutable distributable form of the locally built `panopticon-base`. The runner continues to
+manage its local `panopticon-base` tag and does not implicitly pull from the registry.
+
 > Workflows whose `runner_type` is `"shell"` (e.g. `setup-repo`) run on the host with no container,
 > so they have no image and layers are ignored.
 
