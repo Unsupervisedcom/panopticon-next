@@ -58,6 +58,8 @@ def test_every_integrated_entrypoint_reaches_auth_bootstrap(
     monkeypatch.setattr(
         "panopticon.sessionservice.docker_daemon.preflight_message", lambda _command: None
     )
+    if not argv:
+        monkeypatch.setattr(cli, "_has_bootstrap_credential", lambda: True)
     monkeypatch.setattr(doctor, "run_checks", list)
     monkeypatch.setattr(doctor, "report", lambda _results: 0)
     monkeypatch.setattr(quickstart, "detect_git_url", lambda: "https://github.com/acme/repo.git")

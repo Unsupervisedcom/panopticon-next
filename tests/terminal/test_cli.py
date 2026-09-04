@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from panopticon.sessionservice.tmux_defaults import defaults_argv
 from panopticon.terminal.__main__ import main
 
@@ -70,6 +72,7 @@ def test_host_runs_migrate_then_sessions() -> None:
 
 def test_no_arg_aliases_start() -> None:
     with (
+        patch("panopticon.terminal.__main__._has_bootstrap_credential", return_value=True),
         patch("panopticon.sessionservice.docker_daemon.preflight_message", return_value=None),
         patch("panopticon.terminal.__main__._run_migrate") as mock_migrate,
         patch("panopticon.terminal.__main__._start_sessions") as mock_sessions,
@@ -79,6 +82,34 @@ def test_no_arg_aliases_start() -> None:
     mock_migrate.assert_called_once_with()
     mock_sessions.assert_called_once_with()
     mock_console.assert_called_once()
+
+
+def test_fresh_no_arg_enters_quickstart_and_prints_tmux_install_help(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from panopticon.terminal import doctor
+
+    result = doctor.CheckResult(
+        "tmux",
+        False,
+        "not found on PATH",
+        hint="Install tmux (e.g. `brew install tmux` / `apt-get install --yes tmux`).",
+    )
+    with (
+        patch("panopticon.terminal.__main__._has_bootstrap_credential", return_value=False),
+        patch("panopticon.taskservice.auth.environment_token"),
+        patch("panopticon.terminal.doctor.run_checks", return_value=[result]),
+        patch("panopticon.terminal.__main__._run_migrate") as mock_migrate,
+        patch("panopticon.terminal.__main__._start_sessions") as mock_sessions,
+    ):
+        assert main([]) == 1
+
+    output = capsys.readouterr().out
+    assert "tmux: not found on PATH" in output
+    assert "brew install tmux" in output
+    assert "apt-get install --yes tmux" in output
+    mock_migrate.assert_not_called()
+    mock_sessions.assert_not_called()
 
 
 def test_start_runs_migrate_sessions_then_console() -> None:
@@ -93,6 +124,26 @@ def test_start_runs_migrate_sessions_then_console() -> None:
     mock_sessions.assert_called_once_with()
     mock_console.assert_called_once()
     assert mock_console.call_args.kwargs["join"] is None  # no task → nothing to join
+
+
+def test_start_explains_how_to_install_missing_tmux(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing_tmux = FileNotFoundError(2, "No such file or directory", "tmux")
+    with (
+        patch("panopticon.sessionservice.docker_daemon.preflight_message", return_value=None),
+        patch("panopticon.terminal.__main__._run_migrate"),
+        patch("panopticon.terminal.__main__._start_sessions", side_effect=missing_tmux),
+        patch("panopticon.terminal.console.run_console_local") as mock_console,
+    ):
+        assert main(["start"]) == 1
+
+    output = capsys.readouterr().out
+    assert "tmux was not found on PATH" in output
+    assert "brew install tmux" in output
+    assert "apt-get install --yes tmux" in output
+    assert "panopticon start" in output
+    mock_console.assert_not_called()
 
 
 def test_start_with_a_task_arg_joins_it() -> None:
@@ -157,6 +208,7 @@ def test_no_arg_refuses_when_docker_daemon_is_unreachable() -> None:
     # 2119: REQ-031.1.1
     # 2119: REQ-031.1.4
     with (
+        patch("panopticon.terminal.__main__._has_bootstrap_credential", return_value=True),
         patch(
             "panopticon.sessionservice.docker_daemon.preflight_message",
             return_value="Docker daemon unreachable — start OrbStack, then rerun `panopticon start`.",

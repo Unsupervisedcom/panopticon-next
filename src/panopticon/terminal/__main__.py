@@ -1,10 +1,12 @@
 """``panopticon`` / ``python -m panopticon.terminal`` — the operator CLI.
 
-`panopticon` with no argument (or `panopticon start`) starts everything: runs DB migrations,
-starts the task service and session-service runner in background tmux sessions, then opens the
-session supervisor (ADR 0009) — the dashboard, plus handing the terminal to a task's tmux on `t`
-and rejoining on detach. Given a task id or slug (`panopticon start <task>`), it joins — attaches
-straight to — that task's container session first, falling into the dashboard on detach.
+On a fresh install, `panopticon` with no argument enters quickstart so prerequisite failures include
+their corrective instructions. After quickstart has created the default credential, a bare
+`panopticon` (or `panopticon start`) starts everything: runs DB migrations, starts the task service
+and session-service runner in background tmux sessions, then opens the session supervisor (ADR
+0009) — the dashboard, plus handing the terminal to a task's tmux on `t` and rejoining on detach.
+Given a task id or slug (`panopticon start <task>`), it joins — attaches straight to — that task's
+container session first, falling into the dashboard on detach.
 `panopticon console` opens the supervisor only (assumes services are already running) and takes
 the same optional task argument. `panopticon dashboard` runs the dashboard once without the attach loop;
 `panopticon tasks` lists tasks as plain text; `panopticon migrate` applies DB migrations to head
@@ -40,6 +42,13 @@ def _make_client(service_url: str) -> TaskServiceClient:
 
 
 DEFAULT_SERVICE_URL = "http://localhost:8000"
+
+
+def _has_bootstrap_credential() -> bool:
+    """Whether this user has completed enough integrated setup for bare startup."""
+    from panopticon.taskservice.auth import BOOTSTRAP_AUTH_FILE, credential_path
+
+    return os.path.lexists(credential_path(BOOTSTRAP_AUTH_FILE))
 
 
 def _private_log_paths() -> dict[str, Path]:
@@ -242,6 +251,22 @@ def _start_sessions(
         )
 
 
+def _start_sessions_with_help(command: str) -> bool:
+    """Start the integrated sessions, translating a missing tmux binary into a useful remedy."""
+    try:
+        _start_sessions()
+    except FileNotFoundError as exc:
+        if Path(exc.filename or "").name != "tmux":
+            raise
+        from panopticon.terminal.doctor import TMUX_INSTALL_HINT
+
+        print(
+            f"panopticon: tmux was not found on PATH. {TMUX_INSTALL_HINT} Then rerun `{command}`."
+        )
+        return False
+    return True
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -289,6 +314,12 @@ def main(
     )
     args = parser.parse_args(argv)
 
+    # A package installer cannot safely run an interactive post-install hook. Make the first
+    # invocation useful instead: an unconfigured bare command enters the prerequisite-checking
+    # quickstart, while existing users retain the long-standing bare-command alias for `start`.
+    if args.command is None:
+        args.command = "start" if _has_bootstrap_credential() else "quickstart"
+
     if args.command == "migrate":
         import importlib.resources
 
@@ -319,7 +350,8 @@ def main(
             return 1
         _ensure_integrated_auth()
         _run_migrate()
-        _start_sessions()
+        if not _start_sessions_with_help("panopticon host"):
+            return 1
         return 0
     elif args.command == "quickstart":
         from panopticon.taskservice.auth import environment_token
@@ -340,7 +372,8 @@ def main(
         _ensure_integrated_auth()
 
         _run_migrate()
-        _start_sessions()
+        if not _start_sessions_with_help("panopticon quickstart"):
+            return 1
         _qs.wait_for_service(args.service_url)
         try:
             env_file = _qs.ensure_secrets_file()
@@ -418,8 +451,8 @@ def main(
             artifacts_root=artifacts_root,
             draft_file=draft_file,
         )
-    else:  # "start", "console", or no subcommand (no subcommand → alias for "start")
-        if args.command in (None, "start"):  # "console" assumes services are already running
+    else:  # "start" or "console"
+        if args.command == "start":  # "console" assumes services are already running
             from panopticon.sessionservice import docker_daemon
 
             # Fail fast on an unreachable Docker daemon (REQ-031.1) rather than spawning every
@@ -430,7 +463,8 @@ def main(
                 return 1
             _ensure_integrated_auth()
             _run_migrate()
-            _start_sessions()
+            if not _start_sessions_with_help("panopticon start"):
+                return 1
         from panopticon.terminal.console import run_console_local
 
         _select_existing_integrated_auth()

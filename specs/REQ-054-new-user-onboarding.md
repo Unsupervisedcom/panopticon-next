@@ -10,8 +10,8 @@ GitHub task, and tear the local runtime down cleanly.
 
 ### REQ-054.1: Install identity
 
-1. The new-user documentation MUST provide one canonical installation command that names an
-   immutable Panopticon release version, tag, or full commit SHA.
+1. The new-user documentation MUST provide one canonical installation command that installs the
+   latest published `panopticon-next` release and immediately enters quickstart.
 2. Following the documented installation steps in a new isolated package environment MUST expose
    a `panopticon` executable that runs without importing code from a source checkout.
 3. `panopticon --version` MUST report the installed distribution version and exit successfully.

@@ -8,14 +8,13 @@ Code, Codex, or pi for each task and gives you one place to supervise the fleet.
 ## Quick install
 
 ```sh
-pipx install panopticon-next==0.0.6
-panopticon doctor
 cd /path/to/your/repo
-panopticon quickstart
+pipx install panopticon-next && panopticon quickstart
 ```
 
-Run quickstart from the Git repository you want Panopticon to manage. If `pipx`, Docker, tmux, Git,
-or an agent harness is not ready yet, see [Requirements](#requirements) and [Install](#install).
+Run that command from the Git repository you want Panopticon to manage. Quickstart checks the host
+before changing Panopticon state; if Docker, tmux, Git, or an agent harness is missing, it prints an
+exact corrective action. See [Requirements](#requirements) and [Install](#install) for details.
 
 - **A live dashboard** of all your tasks, showing which agents are working and which are blocked
   waiting on you, so you stop cycling through terminals to find the one that's stuck.
@@ -104,15 +103,16 @@ new one** so the PATH change takes effect:
 pipx ensurepath
 ```
 
-In that new terminal, install the versioned evaluator build:
+In that new terminal, move into the repository Panopticon should manage, then install and start
+onboarding:
 
 ```sh
-pipx install panopticon-next==0.0.6
-panopticon --version
+cd /path/to/your/repo
+pipx install panopticon-next && panopticon quickstart
 ```
 
-Expected result: `panopticon --version` prints `panopticon 0.0.6` without requiring a checkout or
-`uv`.
+You can verify the installed release with `panopticon --version`; it should print `panopticon 0.2.7`
+without requiring a checkout or `uv`.
 
 The distribution is **`panopticon-next`**, but the command you run and the package you import are
 both **`panopticon`**. To work from a checkout, run `uv sync` and then `uv run panopticon doctor`.
@@ -126,6 +126,9 @@ whatever repo you're in as the target for your tasks.
 cd ~/code/my-project   # the repo you want agents to work on
 panopticon quickstart  # first-time setup, then open the dashboard
 ```
+
+After installation, a bare `panopticon` also enters quickstart when no default configuration exists.
+Once that configuration exists, bare invocations start the configured stack normally.
 
 `panopticon quickstart` checks prerequisites, detects installed/authenticated harnesses, asks you to
 confirm or choose the repo default, brings the stack up, registers the repo, and drops you into a

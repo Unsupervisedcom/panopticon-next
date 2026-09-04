@@ -56,13 +56,14 @@ class CheckResult:
 #:   git    — quickstart's ``git remote get-url``; the per-task ``git clone --local`` + branch
 #:   docker — the session service builds images and ``docker run``s every task container
 #:   tmux   — ``start``/``host`` background sessions, the console attach, shell workflows
+TMUX_INSTALL_HINT = "Install tmux (e.g. `brew install tmux` / `apt-get install --yes tmux`)."
 REQUIRED_BINARIES: tuple[tuple[str, str], ...] = (
     ("git", "Install git (e.g. `brew install git` / `apt-get install --yes git`)."),
     (
         "docker",
         "Install Docker Desktop (macOS) or Docker Engine (Linux), then start it.",
     ),
-    ("tmux", "Install tmux (e.g. `brew install tmux` / `apt-get install --yes tmux`)."),
+    ("tmux", TMUX_INSTALL_HINT),
 )
 
 

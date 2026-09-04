@@ -16,13 +16,14 @@ WALKTHROUGH_FOLDED = WALKTHROUGH_TEXT.casefold()
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
 
 
-def test_install_docs_name_one_immutable_distribution_version() -> None:
+def test_install_docs_name_one_public_install_and_onboarding_command() -> None:
     # 2119: REQ-054.1.1
-    command = "pipx install panopticon-next==0.0.6"
+    command = "pipx install panopticon-next && panopticon quickstart"
     for document in (README, WALKTHROUGH):
         assert command in document
         remaining = document.replace(command, "")
-        remaining = remaining.replace("pipx install ./panopticon_next-0.0.6-py3-none-any.whl", "")
+        remaining = remaining.replace("pipx install panopticon-next", "")
+        remaining = remaining.replace("pipx install ./panopticon_next-0.2.7-py3-none-any.whl", "")
         assert "pipx install " not in remaining
         assert "panopticon-next @ git+" not in document
         assert "@main" not in document
@@ -121,7 +122,7 @@ def test_walkthrough_documents_retention_and_verifiable_teardown() -> None:
 def test_walkthrough_names_every_input_instead_of_relying_on_hidden_state() -> None:
     # 2119: REQ-054.7.4
     documented_inputs = (
-        "pipx install panopticon-next==0.0.6",
+        "pipx install panopticon-next && panopticon quickstart",
         "cd /path/to/disposable-repo",
         "git remote get-url origin",
         "working authentication for the selected harness",

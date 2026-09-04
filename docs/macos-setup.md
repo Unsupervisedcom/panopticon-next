@@ -1,8 +1,8 @@
 # macOS setup
 
 Install and first run are the same on macOS as anywhere else — see the
-[new-user walkthrough](getting-started.md) (`pipx install panopticon-next==0.0.6`, then
-`panopticon quickstart`). This page
+[new-user walkthrough](getting-started.md)
+(`pipx install panopticon-next && panopticon quickstart`). This page
 covers only what's **macOS-specific**.
 
 ## Use OrbStack or Docker Desktop

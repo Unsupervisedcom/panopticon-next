@@ -754,7 +754,7 @@ wheels = [
 
 [[package]]
 name = "panopticon-next"
-version = "0.0.6"
+version = "0.2.7"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
