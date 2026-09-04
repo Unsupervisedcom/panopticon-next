@@ -12,18 +12,23 @@ credential files. See ``docs/getting-started.md`` for the invocation contract.
 
 from __future__ import annotations
 
+import ast
 import base64
 import contextlib
 import errno
 import fcntl
+import hashlib
 import json
 import os
 import pty
 import re
+import shlex
 import shutil
 import signal
+import stat
 import struct
 import subprocess
+import sys
 import termios
 import threading
 import time
@@ -31,11 +36,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 import pytest
 
+_ROOT = Path(__file__).resolve().parents[2]
+_WALKTHROUGH_PATH = _ROOT / "docs" / "getting-started.md"
 _OPT_IN = "I_AM_RUNNING_ON_A_DISPOSABLE_HOST"
 _REQUIRED = (
     "PANOPTICON_NEW_USER_ACCEPTANCE",
@@ -57,12 +64,41 @@ _PTY_ROWS = 45
 _PTY_COLUMNS = 180
 _PTY_BUFFER_LIMIT = 128 * 1024
 _DIAGNOSTIC_LIMIT = 12_000
-_PINNED_DISTRIBUTION = re.compile(r"panopticon-app==[0-9]+(?:\.[0-9]+){2}[A-Za-z0-9.!+_-]*\Z")
-_HASHED_WHEEL = re.compile(
-    r"panopticon-app @ https://\S+\.whl#sha256=[0-9a-f]{64}\Z", re.IGNORECASE
+_HASHED_LOCAL_WHEEL = re.compile(
+    r"panopticon-app @ file:///\S+\.whl#sha256=[0-9a-f]{64}\Z", re.IGNORECASE
 )
-_PINNED_GIT = re.compile(r"panopticon-app @ git\+https://\S+@[0-9a-f]{40}\Z", re.IGNORECASE)
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
+_LEGACY_WORKTREE_STATE = ("panopticon.db", "artifacts", "layers", "cache", "tasks")
+_WALKTHROUGH_SEQUENCE = (
+    "pipx install ./panopticon_app-0.0.6-py3-none-any.whl",
+    "panopticon --version",
+    "panopticon doctor",
+    "panopticon quickstart",
+    "unset PANOPTICON_SERVICE_AUTH_FILE PANOPTICON_SERVICE_AUTH_MODE PANOPTICON_SERVICE_AUTH_TOKEN",
+    "panopticon tasks",
+    "Press `n`. Select the registered repository with the arrow keys and Enter.",
+    "Select `github-self-reviewed` and press Enter.",
+    "Add a hello-panopticon.txt file containing hello from Panopticon and do not change any",
+    "press `t` to attach to its agent session",
+    "session; `Ctrl-b d` returns you to the",
+    "press `a`, select `plan.md`, and press Enter.",
+    "Press `t` to attach, give any correction",
+    "| Claude | `/advance` |",
+    "| Codex | `$advance` |",
+    "press `p` to open the pull request",
+    "attach and invoke `advance` with the same harness-specific syntax",
+    "panopticon stop",
+)
+_WALKTHROUGH_PLACEHOLDERS = (
+    "/path/to/disposable-repo",
+    "PANOPTICON_ACCEPTANCE_INSTALL_SPEC",
+    "PANOPTICON_ACCEPTANCE_GITHUB_REPO",
+    "PANOPTICON_ACCEPTANCE_BASE_SHA",
+    "PANOPTICON_ACCEPTANCE_HARNESS",
+    "PANOPTICON_ACCEPTANCE_HARNESS_AUTH_ENV",
+    "PANOPTICON_ACCEPTANCE_GH_TOKEN",
+    "PANOPTICON_ACCEPTANCE_HARNESS_AUTH_TOKEN",
+)
 _PASSTHROUGH_ENV = (
     "ALL_PROXY",
     "DOCKER_CONTEXT",
@@ -98,6 +134,511 @@ class LiveConfiguration:
     harness: str
     harness_auth_env: str
     harness_auth_token: str
+
+
+@dataclass(frozen=True)
+class DocumentedWalkthrough:
+    install_version: str
+    install_argv: tuple[str, ...]
+    quickstart_argv: tuple[str, ...]
+    task_prompt: str
+    advance_commands: Mapping[str, str]
+    new_task_key: bytes
+    attach_key: bytes
+    artifact_key: bytes
+    pull_request_key: bytes
+    detach_keys: bytes
+    submit_key: bytes
+    next_choice_key: bytes
+    previous_row_key: bytes
+
+
+class _PostSetupRequestAudit:
+    """Fail immediately if the acceptance driver mutates REST state after setup."""
+
+    def __init__(self) -> None:
+        self.active = False
+
+    def __call__(self, request: httpx.Request) -> None:
+        if self.active and request.method not in {"GET", "HEAD"}:
+            raise AssertionError(
+                f"post-setup acceptance REST traffic must be observation-only, got {request.method}"
+            )
+
+
+_ALLOWED_POST_SETUP_CALLS = frozenset(
+    {
+        "AssertionError",
+        "Path",
+        "_advance_command",
+        "_api_get",
+        "_assert_task_remains_user_gated",
+        "_send_session_switch_while_attached",
+        "_send_opener_key_while_unopened",
+        "_send_user_approval_while_gated",
+        "_capture_pane",
+        "_client_sessions",
+        "_failure_diagnostics",
+        "_github_get",
+        "_assert_no_panopticon_tmux_server",
+        "_pane_id",
+        "_pane_pid",
+        "_redacted_tail",
+        "_run",
+        "_wait_for_client_session",
+        "_wait_for_pane_row_texts",
+        "_wait_for_pane_text",
+        "_wait_until",
+        "any",
+        "artifact_log.is_file",
+        "artifact_log.read_text",
+        "base64.b64decode",
+        "browser_log.is_file",
+        "browser_log.read_text",
+        "client.get",
+        "config.repo_url.rstrip",
+        "content.strip",
+        "decode",
+        "dict",
+        "driver.send",
+        "driver.terminate",
+        "driver.wait",
+        "encode",
+        "fresh_shell.pop",
+        "int",
+        "invalid_client_credential.chmod",
+        "invalid_client_credential.write_text",
+        "isinstance",
+        "json.dumps",
+        "len",
+        "line.split",
+        "listed.stdout.splitlines",
+        "next",
+        "observed.get",
+        "opened_artifact.read_bytes",
+        "plan_response.raise_for_status",
+        "plan_response.text.strip",
+        "pr_match.group",
+        "prompt.encode",
+        "quote",
+        "re.escape",
+        "re.fullmatch",
+        "re.search",
+        "rstrip",
+        "secrets_file.is_file",
+        "secrets_file.is_symlink",
+        "secrets_file.read_text",
+        "secrets_file.stat",
+        "sorted",
+        "splitlines",
+        "startswith",
+        "stdout.strip",
+        "str",
+        "strip",
+        "subprocess.run",
+        "time.sleep",
+        "visible_artifacts.index",
+        "workflow_names.index",
+    }
+)
+_ALLOWED_DRIVER_INPUTS = frozenset(
+    {
+        "prompt.encode() + walkthrough.submit_key",
+        "walkthrough.artifact_key",
+        "walkthrough.attach_key",
+        "walkthrough.detach_keys",
+        "walkthrough.new_task_key",
+        "walkthrough.next_choice_key * plan_index + walkthrough.submit_key",
+        "walkthrough.next_choice_key * workflow_index + walkthrough.submit_key",
+        "walkthrough.previous_row_key",
+        "walkthrough.pull_request_key",
+        "walkthrough.submit_key",
+    }
+)
+_ALLOWED_SETUP_DRIVER_INPUTS = frozenset(
+    {
+        "b'\\r'",
+        "b'y\\r'",
+        "config.github_token.encode() + b'\\r'",
+        "config.harness_auth_token.encode() + b'\\r'",
+    }
+)
+_OBSERVER_HELPER_CALLS = {
+    "_advance_command": frozenset(),
+    "_api_get": frozenset({"client.get", "response.json", "response.raise_for_status"}),
+    "_assert_task_remains_user_gated": frozenset({"_api_get", "time.monotonic", "time.sleep"}),
+    "_assert_no_panopticon_tmux_server": frozenset(
+        {"Path", "dict", "os.getuid", "socket_path.exists", "subprocess.run"}
+    ),
+    "_send_user_approval_while_gated": frozenset(
+        {
+            "_api_get",
+            "_capture_pane",
+            "_wait_until",
+            "command.decode",
+            "count",
+            "driver.send",
+            "failures.append",
+            "input_delivered.is_set",
+            "input_delivered.set",
+            "monitor_ready.set",
+            "monitor_ready.wait",
+            "monitor_thread.join",
+            "monitor_thread.start",
+            "pane.count",
+            "pane_before.count",
+            "pytest.fail",
+            "strip",
+            "threading.Event",
+            "threading.Thread",
+            "time.sleep",
+        }
+    ),
+    "_send_session_switch_while_attached": frozenset(
+        {
+            "_client_sessions",
+            "driver.send",
+            "failures.append",
+            "input_delivered.is_set",
+            "input_delivered.set",
+            "monitor_ready.set",
+            "monitor_ready.wait",
+            "monitor_thread.join",
+            "monitor_thread.start",
+            "pytest.fail",
+            "threading.Event",
+            "threading.Thread",
+            "time.sleep",
+        }
+    ),
+    "_send_opener_key_while_unopened": frozenset(
+        {
+            "driver.send",
+            "failures.append",
+            "input_delivered.is_set",
+            "input_delivered.set",
+            "log_path.exists",
+            "monitor_ready.set",
+            "monitor_ready.wait",
+            "monitor_thread.join",
+            "monitor_thread.start",
+            "pytest.fail",
+            "threading.Event",
+            "threading.Thread",
+            "time.sleep",
+        }
+    ),
+    "_capture_pane": frozenset({"dict", "subprocess.run"}),
+    "_client_sessions": frozenset({"dict", "result.stdout.splitlines", "subprocess.run"}),
+    "_complete_setup_task": frozenset(
+        {
+            "_api_get",
+            "_capture_pane",
+            "_wait_for_client_session",
+            "config.github_token.encode",
+            "config.harness_auth_token.encode",
+            "driver.send",
+            "pytest.fail",
+            "responded.add",
+            "set",
+            "time.monotonic",
+            "time.sleep",
+        }
+    ),
+    "_failure_diagnostics": frozenset(
+        {"_capture_pane", "_client_sessions", "_redacted_tail", "driver.tail", "len"}
+    ),
+    "_github_get": frozenset({"httpx.get", "response.json"}),
+    "_pane_id": frozenset({"dict", "result.stdout.strip", "subprocess.run"}),
+    "_pane_pid": frozenset({"dict", "int", "result.stdout.strip", "subprocess.run"}),
+    "_redacted_tail": frozenset({"len", "set", "sorted", "text.replace"}),
+    "_run": frozenset({"dict", "subprocess.run"}),
+    "_wait_for_client_session": frozenset({"_client_sessions", "_wait_until"}),
+    "_wait_for_pane_row_texts": frozenset(
+        {"_capture_pane", "_wait_until", "all", "any", "pane.splitlines", "str"}
+    ),
+    "_wait_for_pane_text": frozenset({"_capture_pane", "_wait_until", "str"}),
+    "_wait_until": frozenset({"accept", "probe", "pytest.fail", "time.monotonic", "time.sleep"}),
+}
+_HELPER_SUBPROCESS_ARGUMENTS = {
+    "_assert_no_panopticon_tmux_server": "['tmux', '-L', 'panopticon', 'has-session']",
+    "_capture_pane": (
+        "['tmux', '-L', 'panopticon', 'capture-pane', '-p', '-J', *history, '-t', session]"
+    ),
+    "_client_sessions": "['tmux', '-L', 'panopticon', 'list-clients', '-F', '#{client_session}']",
+    "_pane_id": (
+        "['tmux', '-L', 'panopticon', 'display-message', '-p', '-t', session, '#{pane_id}']"
+    ),
+    "_pane_pid": (
+        "['tmux', '-L', 'panopticon', 'display-message', '-p', '-t', session, '#{pane_pid}']"
+    ),
+    "_run": "argv",
+}
+_PROTECTED_POST_SETUP_NAMES = frozenset(
+    {
+        "Path",
+        "_advance_command",
+        "_api_get",
+        "_assert_no_panopticon_tmux_server",
+        "_assert_task_remains_user_gated",
+        "_capture_pane",
+        "_client_sessions",
+        "_failure_diagnostics",
+        "_github_get",
+        "_pane_id",
+        "_pane_pid",
+        "_redacted_tail",
+        "_run",
+        "_send_user_approval_while_gated",
+        "_send_session_switch_while_attached",
+        "_send_opener_key_while_unopened",
+        "_wait_for_client_session",
+        "_wait_for_pane_row_texts",
+        "_wait_for_pane_text",
+        "_wait_until",
+        "client",
+        "config",
+        "driver",
+        "httpx",
+        "mcp",
+        "seed_task",
+        "subprocess",
+        "task_fixture",
+        "transport",
+        "walkthrough",
+    }
+)
+_PROTECTED_HELPER_NAMES = frozenset(
+    name for name in _PROTECTED_POST_SETUP_NAMES if name.startswith("_")
+)
+_PROTECTED_PRE_SETUP_NAMES = _PROTECTED_HELPER_NAMES | frozenset(
+    name for name in _ALLOWED_POST_SETUP_CALLS if "." not in name
+)
+
+
+def _call_path(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _call_path(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    return ""
+
+
+def _literal_argv(node: ast.Call) -> tuple[str, ...] | None:
+    if not node.args or not isinstance(node.args[0], (ast.List, ast.Tuple)):
+        return None
+    literal_values: list[str] = []
+    for value in node.args[0].elts:
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+            return None
+        literal_values.append(value.value)
+    return tuple(literal_values)
+
+
+def _allowed_observation_command(call_path: str, node: ast.Call) -> bool:
+    argv = _literal_argv(node)
+    if not argv:
+        return False
+    if call_path == "_run":
+        return argv in {("panopticon", "tasks"), ("panopticon", "stop")}
+    if call_path != "subprocess.run":
+        return True
+    return (
+        argv[:2] == ("docker", "ps")
+        or argv == ("tmux", "-L", "panopticon", "has-session")
+        or argv == ("panopticon", "tasks")
+        or argv == ("panopticon", "stop")
+    )
+
+
+def _allowed_wait_probe(node: ast.Call) -> bool:
+    if len(node.args) < 2:
+        return False
+    probe = node.args[1]
+    return isinstance(probe, ast.Lambda) or (
+        isinstance(probe, ast.Name) and probe.id == "observed_merging_history"
+    )
+
+
+def _allowed_user_approval_call(node: ast.Call) -> bool:
+    if len(node.args) != 9 or node.keywords:
+        return False
+    if [ast.unparse(argument) for argument in node.args[:3]] != [
+        "client",
+        "write_token",
+        "task_id",
+    ]:
+        return False
+    if ast.unparse(node.args[3]) not in {"'PLANNING'", "'ITERATING'"}:
+        return False
+    return [ast.unparse(argument) for argument in node.args[4:]] == [
+        "env",
+        "worktree",
+        "task_session",
+        "driver",
+        "walkthrough.advance_commands[config.harness].encode() + b'\\r'",
+    ]
+
+
+def _allowed_session_switch_call(node: ast.Call) -> bool:
+    if len(node.args) != 5 or node.keywords:
+        return False
+    if [ast.unparse(argument) for argument in node.args[:3]] != ["env", "worktree", "driver"]:
+        return False
+    return [ast.unparse(argument) for argument in node.args[3:]] in (
+        ["'dashboard'", "walkthrough.attach_key"],
+        ["task_session", "walkthrough.detach_keys"],
+    )
+
+
+def _allowed_opener_key_call(node: ast.Call) -> bool:
+    if len(node.args) != 3 or node.keywords:
+        return False
+    return [ast.unparse(argument) for argument in node.args] in (
+        ["artifact_log", "driver", "walkthrough.artifact_key"],
+        ["browser_log", "driver", "walkthrough.pull_request_key"],
+    )
+
+
+def _observer_helper_violations(tree: ast.Module) -> list[str]:
+    functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    violations: list[str] = []
+    for helper_name, allowed_calls in _OBSERVER_HELPER_CALLS.items():
+        helper = functions.get(helper_name)
+        if helper is None:
+            continue
+        for node in ast.walk(helper):
+            line = getattr(node, "lineno", 0)
+            if isinstance(node, ast.Call):
+                call_path = _call_path(node.func)
+                if call_path not in allowed_calls:
+                    violations.append(
+                        f"line {line}: observer helper {helper_name} calls "
+                        f"{call_path or '<dynamic>'}"
+                    )
+                if call_path == "subprocess.run" and (
+                    not node.args
+                    or ast.unparse(node.args[0]) != _HELPER_SUBPROCESS_ARGUMENTS.get(helper_name)
+                ):
+                    violations.append(
+                        f"line {line}: observer helper {helper_name} runs an unreviewed command"
+                    )
+                if (
+                    helper_name
+                    in {
+                        "_complete_setup_task",
+                        "_send_opener_key_while_unopened",
+                        "_send_session_switch_while_attached",
+                        "_send_user_approval_while_gated",
+                    }
+                    and call_path == "driver.send"
+                    and (
+                        not node.args
+                        or (
+                            helper_name == "_complete_setup_task"
+                            and ast.unparse(node.args[0]) not in _ALLOWED_SETUP_DRIVER_INPUTS
+                        )
+                        or (
+                            helper_name == "_send_user_approval_while_gated"
+                            and ast.unparse(node.args[0]) != "command"
+                        )
+                        or (
+                            helper_name == "_send_session_switch_while_attached"
+                            and ast.unparse(node.args[0]) != "keys"
+                        )
+                        or (
+                            helper_name == "_send_opener_key_while_unopened"
+                            and ast.unparse(node.args[0]) != "key"
+                        )
+                    )
+                ):
+                    violations.append(f"line {line}: helper sends an unreviewed input")
+            if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(
+                node.ctx, (ast.Store, ast.Del)
+            ):
+                violations.append(
+                    f"line {line}: observer helper {helper_name} writes external state"
+                )
+    return violations
+
+
+def _post_setup_direct_mutations(source: str) -> list[str]:
+    """Reject every post-setup call or state write outside the reviewed UI/read-only surface."""
+    tree = ast.parse(source)
+    functions = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "_run_live_new_user_journey"
+    ]
+    if len(functions) != 1:
+        return ["acceptance source must define exactly one _run_live_new_user_journey"]
+    function = functions[0]
+    setup_calls = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call) and _call_path(node.func) == "_complete_setup_task"
+    ]
+    if len(setup_calls) != 1:
+        return ["acceptance driver must have exactly one _complete_setup_task phase boundary"]
+    phase_end = (
+        setup_calls[0].end_lineno or setup_calls[0].lineno,
+        setup_calls[0].end_col_offset or setup_calls[0].col_offset,
+    )
+    violations = _observer_helper_violations(tree)
+    for node in ast.walk(function):
+        line = getattr(node, "lineno", 0)
+        before_or_at_setup = (line, getattr(node, "col_offset", 0)) <= phase_end
+        if (
+            isinstance(node, ast.Name)
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+            and (
+                node.id in _PROTECTED_PRE_SETUP_NAMES
+                or (not before_or_at_setup and node.id in _PROTECTED_POST_SETUP_NAMES)
+            )
+        ):
+            violations.append(f"line {line}: protected name rebind {node.id}")
+        if before_or_at_setup:
+            continue
+        if isinstance(node, ast.Call):
+            call_path = _call_path(node.func)
+            if (
+                call_path not in _ALLOWED_POST_SETUP_CALLS
+                or (
+                    call_path in {"_run", "subprocess.run"}
+                    and not _allowed_observation_command(call_path, node)
+                )
+                or (
+                    call_path == "driver.send"
+                    and (not node.args or ast.unparse(node.args[0]) not in _ALLOWED_DRIVER_INPUTS)
+                )
+                or (
+                    call_path == "_send_user_approval_while_gated"
+                    and not _allowed_user_approval_call(node)
+                )
+                or (
+                    call_path == "_send_session_switch_while_attached"
+                    and not _allowed_session_switch_call(node)
+                )
+                or (
+                    call_path == "_send_opener_key_while_unopened"
+                    and not _allowed_opener_key_call(node)
+                )
+                or (call_path == "_wait_until" and not _allowed_wait_probe(node))
+            ):
+                violations.append(f"line {line}: call {call_path or '<dynamic>'}")
+        if (
+            isinstance(node, (ast.Attribute, ast.Subscript))
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+            and _call_path(node) != "request_audit.active"
+        ):
+            violations.append(f"line {line}: state write {_call_path(node) or '<subscript>'}")
+    return sorted(violations)
 
 
 class _PtyProcess:
@@ -195,6 +736,170 @@ class _PtyProcess:
         self._drainer.join(timeout=1)
 
 
+def _local_wheel_matches(wheel_path: Path, expected_hash: str) -> bool:
+    """Hash a regular, non-symlink wheel without following a final symlink."""
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(wheel_path, flags)
+        with os.fdopen(descriptor, "rb") as wheel_file:
+            if not stat.S_ISREG(os.fstat(wheel_file.fileno()).st_mode):
+                return False
+            return hashlib.file_digest(wheel_file, "sha256").hexdigest() == expected_hash
+    except (OSError, ValueError):
+        return False
+
+
+def _walkthrough_contract_errors(contents: str) -> list[str]:
+    """Return missing, duplicated, or out-of-order steps that would desync the live driver."""
+    errors: list[str] = []
+    positions: list[int] = []
+    for fragment in _WALKTHROUGH_SEQUENCE:
+        count = contents.count(fragment)
+        if count < 1:
+            errors.append(f"walkthrough is missing required step {fragment!r}")
+        positions.append(contents.find(fragment))
+    if all(position >= 0 for position in positions) and positions != sorted(positions):
+        errors.append("walkthrough journey steps are out of order")
+    for placeholder in _WALKTHROUGH_PLACEHOLDERS:
+        if placeholder not in contents:
+            errors.append(f"walkthrough is missing placeholder {placeholder}")
+    user_walkthrough = contents.split("## Maintainer:", 1)[0]
+    allowed_commands = {
+        "panopticon --version",
+        "panopticon 0.0.6",
+        "panopticon doctor",
+        "panopticon quickstart",
+        "panopticon stop",
+        "panopticon tasks",
+    }
+    shell_blocks = re.findall(r"```sh\n(.*?)```", user_walkthrough, re.DOTALL)
+    allowed_shell_lines = {
+        "brew install pipx",
+        "sudo apt-get update",
+        "sudo apt-get install --yes pipx",
+        "pipx ensurepath",
+        "pipx install ./panopticon_app-0.0.6-py3-none-any.whl",
+        "panopticon --version",
+        "panopticon doctor",
+        "cd /path/to/disposable-repo",
+        "git remote get-url origin",
+        "panopticon quickstart",
+        "unset PANOPTICON_SERVICE_AUTH_FILE PANOPTICON_SERVICE_AUTH_MODE PANOPTICON_SERVICE_AUTH_TOKEN",
+        "panopticon tasks",
+        "panopticon stop",
+        'test -z "$(docker ps --all --quiet --filter label=panopticon.task)"',
+        "! tmux -L panopticon has-session 2>/dev/null",
+    }
+    executable_lines = {
+        line.strip()
+        for block in shell_blocks
+        for line in block.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    unknown_shell_lines = executable_lines - allowed_shell_lines
+    if unknown_shell_lines:
+        errors.append(
+            f"walkthrough contains unexecuted shell commands: {sorted(unknown_shell_lines)}"
+        )
+    documented_commands = {
+        match.group(1).strip()
+        for block in shell_blocks
+        for line in block.splitlines()
+        if (match := re.match(r"^!?\s*(panopticon(?:\s+.*)?)$", line.strip()))
+    }
+    documented_commands.update(
+        command.strip() for command in re.findall(r"`(panopticon(?:\s+[^`]+)?)`", user_walkthrough)
+    )
+    unknown_commands = documented_commands - allowed_commands
+    if unknown_commands:
+        errors.append(
+            f"walkthrough contains unexecuted Panopticon commands: {sorted(unknown_commands)}"
+        )
+    documented_press_keys = set(re.findall(r"(?i)\bpress(?:es)?\s+`([^`]+)`", user_walkthrough))
+    unknown_press_keys = documented_press_keys - {"n", "t", "a", "p", "d", "R"}
+    if unknown_press_keys:
+        errors.append(
+            f"walkthrough contains unexecuted dashboard keys: {sorted(unknown_press_keys)}"
+        )
+    allowed_environment_names = set(_REQUIRED) | {
+        "PANOPTICON_SERVICE_AUTH_FILE",
+        "PANOPTICON_SERVICE_AUTH_MODE",
+        "PANOPTICON_SERVICE_AUTH_TOKEN",
+    }
+    unknown_environment_names = set(re.findall(r"\bPANOPTICON_[A-Z0-9_]+\b", contents)) - (
+        allowed_environment_names
+    )
+    if unknown_environment_names:
+        errors.append(
+            f"walkthrough contains unsupported placeholders: {sorted(unknown_environment_names)}"
+        )
+    unknown_angle_placeholders = set(re.findall(r"<[^>\n]+>", contents)) - {
+        "<reviewed 40-character default-branch SHA>",
+        "<reviewed-wheel-sha256>",
+    }
+    if unknown_angle_placeholders:
+        errors.append(
+            f"walkthrough contains unsupported placeholders: {sorted(unknown_angle_placeholders)}"
+        )
+    return errors
+
+
+def _documented_walkthrough(contents: str) -> DocumentedWalkthrough:
+    errors = _walkthrough_contract_errors(contents)
+    if errors:
+        raise ValueError("; ".join(errors))
+    user_walkthrough = contents.split("## Maintainer:", 1)[0]
+    install_lines = re.findall(
+        r"(?m)^(pipx install \./panopticon_app-([0-9]+(?:\.[0-9]+){2})-py3-none-any\.whl)$",
+        user_walkthrough,
+    )
+    if len(install_lines) != 1:
+        raise ValueError("walkthrough must define one exact versioned install command")
+    quickstart_lines = re.findall(r"(?m)^panopticon quickstart(?:[ \t].*)?$", user_walkthrough)
+    if quickstart_lines != ["panopticon quickstart"]:
+        raise ValueError("walkthrough must define one exact quickstart command")
+    prompt_match = re.search(r"Enter `([^`]+)` and press Enter", user_walkthrough, re.DOTALL)
+    if prompt_match is None:
+        raise ValueError("walkthrough must define the task prompt")
+    task_prompt = " ".join(prompt_match.group(1).split())
+    advance_commands = dict(
+        re.findall(r"^[ \t]*\| (Claude|Codex) \| `([^`]+)` \|$", user_walkthrough, re.MULTILINE)
+    )
+    if set(advance_commands) != {"Claude", "Codex"}:
+        raise ValueError("walkthrough must define Claude and Codex approval commands")
+
+    key_patterns = {
+        "new_task_key": r"From the dashboard:\s+1\. Press `([^`]+)`\.",
+        "attach_key": r"Highlight the task and press `([^`]+)` to attach",
+        "artifact_key": r"highlight the task, press `([^`]+)`, select `plan\.md`",
+        "pull_request_key": r"highlight it and press `([^`]+)` to open the pull request",
+    }
+    parsed_keys: dict[str, bytes] = {}
+    for name, pattern in key_patterns.items():
+        matches = re.findall(pattern, user_walkthrough)
+        if len(matches) != 1 or len(matches[0]) != 1:
+            raise ValueError(f"walkthrough must define one single-key {name}")
+        parsed_keys[name] = matches[0].encode()
+    detach_labels = set(re.findall(r"[Dd]etach with `([^`]+)`", user_walkthrough))
+    if detach_labels != {"Ctrl-b d"}:
+        raise ValueError("walkthrough must consistently define tmux detach as Ctrl-b d")
+    return DocumentedWalkthrough(
+        install_version=install_lines[0][1],
+        install_argv=tuple(shlex.split(install_lines[0][0])),
+        quickstart_argv=tuple(shlex.split(quickstart_lines[0])),
+        task_prompt=task_prompt,
+        advance_commands={name.lower(): command for name, command in advance_commands.items()},
+        new_task_key=parsed_keys["new_task_key"],
+        attach_key=parsed_keys["attach_key"],
+        artifact_key=parsed_keys["artifact_key"],
+        pull_request_key=parsed_keys["pull_request_key"],
+        detach_keys=b"\x02d",
+        submit_key=b"\r",
+        next_choice_key=b"\x1b[B",
+        previous_row_key=b"\x1b[A",
+    )
+
+
 def _configuration(environ: Mapping[str, str]) -> LiveConfiguration | None:
     """Return a live configuration only after every destructive/network gate is explicit."""
     if environ.get("PANOPTICON_NEW_USER_ACCEPTANCE") != _OPT_IN:
@@ -203,32 +908,25 @@ def _configuration(environ: Mapping[str, str]) -> LiveConfiguration | None:
         return None
 
     install_spec = environ["PANOPTICON_ACCEPTANCE_INSTALL_SPEC"]
-    distribution = _PINNED_DISTRIBUTION.fullmatch(install_spec)
-    wheel = _HASHED_WHEEL.fullmatch(install_spec)
-    git = _PINNED_GIT.fullmatch(install_spec)
-    if not any((distribution, wheel, git)):
+    local_wheel = _HASHED_LOCAL_WHEEL.fullmatch(install_spec)
+    if local_wheel is None:
         return None
-    if wheel:
-        wheel_url = urlsplit(install_spec.split(" @ ", 1)[1])
-        if (
-            wheel_url.scheme != "https"
-            or wheel_url.username is not None
-            or wheel_url.password is not None
-            or wheel_url.query
-            or re.fullmatch(r"sha256=[0-9a-f]{64}", wheel_url.fragment, re.IGNORECASE) is None
-        ):
-            return None
-    if git:
-        git_url, _commit = install_spec.split(" @ ", 1)[1].rsplit("@", 1)
-        parsed_git = urlsplit(git_url)
-        if (
-            parsed_git.scheme != "git+https"
-            or parsed_git.username is not None
-            or parsed_git.password is not None
-            or parsed_git.query
-            or parsed_git.fragment
-        ):
-            return None
+    wheel_url = urlsplit(install_spec.split(" @ ", 1)[1])
+    wheel_path = Path(unquote(wheel_url.path))
+    if (
+        wheel_url.scheme != "file"
+        or wheel_url.netloc
+        or wheel_url.username is not None
+        or wheel_url.password is not None
+        or wheel_url.query
+        or re.fullmatch(r"sha256=[0-9a-f]{64}", wheel_url.fragment, re.IGNORECASE) is None
+        or not wheel_path.is_absolute()
+        or wheel_path.is_symlink()
+    ):
+        return None
+    expected_hash = wheel_url.fragment.partition("=")[2].lower()
+    if not _local_wheel_matches(wheel_path, expected_hash):
+        return None
     repo_url = environ["PANOPTICON_ACCEPTANCE_GITHUB_REPO"]
     parsed = urlsplit(repo_url)
     repo_parts = parsed.path.removesuffix(".git").strip("/").split("/")
@@ -265,6 +963,28 @@ def _configuration(environ: Mapping[str, str]) -> LiveConfiguration | None:
     )
 
 
+def _assert_installed_walkthrough_version(
+    package_version: str, cli_version: str, walkthrough: DocumentedWalkthrough
+) -> None:
+    assert package_version == walkthrough.install_version, (
+        "the installed acceptance artifact must match the version in the user walkthrough"
+    )
+    assert cli_version == f"panopticon {walkthrough.install_version}"
+
+
+def _documented_local_wheel(
+    install_spec: str, walkthrough: DocumentedWalkthrough
+) -> tuple[Path, list[str]]:
+    wheel_url = urlsplit(install_spec.split(" @ ", 1)[1])
+    wheel_path = Path(unquote(wheel_url.path))
+    documented_argv = list(walkthrough.install_argv)
+    assert documented_argv[:2] == ["pipx", "install"]
+    assert documented_argv[2] == f"./{wheel_path.name}", (
+        "the supplied acceptance wheel must be the artifact named in the walkthrough"
+    )
+    return wheel_path, documented_argv
+
+
 _LIVE_CONFIGURATION = _configuration(os.environ)
 
 
@@ -284,6 +1004,37 @@ def _run(
         timeout=timeout,
         check=True,
     )
+
+
+def _assert_expected_origin(worktree: Path, env: Mapping[str, str], expected: str) -> None:
+    result = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        cwd=worktree,
+        env=dict(env),
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, "the clean acceptance worktree must have an origin remote"
+    assert result.stdout.strip() == expected, (
+        "the clean acceptance worktree must have the documented disposable repository as origin"
+    )
+
+
+def _assert_no_legacy_worktree_state(worktree: Path) -> None:
+    present = [name for name in _LEGACY_WORKTREE_STATE if (worktree / name).exists()]
+    assert present == [], f"disposable worktree contains migratable Panopticon state: {present}"
+
+
+def _assert_no_panopticon_tmux_server(env: Mapping[str, str], cwd: Path) -> None:
+    session_probe = subprocess.run(
+        ["tmux", "-L", "panopticon", "has-session"],
+        cwd=cwd,
+        env=dict(env),
+        capture_output=True,
+    )
+    socket_path = Path("/tmp") / f"tmux-{os.getuid()}" / "panopticon"
+    assert session_probe.returncode != 0, "the dedicated Panopticon tmux server has a session"
+    assert not socket_path.exists(), "the dedicated Panopticon tmux server is still running"
 
 
 def _wait_until(
@@ -347,6 +1098,84 @@ def _api_get(client: httpx.Client, token: str, path: str) -> Any:
     return response.json() if response.content else None
 
 
+def _assert_task_remains_user_gated(
+    client: httpx.Client,
+    write_token: str,
+    task_id: str,
+    state: str,
+    *,
+    duration: float = 2.0,
+) -> None:
+    """Prove a user-owned state does not advance before the operator acts."""
+    deadline = time.monotonic() + duration
+    while time.monotonic() < deadline:
+        observed = _api_get(client, write_token, f"/tasks/{task_id}")
+        assert observed["state"] == state
+        assert observed["turn"] == "user"
+        time.sleep(0.1)
+
+
+def _send_user_approval_while_gated(
+    client: httpx.Client,
+    write_token: str,
+    task_id: str,
+    state: str,
+    env: Mapping[str, str],
+    cwd: Path,
+    task_session: str,
+    driver: _PtyProcess,
+    command: bytes,
+    *,
+    observation_window: float = 2.0,
+) -> None:
+    """Continuously reject an automatic transition until the attached input is delivered."""
+    command_text = command.decode().strip()
+    pane_before = _capture_pane(env, cwd, task_session, scrollback=True)
+    command_count_before = pane_before.count(command_text)
+    input_delivered = threading.Event()
+    monitor_ready = threading.Event()
+    failures: list[str] = []
+
+    def monitor_gate() -> None:
+        monitor_ready.set()
+        while not input_delivered.is_set():
+            try:
+                observed = _api_get(client, write_token, f"/tasks/{task_id}")
+            except BaseException as exc:
+                failures.append(f"approval gate observation failed before input: {exc!r}")
+                return
+            if observed["state"] != state or observed["turn"] != "user":
+                failures.append(
+                    f"task advanced before attached approval input: "
+                    f"{observed['state']}/{observed['turn']}"
+                )
+                return
+            time.sleep(0.01)
+
+    monitor_thread = threading.Thread(target=monitor_gate, daemon=True)
+    monitor_thread.start()
+    assert monitor_ready.wait(timeout=5)
+    time.sleep(observation_window)
+    if failures:
+        pytest.fail(failures[0])
+    driver.send(command)
+    input_delivered.set()
+    monitor_thread.join(timeout=5)
+    if failures:
+        pytest.fail(failures[0])
+    _wait_until(
+        "the approval command to appear in the attached agent pane",
+        lambda: (
+            pane
+            if (pane := _capture_pane(env, cwd, task_session, scrollback=True)).count(command_text)
+            > command_count_before
+            else None
+        ),
+        timeout=30,
+        interval=0.1,
+    )
+
+
 def _capture_pane(
     env: Mapping[str, str], cwd: Path, session: str, *, scrollback: bool = False
 ) -> str:
@@ -381,6 +1210,26 @@ def _pane_id(env: Mapping[str, str], cwd: Path, session: str) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def _pane_pid(env: Mapping[str, str], cwd: Path, session: str) -> int:
+    result = subprocess.run(
+        [
+            "tmux",
+            "-L",
+            "panopticon",
+            "display-message",
+            "-p",
+            "-t",
+            session,
+            "#{pane_pid}",
+        ],
+        cwd=cwd,
+        env=dict(env),
+        text=True,
+        capture_output=True,
+    )
+    return int(result.stdout.strip()) if result.returncode == 0 else 0
+
+
 def _client_sessions(env: Mapping[str, str], cwd: Path) -> list[str]:
     """Return the sessions of attached clients without changing tmux state."""
     result = subprocess.run(
@@ -393,6 +1242,77 @@ def _client_sessions(env: Mapping[str, str], cwd: Path) -> list[str]:
     if result.returncode != 0:
         return []
     return [line for line in result.stdout.splitlines() if line]
+
+
+def _send_session_switch_while_attached(
+    env: Mapping[str, str],
+    cwd: Path,
+    driver: _PtyProcess,
+    expected_session: str,
+    keys: bytes,
+    *,
+    observation_window: float = 1.0,
+) -> None:
+    """Reject a session switch that occurs before the documented terminal input."""
+    input_delivered = threading.Event()
+    monitor_ready = threading.Event()
+    failures: list[str] = []
+
+    def monitor_attachment() -> None:
+        monitor_ready.set()
+        while not input_delivered.is_set():
+            observed = _client_sessions(env, cwd)
+            if observed != [expected_session]:
+                failures.append(
+                    f"terminal left {expected_session!r} before documented input: {observed!r}"
+                )
+                return
+            time.sleep(0.01)
+
+    monitor_thread = threading.Thread(target=monitor_attachment, daemon=True)
+    monitor_thread.start()
+    assert monitor_ready.wait(timeout=5)
+    time.sleep(observation_window)
+    if failures:
+        pytest.fail(failures[0])
+    driver.send(keys)
+    input_delivered.set()
+    monitor_thread.join(timeout=5)
+    if failures:
+        pytest.fail(failures[0])
+
+
+def _send_opener_key_while_unopened(
+    log_path: Path,
+    driver: _PtyProcess,
+    key: bytes,
+    *,
+    observation_window: float = 1.0,
+) -> None:
+    """Reject an artifact or browser handoff that occurs before its documented key."""
+    input_delivered = threading.Event()
+    monitor_ready = threading.Event()
+    failures: list[str] = []
+
+    def monitor_handoff() -> None:
+        monitor_ready.set()
+        while not input_delivered.is_set():
+            if log_path.exists():
+                failures.append(f"host opener ran before documented input: {log_path}")
+                return
+            time.sleep(0.01)
+
+    monitor_thread = threading.Thread(target=monitor_handoff, daemon=True)
+    monitor_thread.start()
+    assert monitor_ready.wait(timeout=5)
+    time.sleep(observation_window)
+    if failures:
+        pytest.fail(failures[0])
+    driver.send(key)
+    input_delivered.set()
+    monitor_thread.join(timeout=5)
+    if failures:
+        pytest.fail(failures[0])
 
 
 def _wait_for_client_session(
@@ -565,15 +1485,17 @@ def _complete_setup_task(
 
 
 def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> None:
+    walkthrough = _documented_walkthrough(_WALKTHROUGH_PATH.read_text())
     for binary in ("docker", "git", "pipx", "tmux", config.harness):
         assert shutil.which(binary), f"{binary} must be installed on the disposable host"
     other_harnesses = _REGISTERED_HARNESSES - {config.harness}
     assert not [name for name in other_harnesses if shutil.which(name)], (
         "the disposable host must expose only the selected harness so quickstart's choice is deterministic"
     )
-    config_root = tmp_path / "config"
-    data_root = tmp_path / "data"
-    cache_root = tmp_path / "cache"
+    home_root = tmp_path / "home"
+    config_root = home_root / ".config" / "panopticon"
+    data_root = home_root / ".local" / "share" / "panopticon"
+    cache_root = home_root / ".cache" / "panopticon"
     pipx_home = tmp_path / "pipx-home"
     pipx_bin = tmp_path / "pipx-bin"
     worktree = tmp_path / "disposable-repo"
@@ -605,10 +1527,7 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
 
     env = {
         **{name: os.environ[name] for name in _PASSTHROUGH_ENV if name in os.environ},
-        "HOME": str(tmp_path / "home"),
-        "PANOPTICON_CONFIG": str(config_root),
-        "PANOPTICON_DATA": str(data_root),
-        "PANOPTICON_CACHE": str(cache_root),
+        "HOME": str(home_root),
         "PIPX_HOME": str(pipx_home),
         "PIPX_BIN_DIR": str(pipx_bin),
         config.harness_auth_env: config.harness_auth_token,
@@ -625,12 +1544,7 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
     # disposable host has no unrelated containers at all; this deliberately catches unlabeled and
     # legacy Panopticon containers instead of trusting only the current label convention.
     assert subprocess.run(["docker", "info"], env=env, capture_output=True).returncode == 0
-    assert (
-        subprocess.run(
-            ["tmux", "-L", "panopticon", "has-session"], env=env, capture_output=True
-        ).returncode
-        != 0
-    )
+    _assert_no_panopticon_tmux_server(env, tmp_path)
     existing_containers = subprocess.run(
         ["docker", "ps", "--all", "--quiet"],
         env=env,
@@ -687,11 +1601,14 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
     assert (
         _run(["git", "rev-parse", "HEAD"], env=env, cwd=worktree).stdout.strip() == config.base_sha
     )
+    _assert_expected_origin(worktree, env, config.repo_url)
+    _assert_no_legacy_worktree_state(worktree)
 
     assert shutil.which("panopticon", path=env["PATH"]) is None, (
         "the disposable host PATH must not already expose panopticon"
     )
-    _run(["pipx", "install", "--force", config.install_spec], env=env, cwd=tmp_path, timeout=600)
+    wheel_path, install_argv = _documented_local_wheel(config.install_spec, walkthrough)
+    _run(install_argv, env=env, cwd=wheel_path.parent, timeout=600)
     panopticon = pipx_bin / "panopticon"
     assert panopticon.is_file()
     assert shutil.which("panopticon", path=env["PATH"]) is None
@@ -727,14 +1644,14 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
         for line in package.splitlines()
         if line.lower().startswith("version:")
     )
-    assert version == f"panopticon {package_version}"
+    _assert_installed_walkthrough_version(package_version, version, walkthrough)
     _run(["panopticon", "doctor"], env=env, cwd=tmp_path)
 
     driver: _PtyProcess | None = None
     teardown_complete = False
     try:
         # 2119: REQ-054.7.2, REQ-054.7.8
-        driver = _PtyProcess.start(["panopticon", "quickstart"], env=env, cwd=worktree)
+        driver = _PtyProcess.start(list(walkthrough.quickstart_argv), env=env, cwd=worktree)
         secrets_file = config_root / "secrets" / "panopticon.env"
         driver.wait_for_text(
             f"Use {config.harness} as this repo's default harness? Press Enter to continue.",
@@ -760,7 +1677,13 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
 
         auth = json.loads(auth_file.read_text())
         write_token = auth["write"][-1]
-        with httpx.Client(base_url="http://127.0.0.1:8000", timeout=30, trust_env=False) as client:
+        request_audit = _PostSetupRequestAudit()
+        with httpx.Client(
+            base_url="http://127.0.0.1:8000",
+            timeout=30,
+            trust_env=False,
+            event_hooks={"request": [request_audit]},
+        ) as client:
             setup = _wait_until(
                 "the setup-repo task",
                 lambda: next(
@@ -775,6 +1698,7 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
                 interval=0.2,
             )
             setup_id = str(setup["id"])
+            request_audit.active = True
             _complete_setup_task(
                 setup_id,
                 config=config,
@@ -798,15 +1722,53 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
                 "PANOPTICON_SERVICE_AUTH_TOKEN",
             ):
                 fresh_shell.pop(name, None)
+            unauthenticated = client.get("/tasks")
+            assert unauthenticated.status_code == 401, (
+                "the task service must reject the same client request without its stored token"
+            )
+            invalid_client_credential = config_root / "secrets" / "acceptance-invalid-client.json"
+            invalid_client_credential.write_text(
+                json.dumps({"read": [], "write": ["acceptance-invalid-token"]})
+            )
+            invalid_client_credential.chmod(0o600)
+            rejected_shell = {
+                **fresh_shell,
+                "PANOPTICON_SERVICE_AUTH_FILE": str(invalid_client_credential),
+                "PANOPTICON_SERVICE_AUTH_MODE": "enforced",
+            }
+            rejected = subprocess.run(
+                ["panopticon", "tasks"],
+                env=rejected_shell,
+                cwd=tmp_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            assert rejected.returncode != 0
+            assert "401" in rejected.stdout + rejected.stderr
+            completed_setup = _api_get(client, write_token, f"/tasks/{setup_id}")
+            assert completed_setup["workflow"] == "setup-repo"
+            assert completed_setup["state"] == "COMPLETE"
             listed = _run(["panopticon", "tasks"], env=fresh_shell, cwd=tmp_path)
-            assert "COMPLETE" in listed.stdout and "401" not in listed.stdout
+            listed_rows = [line.split(maxsplit=3) for line in listed.stdout.splitlines() if line]
+            assert listed_rows == [
+                [
+                    setup_id,
+                    "COMPLETE",
+                    str(completed_setup["turn"]),
+                    str(completed_setup["slug"] or "-"),
+                ]
+            ]
+
+            post_setup_tasks = _api_get(client, write_token, "/tasks")
+            assert [str(item["id"]) for item in post_setup_tasks] == [setup_id], (
+                "no coding task may exist before setup-repo completes"
+            )
+            assert post_setup_tasks[0]["workflow"] == "setup-repo"
 
             marker = "hello-panopticon.txt"
             content = "hello from Panopticon\n"
-            prompt = (
-                "Add a hello-panopticon.txt file containing hello from Panopticon and do not change "
-                "any other files."
-            )
+            prompt = walkthrough.task_prompt
             repos = _api_get(client, write_token, "/repos")
             assert len(repos) == 1, "the fresh quickstart should register exactly its current repo"
             configured_repo = next(
@@ -823,7 +1785,7 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
             # 2119: REQ-054.7.6, REQ-054.7.7
             _wait_for_pane_text("dashboard", "New task", env=env, cwd=worktree)
             dashboard_before_picker = _capture_pane(env, worktree, "dashboard")
-            driver.send(b"n")
+            driver.send(walkthrough.new_task_key)
             _wait_until(
                 "the repository picker modal",
                 lambda: (
@@ -837,11 +1799,11 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
                 timeout=30,
                 interval=0.1,
             )
-            driver.send(b"\r")
+            driver.send(walkthrough.submit_key)
             _wait_for_pane_text("dashboard", "github-self-reviewed", env=env, cwd=worktree)
-            driver.send((b"\x1b[B" * workflow_index) + b"\r")
+            driver.send(walkthrough.next_choice_key * workflow_index + walkthrough.submit_key)
             _wait_for_pane_text("dashboard", "enter: submit", env=env, cwd=worktree)
-            driver.send(prompt.encode() + b"\r")
+            driver.send(prompt.encode() + walkthrough.submit_key)
 
             task = _wait_until(
                 "the sole dashboard-created task",
@@ -885,21 +1847,29 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
             # 2119: REQ-054.7.8
             _wait_for_pane_text("dashboard", marker, env=env, cwd=worktree)
             dashboard_pane = _pane_id(env, worktree, "dashboard")
+            dashboard_pid = _pane_pid(env, worktree, "dashboard")
             assert dashboard_pane
-            driver.send(b"\x1b[A")
+            assert dashboard_pid
+            driver.send(walkthrough.previous_row_key)
             time.sleep(0.2)
-            driver.send(b"t")
+            _send_session_switch_while_attached(
+                env, worktree, driver, "dashboard", walkthrough.attach_key
+            )
             task_session = f"panopticon-{task_id}"
             _wait_for_client_session(task_session, env=env, cwd=worktree)
+            assert _pane_pid(env, worktree, "dashboard") == dashboard_pid
             assert _wait_until(
                 "a rendered task pane after attachment",
                 lambda: _capture_pane(env, worktree, task_session).strip() or None,
                 timeout=30,
                 interval=0.1,
             )
-            driver.send(b"\x02d")
+            _send_session_switch_while_attached(
+                env, worktree, driver, task_session, walkthrough.detach_keys
+            )
             _wait_for_client_session("dashboard", env=env, cwd=worktree)
             assert _pane_id(env, worktree, "dashboard") == dashboard_pane
+            assert _pane_pid(env, worktree, "dashboard") == dashboard_pid
 
             planned = _wait_until(
                 "the agent's plan and planning handoff",
@@ -920,14 +1890,15 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
             assert marker in plan_response.text
             assert content.strip() in plan_response.text
             assert planned["state"] == "PLANNING"
+            _assert_task_remains_user_gated(client, write_token, task_id, "PLANNING")
 
             # 2119: REQ-054.7.9
             artifact_names = _api_get(client, write_token, f"/tasks/{task_id}/artifacts")
             visible_artifacts = [name for name in artifact_names if not str(name).startswith(".")]
             plan_index = visible_artifacts.index("plan.md")
-            driver.send(b"a")
+            _send_opener_key_while_unopened(artifact_log, driver, walkthrough.artifact_key)
             _wait_for_pane_text("dashboard", "plan.md", env=env, cwd=worktree)
-            driver.send((b"\x1b[B" * plan_index) + b"\r")
+            driver.send(walkthrough.next_choice_key * plan_index + walkthrough.submit_key)
             opened_artifact = Path(
                 _wait_until(
                     "the xdg-open artifact handoff",
@@ -943,12 +1914,25 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
             )
             assert opened_artifact.name == "plan.md"
             assert opened_artifact.parent.name == task_id
+            assert opened_artifact == data_root / "artifacts" / task_id / "plan.md"
             assert opened_artifact.read_bytes() == plan_response.content
 
             # 2119: REQ-054.7.6, REQ-054.7.7
-            driver.send(b"t")
+            driver.send(walkthrough.attach_key)
             _wait_for_client_session(task_session, env=env, cwd=worktree)
-            driver.send(_advance_command(config.harness).encode() + b"\r")
+            planning_gate = _api_get(client, write_token, f"/tasks/{task_id}")
+            assert planning_gate["state"] == "PLANNING" and planning_gate["turn"] == "user"
+            _send_user_approval_while_gated(
+                client,
+                write_token,
+                task_id,
+                "PLANNING",
+                env,
+                worktree,
+                task_session,
+                driver,
+                walkthrough.advance_commands[config.harness].encode() + b"\r",
+            )
             advanced = _wait_until(
                 "the harness command to advance the task to ITERATING",
                 lambda: (
@@ -959,8 +1943,13 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
                 ),
             )
             assert advanced["state"] == "ITERATING"
+            iterating_entries = [
+                entry for entry in advanced["history"] if entry["to_state"] == "ITERATING"
+            ]
+            assert len(iterating_entries) == 1
+            assert iterating_entries[0]["trigger"] == "advance"
             if _client_sessions(env, worktree) == [task_session]:
-                driver.send(b"\x02d")
+                driver.send(walkthrough.detach_keys)
             _wait_for_client_session("dashboard", env=env, cwd=worktree)
             _wait_for_pane_row_texts("dashboard", (marker, "ITERATING"), env=env, cwd=worktree)
 
@@ -984,7 +1973,7 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
             pr_number = int(pr_match.group(1))
 
             # 2119: REQ-054.7.9
-            driver.send(b"p")
+            _send_opener_key_while_unopened(browser_log, driver, walkthrough.pull_request_key)
             opened_url = _wait_until(
                 "the BROWSER pull-request handoff",
                 lambda: (
@@ -1008,10 +1997,24 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
             )
             assert base64.b64decode(blob["content"]).decode() == content
 
+            _assert_task_remains_user_gated(client, write_token, task_id, "ITERATING")
+
             # 2119: REQ-054.7.6, REQ-054.7.7
-            driver.send(b"t")
+            driver.send(walkthrough.attach_key)
             _wait_for_client_session(task_session, env=env, cwd=worktree)
-            driver.send(_advance_command(config.harness).encode() + b"\r")
+            iterating_gate = _api_get(client, write_token, f"/tasks/{task_id}")
+            assert iterating_gate["state"] == "ITERATING" and iterating_gate["turn"] == "user"
+            _send_user_approval_while_gated(
+                client,
+                write_token,
+                task_id,
+                "ITERATING",
+                env,
+                worktree,
+                task_session,
+                driver,
+                walkthrough.advance_commands[config.harness].encode() + b"\r",
+            )
 
             def observed_merging_history() -> Any:
                 observed = _api_get(client, write_token, f"/tasks/{task_id}")
@@ -1025,9 +2028,12 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
                 "a read-side history observation of the MERGING transition",
                 observed_merging_history,
             )
-            assert any(entry["to_state"] == "MERGING" for entry in merging["history"])
+            merging_entry = next(
+                entry for entry in merging["history"] if entry["to_state"] == "MERGING"
+            )
+            assert merging_entry["trigger"] == "advance"
             if _client_sessions(env, worktree) == [task_session]:
-                driver.send(b"\x02d")
+                driver.send(walkthrough.detach_keys)
 
             complete = _wait_until(
                 "the merged pull request and COMPLETE task",
@@ -1118,21 +2124,20 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
         capture_output=True,
         text=True,
     ).stdout.strip()
-    assert (
-        subprocess.run(
-            ["tmux", "-L", "panopticon", "has-session"],
-            env=env,
-            cwd=tmp_path,
-            capture_output=True,
-        ).returncode
-        != 0
-    )
+    _assert_no_panopticon_tmux_server(env, tmp_path)
 
 
-def test_complete_configuration_enables_clean_host_acceptance() -> None:
+def _valid_local_install_spec(tmp_path: Path) -> str:
+    wheel = tmp_path / "panopticon_app-0.0.6-py3-none-any.whl"
+    wheel.write_bytes(b"reviewed evaluator wheel")
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    return f"panopticon-app @ {wheel.as_uri()}#sha256={digest}"
+
+
+def test_complete_configuration_enables_clean_host_acceptance(tmp_path: Path) -> None:
     values = {
         "PANOPTICON_NEW_USER_ACCEPTANCE": _OPT_IN,
-        "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": "panopticon-app==1.2.3",
+        "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": _valid_local_install_spec(tmp_path),
         "PANOPTICON_ACCEPTANCE_GITHUB_REPO": (
             "https://github.com/acme/panopticon-acceptance-disposable.git"
         ),
@@ -1145,9 +2150,442 @@ def test_complete_configuration_enables_clean_host_acceptance() -> None:
     assert _configuration(values) is not None
 
 
+def test_clean_worktree_precondition_rejects_missing_origin(tmp_path: Path) -> None:
+    subprocess.run(
+        ["git", "init", "--quiet", str(tmp_path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    with pytest.raises(AssertionError, match="must have an origin remote"):
+        _assert_expected_origin(tmp_path, os.environ, "https://github.com/acme/repo.git")
+
+
+@pytest.mark.parametrize("legacy_name", _LEGACY_WORKTREE_STATE)
+def test_clean_worktree_precondition_rejects_legacy_state(tmp_path: Path, legacy_name: str) -> None:
+    legacy_path = tmp_path / legacy_name
+    if legacy_path.suffix:
+        legacy_path.write_text("legacy state")
+    else:
+        legacy_path.mkdir()
+
+    with pytest.raises(AssertionError, match="migratable Panopticon state"):
+        _assert_no_legacy_worktree_state(tmp_path)
+
+
+def test_live_driver_consumes_the_current_documented_walkthrough_contract() -> None:
+    # 2119: REQ-054.7.2
+    walkthrough = _documented_walkthrough(_WALKTHROUGH_PATH.read_text())
+
+    assert walkthrough.install_version == "0.0.6"
+    assert walkthrough.install_argv == (
+        "pipx",
+        "install",
+        "./panopticon_app-0.0.6-py3-none-any.whl",
+    )
+    assert walkthrough.quickstart_argv == ("panopticon", "quickstart")
+    assert walkthrough.task_prompt == (
+        "Add a hello-panopticon.txt file containing hello from Panopticon and do not change any "
+        "other files."
+    )
+    assert walkthrough.advance_commands == _ADVANCE_COMMAND
+    assert walkthrough.new_task_key == b"n"
+    assert walkthrough.attach_key == b"t"
+    assert walkthrough.artifact_key == b"a"
+    assert walkthrough.pull_request_key == b"p"
+    assert walkthrough.detach_keys == b"\x02d"
+    assert walkthrough.submit_key == b"\r"
+    assert walkthrough.next_choice_key == b"\x1b[B"
+    assert walkthrough.previous_row_key == b"\x1b[A"
+
+
+def test_live_install_version_is_bound_to_the_user_walkthrough() -> None:
+    walkthrough = _documented_walkthrough(_WALKTHROUGH_PATH.read_text())
+
+    with pytest.raises(AssertionError, match="installed acceptance artifact"):
+        _assert_installed_walkthrough_version("1.2.3", "panopticon 1.2.3", walkthrough)
+
+
+def test_live_install_command_is_bound_to_the_documented_wheel(tmp_path: Path) -> None:
+    walkthrough = _documented_walkthrough(_WALKTHROUGH_PATH.read_text())
+    correct = tmp_path / "panopticon_app-0.0.6-py3-none-any.whl"
+    wrong = tmp_path / "panopticon_app-1.2.3-py3-none-any.whl"
+
+    wheel_path, argv = _documented_local_wheel(
+        f"panopticon-app @ {correct.as_uri()}#sha256={'a' * 64}", walkthrough
+    )
+    assert wheel_path == correct
+    assert tuple(argv) == walkthrough.install_argv
+    with pytest.raises(AssertionError, match="artifact named in the walkthrough"):
+        _documented_local_wheel(f"panopticon-app @ {wrong.as_uri()}#sha256={'a' * 64}", walkthrough)
+
+
+@pytest.mark.parametrize("fragment", (*_WALKTHROUGH_SEQUENCE, *_WALKTHROUGH_PLACEHOLDERS))
+def test_walkthrough_contract_rejects_missing_steps_and_placeholders(fragment: str) -> None:
+    contents = _WALKTHROUGH_PATH.read_text()
+    assert fragment in contents
+
+    assert _walkthrough_contract_errors(contents.replace(fragment, "<corrupted>"))
+
+
+def test_walkthrough_contract_rejects_out_of_order_steps() -> None:
+    contents = _WALKTHROUGH_PATH.read_text()
+    first = _WALKTHROUGH_SEQUENCE[0]
+    second = _WALKTHROUGH_SEQUENCE[1]
+    reordered = contents.replace(first, "<second>", 1).replace(second, first, 1)
+    reordered = reordered.replace("<second>", second, 1)
+
+    assert _walkthrough_contract_errors(reordered)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    (
+        "panopticon quickstart --disable-auth\n",
+        "panopticon secret-bootstrap\npanopticon quickstart\n",
+    ),
+)
+def test_walkthrough_contract_rejects_changed_or_extra_mandatory_commands(
+    replacement: str,
+) -> None:
+    contents = _WALKTHROUGH_PATH.read_text()
+    assert contents.count("panopticon quickstart\n") == 1
+    corrupted = contents.replace("panopticon quickstart\n", replacement, 1)
+
+    assert _walkthrough_contract_errors(corrupted)
+    with pytest.raises(ValueError):
+        _documented_walkthrough(corrupted)
+
+
+def test_walkthrough_contract_rejects_an_unexecuted_dashboard_instruction() -> None:
+    contents = _WALKTHROUGH_PATH.read_text()
+    corrupted = contents.replace("Press `n`.", "Press `n`. Then press `q` to quit.", 1)
+
+    assert "unexecuted dashboard keys" in " ".join(_walkthrough_contract_errors(corrupted))
+    with pytest.raises(ValueError, match="unexecuted dashboard keys"):
+        _documented_walkthrough(corrupted)
+
+
+@pytest.mark.parametrize(
+    "addition",
+    (
+        "\nprintf 'required but unexecuted\\n'\n",
+        "\nexport PANOPTICON_ACCEPTANCE_UNDOCUMENTED='<required>'\n",
+    ),
+)
+def test_walkthrough_contract_rejects_unexecuted_commands_and_placeholders(
+    addition: str,
+) -> None:
+    contents = _WALKTHROUGH_PATH.read_text()
+    corrupted = contents.replace("panopticon doctor\n", f"panopticon doctor{addition}", 1)
+
+    assert _walkthrough_contract_errors(corrupted)
+    with pytest.raises(ValueError):
+        _documented_walkthrough(corrupted)
+
+
+def test_hash_pinned_local_wheel_enables_offline_bundle_acceptance(tmp_path: Path) -> None:
+    wheel = tmp_path / "panopticon_app-1.2.3-py3-none-any.whl"
+    wheel.write_bytes(b"reviewed evaluator wheel")
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    values = {
+        "PANOPTICON_NEW_USER_ACCEPTANCE": _OPT_IN,
+        "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": (
+            f"panopticon-app @ {wheel.as_uri()}#sha256={digest}"
+        ),
+        "PANOPTICON_ACCEPTANCE_GITHUB_REPO": (
+            "https://github.com/acme/panopticon-acceptance-disposable.git"
+        ),
+        "PANOPTICON_ACCEPTANCE_BASE_SHA": "a" * 40,
+        "PANOPTICON_ACCEPTANCE_GH_TOKEN": "github-token",
+        "PANOPTICON_ACCEPTANCE_HARNESS": "codex",
+        "PANOPTICON_ACCEPTANCE_HARNESS_AUTH_ENV": "OPENAI_API_KEY",
+        "PANOPTICON_ACCEPTANCE_HARNESS_AUTH_TOKEN": "model-token",
+    }
+
+    assert _configuration(values) is not None
+
+    wheel.write_bytes(b"changed after review")
+    assert _configuration(values) is None
+
+
+def test_post_setup_acceptance_driver_has_no_direct_mutation_channels() -> None:
+    # 2119: REQ-054.7.7
+    assert _post_setup_direct_mutations(Path(__file__).read_text()) == []
+
+
+@pytest.mark.parametrize(
+    "shortcut",
+    (
+        'client.post("/tasks", json={})',
+        'client.request("POST", "/tasks")',
+        "mcp.transition_task(task_id)",
+        "seed_task()",
+        "task_fixture.mutate()",
+        "change_state(task_id)",
+        'subprocess.run(["curl", "-X", "POST", "http://127.0.0.1:8000/tasks"])',
+        'transport.call_tool("advance", task_id)',
+        'task_fixture.state = "COMPLETE"',
+        'for task_fixture.state in ["COMPLETE"]:\n        pass',
+        "del task_fixture.state",
+        'driver.send(b"curl -X POST http://127.0.0.1:8000/tasks\\r")',
+        "_wait_until('mutated task', change_state)",
+        '_api_get = client.post\n    _api_get("/tasks", json={})',
+        "_api_get = mcp.transition_task\n    _api_get(task_id)",
+        "_api_get = seed_task\n    _api_get()",
+    ),
+)
+def test_post_setup_mutation_guard_rejects_shortcuts(shortcut: str) -> None:
+    source = (
+        "def _complete_setup_task(*args):\n"
+        "    _wait_for_client_session('service')\n"
+        "    responded = set()\n"
+        "    time.monotonic()\n"
+        "    _api_get(client, token, '/tasks/id')\n"
+        "    _capture_pane(env, cwd, 'task')\n"
+        "    driver.send(b'\\r')\n"
+        "    responded.add('complete')\n"
+        "    time.sleep(0.1)\n"
+        "def _api_get(client, token, path):\n"
+        "    response = client.get(path)\n"
+        "    response.raise_for_status()\n"
+        "    return response.json()\n"
+        "def _assert_task_remains_user_gated(client, token, task_id, state):\n"
+        "    deadline = time.monotonic()\n"
+        "    _api_get(client, token, task_id)\n"
+        "    time.sleep(0.1)\n"
+        "def _run_live_new_user_journey(tmp_path, config):\n"
+        "    _complete_setup_task()\n"
+        f"    {shortcut}\n"
+    )
+
+    assert _post_setup_direct_mutations(source)
+
+
+def test_post_setup_mutation_guard_rejects_same_line_shortcut() -> None:
+    source = (
+        "def _complete_setup_task():\n"
+        "    pass\n"
+        "def _run_live_new_user_journey(tmp_path, config):\n"
+        "    _complete_setup_task(); client.post('/tasks', json={})\n"
+    )
+
+    assert any("client.post" in finding for finding in _post_setup_direct_mutations(source))
+
+
+@pytest.mark.parametrize(
+    ("trusted_name", "mutator"),
+    (("_api_get", "seed_task"), ("str", "client.post"), ("str", "mcp.transition_task")),
+)
+def test_post_setup_mutation_guard_rejects_prebound_mutator(
+    trusted_name: str, mutator: str
+) -> None:
+    source = (
+        "def _complete_setup_task():\n"
+        "    pass\n"
+        "def _run_live_new_user_journey(tmp_path, config):\n"
+        f"    {trusted_name} = {mutator}\n"
+        "    _complete_setup_task()\n"
+        f"    {trusted_name}()\n"
+    )
+
+    assert any(
+        f"protected name rebind {trusted_name}" in finding
+        for finding in _post_setup_direct_mutations(source)
+    )
+
+
+@pytest.mark.parametrize(
+    "hidden_mutation",
+    (
+        'response = client.post("/tasks", json={})',
+        'subprocess.run(["curl", "-X", "POST", "http://127.0.0.1:8000/tasks"])',
+        'mcp.transition_task("task-id")',
+        'task_fixture.state = "COMPLETE"',
+    ),
+)
+def test_observer_helper_guard_rejects_hidden_mutations(hidden_mutation: str) -> None:
+    source = (
+        "def _complete_setup_task(*args):\n"
+        "    _wait_for_client_session('service')\n"
+        "    responded = set()\n"
+        "    time.monotonic()\n"
+        "    _api_get(client, token, '/tasks/id')\n"
+        "    _capture_pane(env, cwd, 'task')\n"
+        "    driver.send(b'\\r')\n"
+        "    responded.add('complete')\n"
+        "    time.sleep(0.1)\n"
+        "def _api_get(client, token, path):\n"
+        f"    {hidden_mutation}\n"
+        "def _assert_task_remains_user_gated(client, token, task_id, state):\n"
+        "    deadline = time.monotonic()\n"
+        "    _api_get(client, token, task_id)\n"
+        "    time.sleep(0.1)\n"
+        "def _run_live_new_user_journey(tmp_path, config):\n"
+        "    _complete_setup_task()\n"
+        "    _api_get(client, token, '/tasks')\n"
+    )
+
+    assert _post_setup_direct_mutations(source)
+
+
+def test_setup_completion_boundary_rejects_a_hidden_mutation_before_helper_return() -> None:
+    source = (
+        "def _complete_setup_task(*args):\n"
+        "    _api_get(client, token, '/tasks/id')\n"
+        "    client.post('/tasks', json={})\n"
+        "def _api_get(client, token, path):\n"
+        "    response = client.get(path)\n"
+        "    response.raise_for_status()\n"
+        "    return response.json()\n"
+        "def _assert_task_remains_user_gated(client, token, task_id, state):\n"
+        "    deadline = time.monotonic()\n"
+        "    _api_get(client, token, task_id)\n"
+        "    time.sleep(0.1)\n"
+        "def _run_live_new_user_journey(tmp_path, config):\n"
+        "    _complete_setup_task()\n"
+    )
+
+    assert _post_setup_direct_mutations(source)
+
+
+def test_guard_recursively_rejects_mutation_inside_an_approved_helper() -> None:
+    source = Path(__file__).read_text()
+    needle = (
+        "    result = subprocess.run(\n"
+        '        ["tmux", "-L", "panopticon", "capture-pane", "-p", "-J", *history, "-t", session],\n'
+    )
+    assert source.count(needle) == 1
+    source = source.replace(
+        needle,
+        '    httpx.post("http://127.0.0.1:8000/tasks/task-id/state", '
+        'json={"state": "COMPLETE"})\n' + needle,
+    )
+
+    violations = _post_setup_direct_mutations(source)
+
+    assert any("observer helper _capture_pane calls httpx.post" in item for item in violations)
+
+
+def test_post_setup_request_audit_rejects_mutating_http_methods() -> None:
+    audit = _PostSetupRequestAudit()
+    audit.active = True
+
+    audit(httpx.Request("GET", "http://127.0.0.1:8000/tasks"))
+    with pytest.raises(AssertionError, match="observation-only"):
+        audit(httpx.Request("POST", "http://127.0.0.1:8000/tasks"))
+
+
+def test_local_wheel_acceptance_rejects_missing_or_symlinked_artifacts(tmp_path: Path) -> None:
+    target = tmp_path / "panopticon_app-1.2.3-py3-none-any.whl"
+    target.write_bytes(b"reviewed evaluator wheel")
+    digest = hashlib.sha256(target.read_bytes()).hexdigest()
+    link = tmp_path / "linked-panopticon_app-1.2.3-py3-none-any.whl"
+    link.symlink_to(target)
+    values = {
+        "PANOPTICON_NEW_USER_ACCEPTANCE": _OPT_IN,
+        "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": (f"panopticon-app @ {link.as_uri()}#sha256={digest}"),
+        "PANOPTICON_ACCEPTANCE_GITHUB_REPO": (
+            "https://github.com/acme/panopticon-acceptance-disposable.git"
+        ),
+        "PANOPTICON_ACCEPTANCE_BASE_SHA": "a" * 40,
+        "PANOPTICON_ACCEPTANCE_GH_TOKEN": "github-token",
+        "PANOPTICON_ACCEPTANCE_HARNESS": "codex",
+        "PANOPTICON_ACCEPTANCE_HARNESS_AUTH_ENV": "OPENAI_API_KEY",
+        "PANOPTICON_ACCEPTANCE_HARNESS_AUTH_TOKEN": "model-token",
+    }
+
+    assert _configuration(values) is None
+    values["PANOPTICON_ACCEPTANCE_INSTALL_SPEC"] = (
+        f"panopticon-app @ {(tmp_path / 'missing.whl').as_uri()}#sha256={digest}"
+    )
+    assert _configuration(values) is None
+
+
 @pytest.mark.parametrize(("harness", "command"), [("claude", "/advance"), ("codex", "$advance")])
 def test_live_approval_command_matches_the_selected_harness(harness: str, command: str) -> None:
     assert _advance_command(harness) == command
+
+
+def test_user_approval_rejects_an_automatic_transition_before_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[bytes] = []
+
+    class RecordingDriver:
+        def send(self, data: bytes) -> None:
+            sent.append(data)
+
+    def already_advanced(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"state": "ITERATING", "turn": "agent"})
+
+    monkeypatch.setattr(sys.modules[__name__], "_capture_pane", lambda *_args, **_kwargs: "")
+    with (
+        httpx.Client(
+            transport=httpx.MockTransport(already_advanced), base_url="http://panopticon.test"
+        ) as client,
+        pytest.raises(pytest.fail.Exception, match="advanced before attached approval input"),
+    ):
+        _send_user_approval_while_gated(
+            client,
+            "token",
+            "task-id",
+            "PLANNING",
+            {},
+            Path("."),
+            "panopticon-task-id",
+            RecordingDriver(),  # type: ignore[arg-type]
+            b"$advance\r",
+            observation_window=0.05,
+        )
+
+    assert sent == []
+
+
+def test_terminal_switch_rejects_an_automatic_move_before_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[bytes] = []
+
+    class RecordingDriver:
+        def send(self, data: bytes) -> None:
+            sent.append(data)
+
+    monkeypatch.setattr(
+        sys.modules[__name__], "_client_sessions", lambda _env, _cwd: ["panopticon-task-id"]
+    )
+    with pytest.raises(pytest.fail.Exception, match="left 'dashboard' before documented input"):
+        _send_session_switch_while_attached(
+            {},
+            Path("."),
+            RecordingDriver(),  # type: ignore[arg-type]
+            "dashboard",
+            b"t",
+            observation_window=0.05,
+        )
+
+    assert sent == []
+
+
+def test_opener_key_rejects_an_automatic_handoff_before_input(tmp_path: Path) -> None:
+    sent: list[bytes] = []
+    opener_log = tmp_path / "artifact-opened"
+    opener_log.write_text("/wrong/automatic/path\n")
+
+    class RecordingDriver:
+        def send(self, data: bytes) -> None:
+            sent.append(data)
+
+    with pytest.raises(pytest.fail.Exception, match="opener ran before documented input"):
+        _send_opener_key_while_unopened(
+            opener_log,
+            RecordingDriver(),  # type: ignore[arg-type]
+            b"a",
+            observation_window=0.05,
+        )
+
+    assert sent == []
 
 
 def test_live_diagnostics_are_bounded_and_redact_both_credentials() -> None:
@@ -1182,10 +2620,10 @@ def test_pty_process_has_the_fixed_terminal_size_and_drains_output(tmp_path: Pat
 
 
 @pytest.mark.parametrize("missing", _REQUIRED)
-def test_clean_host_acceptance_requires_every_explicit_input(missing: str) -> None:
+def test_clean_host_acceptance_requires_every_explicit_input(tmp_path: Path, missing: str) -> None:
     values = {
         "PANOPTICON_NEW_USER_ACCEPTANCE": _OPT_IN,
-        "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": "panopticon-app==1.2.3",
+        "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": _valid_local_install_spec(tmp_path),
         "PANOPTICON_ACCEPTANCE_GITHUB_REPO": (
             "https://github.com/acme/panopticon-acceptance-disposable.git"
         ),
@@ -1226,11 +2664,11 @@ def test_clean_host_acceptance_requires_every_explicit_input(missing: str) -> No
     ],
 )
 def test_clean_host_acceptance_rejects_ambiguous_or_unsafe_configuration(
-    key: str, value: str
+    tmp_path: Path, key: str, value: str
 ) -> None:
     values = {
         "PANOPTICON_NEW_USER_ACCEPTANCE": _OPT_IN,
-        "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": "panopticon-app==1.2.3",
+        "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": _valid_local_install_spec(tmp_path),
         "PANOPTICON_ACCEPTANCE_GITHUB_REPO": (
             "https://github.com/acme/panopticon-acceptance-disposable.git"
         ),

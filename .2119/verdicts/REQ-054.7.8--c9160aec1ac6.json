@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.8--c9160aec1ac6",
+  "requirementId": "REQ-054.7.8",
+  "hash": "c9160aec1ac6",
+  "verdict": "pass",
+  "summary": "Live test launches documented quickstart on a POSIX PTY, sends t and Ctrl-b d through that terminal, observes the exact task round trip, and preserves dashboard pane/PID identity.",
+  "timestamp": "2026-09-04T15:21:56.510Z"
+}

@@ -25,14 +25,19 @@ Add pipx's application directory to PATH for future shells:
 pipx ensurepath
 ```
 
-**Close this terminal and open a new one** so the PATH change takes effect. In the new terminal,
-install the versioned evaluator build in an isolated environment:
+**Close this terminal and open a new one** so the PATH change takes effect. The current evaluator
+build is supplied as a wheel beside this walkthrough. Open the extracted evaluator-bundle
+directory in the new terminal and install that wheel in an isolated environment:
 
 ```sh
-pipx install panopticon-app==0.0.6
+pipx install ./panopticon_app-0.0.6-py3-none-any.whl
 panopticon --version
 panopticon doctor
 ```
+
+The immutable public-distribution command will be `pipx install panopticon-app==0.0.6` after that
+version is published. It is named here for the release contract, but it is not the current private
+evaluator path and is not required for this walkthrough.
 
 Expected result: `panopticon --version` prints `panopticon 0.0.6` without requiring a source
 checkout, and `doctor` ends with `All prerequisites satisfied.` Do not continue until both checks
@@ -179,13 +184,14 @@ the `panopticon-acceptance-disposable` topic; the base SHA makes an unreviewed r
 fail closed.
 
 Use new, purpose-limited tokens supplied explicitly for this run. The gate never imports a native
-harness login or reads a personal credential file. An install spec must be an exact
-`panopticon-app==<version>`, a wheel URL with a SHA-256 fragment, or a Git URL pinned to a full
-40-character commit SHA.
+harness login or reads a personal credential file. The install spec must identify the supplied
+local evaluator wheel with an absolute `file:///` URL and its SHA-256 fragment. The gate rejects a
+missing, changed, or symlinked artifact, then runs the exact relative `pipx install` command shown
+above from the wheel's directory.
 
 ```sh
 export PANOPTICON_NEW_USER_ACCEPTANCE=I_AM_RUNNING_ON_A_DISPOSABLE_HOST
-export PANOPTICON_ACCEPTANCE_INSTALL_SPEC='panopticon-app==0.0.6'
+export PANOPTICON_ACCEPTANCE_INSTALL_SPEC='panopticon-app @ file:///absolute/path/to/panopticon_app-0.0.6-py3-none-any.whl#sha256=<reviewed-wheel-sha256>'
 export PANOPTICON_ACCEPTANCE_GITHUB_REPO='https://github.com/example/panopticon-acceptance-demo.git'
 export PANOPTICON_ACCEPTANCE_BASE_SHA='<reviewed 40-character default-branch SHA>'
 export PANOPTICON_ACCEPTANCE_HARNESS='codex'

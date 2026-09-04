@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.9--96d29731e397",
+  "requirementId": "REQ-054.7.9",
+  "hash": "96d29731e397",
+  "verdict": "pass",
+  "summary": "Live journey sends doc-parsed artifact and PR keys, rejects pre-input handoffs, and asserts the host opener received the exact task artifact path and PR URL.",
+  "timestamp": "2026-09-04T15:21:20.383Z"
+}
