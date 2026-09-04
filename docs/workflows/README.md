@@ -39,8 +39,9 @@ The plan is a task **artifact**, which you read from the dashboard: highlight th
 press `a` to open its `plan.md`. (Artifacts are the task's own documents, kept with the
 task rather than in the repo, so the dashboard is where you read them.)
 
-You approve the plan by advancing the task out of PLANNING (attach with `t`, run
-`/advance`). `spike` and `setup-repo` have no planning step.
+You approve the plan by advancing the task out of PLANNING. Attach with `t`, then invoke the
+operation using your harness's explicit syntax: `/advance` in Claude, `$advance` in Codex, or
+`/skill:advance` in Pi and Outfitter. `spike` and `setup-repo` have no planning step.
 
 ## Who advances a state
 
@@ -48,7 +49,7 @@ Each state is advanced by either **you** or the **agent**:
 
 - **You advance** the foreground states (plan approval, sign-off before merge). The agent
   fills in its responsibilities and then waits; nothing proceeds until you say so. Attach
-  with `t` and run `/advance` to approve, and the agent starts a fresh turn.
+  with `t` and invoke `advance` using the harness syntax above; the agent starts a fresh turn.
 - **The agent advances** the background states (merging). Once its responsibilities are
   met (the PR is merged, or the branch is merged locally) it moves the task on by itself.
 

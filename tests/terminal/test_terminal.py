@@ -3,6 +3,8 @@ test_client.py; the dashboard in test_dashboard.py. Quickstart helpers are in te
 
 from __future__ import annotations
 
+import subprocess
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,14 @@ import pytest
 
 from panopticon.sessionservice.tmux_defaults import server_default_config_text
 from panopticon.terminal import __main__ as cli
+
+
+def test_version_reports_installed_distribution(capsys: pytest.CaptureFixture[str]) -> None:
+    # 2119: REQ-054.1.3
+    with pytest.raises(SystemExit) as raised:
+        cli.main(["--version"])
+    assert raised.value.code == 0
+    assert capsys.readouterr().out.strip() == f"panopticon {version('panopticon-app')}"
 
 
 class _FakeClient:
@@ -174,6 +184,7 @@ def test_quickstart_invokes_all_steps(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls == [
         "auth",
         "doctor",
+        "git_url",
         "migrate",
         "sessions",
         "wait",
@@ -181,13 +192,114 @@ def test_quickstart_invokes_all_steps(monkeypatch: pytest.MonkeyPatch) -> None:
         "harness-env",
         "detect",
         "choose",
-        "git_url",
         "setup",
         "token-task",
         "console",
     ]
     # The console opens attached to the setup-repo task.
     assert joined["join"] == "task1"
+
+
+# 2119: REQ-054.2.1
+# 2119: REQ-054.2.2
+# 2119: REQ-054.2.3
+# 2119: REQ-054.2.4
+@pytest.mark.parametrize(
+    ("scenario", "expected_messages"),
+    [
+        (
+            "outside-worktree",
+            (
+                "must run inside a Git repository",
+                "change into the repository you want Panopticon to manage",
+            ),
+        ),
+        (
+            "missing-origin",
+            (
+                "no `origin` URL",
+                "add an `origin` remote for the repository you want Panopticon to manage",
+            ),
+        ),
+        (
+            "empty-origin",
+            (
+                "no `origin` URL",
+                "add an `origin` remote for the repository you want Panopticon to manage",
+            ),
+        ),
+    ],
+)
+def test_quickstart_rejects_invalid_git_context_before_any_panopticon_side_effect(
+    scenario: str,
+    expected_messages: tuple[str, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from panopticon.taskservice import auth
+    from panopticon.terminal import console, doctor, quickstart
+
+    working_directory = tmp_path / scenario
+    working_directory.mkdir()
+    if scenario in {"missing-origin", "empty-origin"}:
+        subprocess.run(
+            ["git", "init", str(working_directory)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        if scenario == "empty-origin":
+            subprocess.run(
+                ["git", "config", "remote.origin.url", ""],
+                cwd=working_directory,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+    else:
+        result = subprocess.run(
+            ["git", "-C", str(working_directory), "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+    monkeypatch.chdir(working_directory)
+
+    side_effects: list[str] = []
+    monkeypatch.setattr(auth, "environment_token", lambda: "test-token")
+    monkeypatch.setattr(doctor, "run_checks", list)
+    monkeypatch.setattr(doctor, "report", lambda _results: 0)
+    monkeypatch.setattr(cli, "_ensure_integrated_auth", lambda: side_effects.append("auth"))
+    monkeypatch.setattr(cli, "_run_migrate", lambda: side_effects.append("database"))
+    monkeypatch.setattr(cli, "_start_sessions", lambda: side_effects.append("sessions"))
+    monkeypatch.setattr(quickstart, "ensure_secrets_file", lambda: side_effects.append("config"))
+    monkeypatch.setattr(
+        quickstart,
+        "wait_for_service",
+        lambda *_args, **_kwargs: side_effects.append("service-wait"),
+    )
+    monkeypatch.setattr(
+        quickstart,
+        "setup_repo",
+        lambda *_args, **_kwargs: side_effects.append("repo-registration"),
+    )
+    monkeypatch.setattr(
+        quickstart,
+        "ensure_setup_repo_task",
+        lambda *_args, **_kwargs: side_effects.append("setup-task"),
+    )
+    monkeypatch.setattr(
+        console,
+        "run_console_local",
+        lambda *_args, **_kwargs: side_effects.append("console"),
+    )
+
+    assert cli.main(["quickstart"]) == 1
+    assert side_effects == []
+    message = capsys.readouterr().out
+    for expected in expected_messages:
+        assert expected in message
 
 
 def test_quickstart_aborts_when_doctor_fails(monkeypatch: pytest.MonkeyPatch) -> None:

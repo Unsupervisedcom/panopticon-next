@@ -128,9 +128,10 @@ is intended for clients such as a phone dashboard and cannot mutate control-plan
 
 ### REQ-035.29: Integrated Linux container reachability
 
-1. On native Linux without a nonempty `PANOPTICON_HOST` override, the integrated local stack MUST
-   launch the task service with an explicit `0.0.0.0` bind so bridge-networked containers can
-   reach it, while standalone service startup retains its loopback default.
+1. On native Linux in enforced authentication mode, without a nonempty `PANOPTICON_HOST` override,
+   the integrated local stack MUST launch the task service with an explicit `0.0.0.0` bind so
+   bridge-networked containers can reach it, while standalone service startup and disabled
+   integrated startup retain their loopback defaults.
 
 ### REQ-035.30: Root-path authorization
 
@@ -138,7 +139,10 @@ is intended for clients such as a phone dashboard and cannot mutate control-plan
 
 ### REQ-035.31: Tmux environment convergence
 
-1. Integrated stack startup MUST give newly created service, runner, and dashboard sessions the invoking process's task-service authentication reference, mode, and config root while clearing stale values absent from that process.
+1. Integrated stack startup MUST give newly created service, runner, and dashboard sessions the
+   resolved task-service authentication reference, mode, and config root, including values resolved
+   by REQ-035.49, while clearing stale tmux-server values absent from that resolved startup
+   configuration.
 
 ### REQ-035.32: Rotation selection
 
@@ -207,3 +211,55 @@ is intended for clients such as a phone dashboard and cannot mutate control-plan
 ### REQ-035.48: Permanent shell-task rejection
 
 1. A host shell task whose liveness request receives HTTP 401 or 403 MUST terminate its exact tmux session and remove its runtime credential snapshot.
+
+### REQ-035.49: Secure integrated bootstrap
+
+1. The integrated-startup requirements in REQ-035.49 through REQ-035.52 MUST apply to `panopticon
+   start`, its no-command alias, `panopticon host`, and `panopticon quickstart`.
+2. When both `PANOPTICON_SERVICE_AUTH_FILE` and `PANOPTICON_SERVICE_AUTH_MODE` are unset or empty,
+   integrated startup MUST, before constructing a task-service client or creating a service,
+   runner, or dashboard session, resolve `task-service-auth.json` beneath the host's resolved
+   Panopticon secrets directory as the authentication file and `enforced` as the authentication
+   mode.
+3. The resolved values from clause 2 MUST be used by the initiating client and every newly created
+   service, runner, and dashboard session.
+4. A nonempty configured authentication file with no configured mode MUST select enforced mode
+   without creating another credential.
+5. Enforced mode without a nonempty authentication file, and every unrecognized mode, MUST fail
+   before any integrated session is created.
+6. If clause 2 would create a new credential while an integrated service, runner, or dashboard
+   session already exists, startup MUST fail before creating or attaching to additional sessions
+   and report that the existing stack requires a full stop and restart.
+
+### REQ-035.50: Private bootstrap credential
+
+1. A bootstrap credential MUST contain an empty `read` array and exactly one `write` token generated
+   from at least 256 bits of cryptographically secure randomness and accepted by REQ-035.14,
+   REQ-035.24, REQ-035.33, and REQ-035.40.
+2. The credential MUST be atomically published as a non-symlink regular file owned by the process's
+   effective user with mode `0600`.
+3. Credential creation MUST NOT follow or replace an object at the destination path.
+4. Bootstrap MUST NOT expose the generated token through stdout, stderr, logs, process arguments,
+   or exception text.
+
+### REQ-035.51: Idempotent bootstrap credential
+
+1. When the bootstrap pathname already names a credential accepted by the same validation used for
+   enforced service startup, integrated startup MUST reuse that file without changing its inode,
+   contents, ownership, permissions, or token order.
+2. When that pathname names a missing-after-create-race, invalid, insecure, symlinked, or
+   non-regular object, startup MUST either reuse the valid credential atomically published by the
+   concurrent winner or fail before creating any integrated session.
+3. Bootstrap MUST NOT repair, truncate, or replace an existing invalid, insecure, symlinked, or
+   non-regular object.
+4. Concurrent integrated startups MUST converge on one complete credential file and use the same
+   active write token.
+
+### REQ-035.52: Explicit break-glass mode
+
+1. When `PANOPTICON_SERVICE_AUTH_MODE` is exactly `disabled`, integrated startup MUST retain disabled
+   mode.
+2. Disabled integrated startup MUST NOT create or implicitly select an authentication file.
+3. Disabled integrated startup MUST leave the bootstrap pathname unchanged.
+4. In disabled mode, integrated startup without a nonempty `PANOPTICON_HOST` override MUST bind the
+   task service to loopback.

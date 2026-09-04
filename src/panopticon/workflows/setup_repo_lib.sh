@@ -134,10 +134,20 @@ repo_source_label() {
     fi
 }
 
-# True when env-file $2 exists and holds an *active* (uncommented) `$1=` assignment. A commented
-# (`# $1=…`) line or a missing file returns nonzero — matching store_env_token's notion of active.
+# True when env-file $2 exists and holds an *active*, non-empty `$1=value` assignment. A commented
+# line, an empty/whitespace-only value, or a missing file returns nonzero.
 env_file_has_var() {
-    [ -f "$2" ] && grep -qE "^[[:space:]]*$1=" "$2"
+    [ -f "$2" ] && grep -qE "^[[:space:]]*$1=[^[:space:]]" "$2"
+}
+
+# True when $1 is a regular JSON file containing a non-empty object. This is only a structural
+# readiness check — the real harness call proves whether the credential is accepted — but it keeps
+# an empty or malformed auth.json from being reported as configured.
+auth_json_has_values() {
+    [ -f "$1" ] && [ -n "${PANOPTICON_PYTHON:-}" ] \
+        && "$PANOPTICON_PYTHON" -c \
+            'import json, sys; value = json.load(open(sys.argv[1])); raise SystemExit(not isinstance(value, dict) or not value)' \
+            "$1" >/dev/null 2>&1
 }
 
 # Print a masked tail of secret $1 for a consent prompt — the last 4 characters, e.g. `...a1b2`, so
@@ -198,27 +208,36 @@ codex_repo_auth_configured() {
     env_file_has_var CODEX_API_KEY "$1" \
         || env_file_has_var OPENAI_API_KEY "$1" \
         || env_file_has_var CODEX_ACCESS_TOKEN "$1" \
-        || { [ -n "$2" ] && [ -f "$2/auth.json" ]; }
+        || { [ -n "$2" ] && auth_json_has_values "$2/auth.json"; }
 }
 
 pi_repo_auth_configured() {
     for _prac_var in $PANOPTICON_PI_API_KEY_ENV_VARS; do
         env_file_has_var "$_prac_var" "$1" && return 0
     done
-    [ -n "$2" ] && [ -f "$2/auth.json" ]
+    [ -n "$2" ] && auth_json_has_values "$2/auth.json"
 }
 
-# Read one secret line without echo. macOS /bin/sh is bash 3.2 and supports `read -s`; the stty
-# fallback keeps other host /bin/sh implementations usable. The secret itself is the only stdout.
+# Read one secret line without echo. The prompt is argument $1 and is printed only after echo has
+# been disabled, closing the race where an eager paste could land between a visible prompt and the
+# later `stty -echo`. macOS /bin/sh is bash 3.2 and supports `read -s -p`; the stty fallback keeps
+# other host /bin/sh implementations usable. The secret itself is the only stdout.
 read_secret() {
     if [ -n "${BASH_VERSION:-}" ]; then
-        IFS= read -r -s _rs_value
+        IFS= read -r -s -p "$1" _rs_value
+        _rs_status=$?
     else
-        stty -echo
+        _rs_tty=$(stty -g) || return 1
+        stty -echo || return 1
+        trap 'stty "$_rs_tty"' 0 1 2 15
+        printf '%s' "$1" >&2
         IFS= read -r _rs_value
-        stty echo
+        _rs_status=$?
+        stty "$_rs_tty"
+        trap - 0 1 2 15
     fi
     printf '\n' >&2
+    [ "$_rs_status" -eq 0 ] || return "$_rs_status"
     printf '%s' "$_rs_value"
 }
 

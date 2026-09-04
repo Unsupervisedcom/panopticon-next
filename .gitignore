@@ -3,6 +3,7 @@
 
 # Private planning and agent-working context. These files may exist locally,
 # but they are never part of the distributable repository.
+/.internal/
 /project-plan.md
 /project-log.md
 /CURRENT.md

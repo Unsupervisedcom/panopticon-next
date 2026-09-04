@@ -1,7 +1,8 @@
 [project]
 name = "panopticon-app"
-version = "0.0.3"
+version = "0.0.6"
 description = "Self-hosted control plane for running a fleet of coding agents in isolated containers, governed by configurable workflows."
+readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -12,9 +13,14 @@ dependencies = [
     "uvicorn>=0.29",
     "httpx>=0.27",
     "textual>=8.2.7",
-    "mcp>=1.27.2",
+    "mcp>=1.27.2,<2",
     "aiosqlite>=0.20",
 ]
+
+[project.urls]
+Homepage = "https://unsupervised.com/panopticon"
+Repository = "https://github.com/Unsupervisedcom/panopticon-next"
+Issues = "https://github.com/Unsupervisedcom/panopticon-next/issues"
 
 [project.scripts]
 panopticon = "panopticon.terminal.__main__:main"

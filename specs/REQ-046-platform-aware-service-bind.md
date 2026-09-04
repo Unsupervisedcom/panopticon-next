@@ -44,15 +44,16 @@ verified loopback behavior. Other platforms may use the same conservative compat
 
 1. With Markdown source line wrapping ignored, the authentication documentation's bind-policy
    paragraph MUST consist of the following text:
-   "The standalone task-service launcher defaults to `127.0.0.1`. The integrated `panopticon
-   start` and `panopticon host` commands default to `127.0.0.1` on Darwin and `0.0.0.0` on Linux
-   and Windows so native containers can reach the service. On native Linux this compatibility
-   default intentionally listens on every host interface because bridge containers cannot reach
-   host loopback; safe operation therefore depends on enforced task-service authentication plus
-   independently encrypted and access-controlled transport. `PANOPTICON_HOST` overrides both
-   launch paths when the operator selects another container-reachable intended interface. Bearer
-   tokens travel over HTTP, so a broad bind is appropriate only where every reachable interface
-   has those protections."
+   "The standalone task-service launcher defaults to `127.0.0.1`. With enforced authentication,
+   the integrated `panopticon start` and `panopticon host` commands default to `127.0.0.1` on Darwin
+   and `0.0.0.0` on Linux and Windows so native containers can reach the service. Disabled
+   integrated startup defaults to loopback on every platform. On native Linux the authenticated
+   compatibility default intentionally listens on every host interface because bridge containers
+   cannot reach host loopback; safe operation therefore depends on enforced task-service
+   authentication plus independently encrypted and access-controlled transport. `PANOPTICON_HOST`
+   overrides these launch defaults when the operator selects another container-reachable intended
+   interface. Bearer tokens travel over HTTP, so a broad bind is appropriate only where every
+   reachable interface has those protections."
 
 ## Non-goals
 

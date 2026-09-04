@@ -1,32 +1,27 @@
 # panopticon
 
-> This is an experimental fork of [unsupervisedcom/panopticon](https://github.com/Unsupervisedcom/panopticon)
-> that explores new features for my use prior to upstreaming. Usage and reported issues are
-> welcome; PRs are not accepted here and should be directed to the upstream project:
-> [Panopticon](https://github.com/Unsupervisedcom/panopticon).
-
 **Agents write the code, you own what ships.**
 
-That's easy with one agent. Run a fleet of them and it breaks down: the fleet stalls
-waiting on you, and you lose track of which agent is doing what. Panopticon drives
-a coding agent — Claude Code, Codex, or pi — for each task and gives you one place to
-watch them all.
+Panopticon is a terminal-native control plane for running multiple coding agents. It drives Claude
+Code, Codex, or pi for each task and gives you one place to supervise the fleet.
 
 - **A live dashboard** of all your tasks, showing which agents are working and which are blocked
   waiting on you, so you stop cycling through terminals to find the one that's stuck.
-- **[Configurable workflows](docs/workflows/README.md)** that set the line between what an
-  agent may do alone and what needs your sign-off, so agents run unattended without running
-  unchecked. Other tools show you which agent is blocked; Panopticon decides when it blocks.
-- **Sandboxed by default:** each agent works in its own container on its own branch
-  (secrets and environment handled per repo), so it can work freely and nothing reaches
-  main without your review.
+- **[Configurable workflows](docs/workflows/README.md)** that make approval points explicit and
+  prevent Panopticon from advancing a task until the current stage is resolved.
+- **Isolated by default:** each agent works in its own container on its own branch
+  so concurrent tasks do not share workspaces.
 
-Self-hosted and terminal-native: your infrastructure, your secrets,
-your repos. A ground-up rewrite of the [cloude-cade](https://github.com/tildesrc/cloude-cade)
-prototype.
+Self-hosted: your infrastructure, your secrets, your repos. Workflows control Panopticon's state
+transitions; they do not restrict the commands an agent can execute. Use least-privilege
+credentials and forge branch protection as hard controls. Containers separate workspaces but are
+not a security boundary against a malicious or compromised agent. Quickstart reuses one shared
+`panopticon.env` by default; configure a distinct environment file per repo when credential
+separation matters. Panopticon is a ground-up rewrite of the
+[cloude-cade](https://github.com/tildesrc/cloude-cade) prototype and is in active development.
 
-New here? [`docs/overview.md`](docs/overview.md) explains how the pieces fit together: the
-mental model behind the dashboard.
+New here? Follow the [new-user walkthrough](docs/getting-started.md). For the mental model behind
+the dashboard, read [`docs/overview.md`](docs/overview.md).
 
 ## The dashboard
 
@@ -67,26 +62,48 @@ shells out to a few host tools. You need:
   `tmux -L panopticon` server
 - **git:** the session service clones a per-task workspace for each agent
 - At least one registered **agent harness CLI** (`claude`, `codex`, `pi`, or `outfitter`):
-  quickstart detects installed/authenticated choices and configures the selected default
+  quickstart detects installed choices and configures the selected default. Guided authentication
+  is available for all four; Outfitter uses Pi provider credentials and prepares its profile
+  directory. Use Claude or Codex for the first GitHub workflow below. Pi and Outfitter can run
+  compatible workflows, but their current adapters cannot execute workflow skills that require
+  Panopticon's MCP tools.
 
 `panopticon quickstart` checks these first; run `panopticon doctor` to re-check any time.
 
 ## Install
 
-Panopticon is a command-line app, so [pipx](https://pipx.pypa.io) is the recommended way to
-install it: it puts the `panopticon` command on your `PATH` in its own isolated environment.
-Plain `pip` works too.
+Panopticon is a command-line app, so [pipx](https://pipx.pypa.io) is the recommended way to install
+it: it puts the `panopticon` command on your `PATH` in its own isolated environment. If
+`command -v pipx` prints nothing, install pipx first:
 
 ```sh
-# recommended: isolated, on your PATH
-pipx install panopticon-app
+# macOS
+brew install pipx
 
-# or with pip
-pip install panopticon-app
+# Ubuntu or Debian
+sudo apt-get update
+sudo apt-get install --yes pipx
 ```
 
-The PyPI distribution is **`panopticon-app`**, but the command you run and the package you
-import are both **`panopticon`**.
+Make commands installed by pipx available in future shells, then **close this terminal and open a
+new one** so the PATH change takes effect:
+
+```sh
+pipx ensurepath
+```
+
+In that new terminal, install the versioned evaluator build:
+
+```sh
+pipx install panopticon-app==0.0.6
+panopticon --version
+```
+
+Expected result: `panopticon --version` prints `panopticon 0.0.6` without requiring a checkout or
+`uv`.
+
+The distribution is **`panopticon-app`**, but the command you run and the package you import are
+both **`panopticon`**. To work from a checkout, run `uv sync` and then `uv run panopticon doctor`.
 
 ## Quickstart
 
@@ -103,26 +120,53 @@ confirm or choose the repo default, brings the stack up, registers the repo, and
 `setup-repo` task for that harness's auth flow. Then you create tasks and watch your fleet from the
 dashboard.
 
+The setup task completes only after both the selected agent client and GitHub credentials pass
+their checks. It then reports `All required task-container credentials are configured.` and
+returns you to the dashboard.
+
+Quickstart enables task-service authentication automatically. On Linux, the task service binds to
+`0.0.0.0` so bridge containers can reach it; restrict reachable interfaces with a firewall or
+encrypted, access-controlled transport before running on an untrusted network. On macOS it binds
+to loopback. See [`docs/auth.md`](docs/auth.md).
+
 ## Your first task
 
-On the dashboard:
+This GitHub walkthrough currently requires a Claude or Codex task. On the dashboard:
 
-1. **Create it.** Press `n`, then pick the repo and a workflow: `github-peer-reviewed` (opens a PR
-   to merge) or `local-git-self-reviewed` (stays on local git, no GitHub needed). Describe
-   the work in a sentence or two. See [`docs/workflows/`](docs/workflows/README.md) for the full
-   catalog and how to choose.
+1. **Create it.** Press `n`, pick the repo, and choose `github-self-reviewed` for the shortest
+   walkthrough: you perform its approval. `github-peer-reviewed` instead requires another person
+   to approve the PR. For a predictable test, enter `Add a hello-panopticon.txt file containing
+   hello from Panopticon and do not change any other files.` A new task row appears under the
+   selected repo.
 2. **Watch it start.** The task's `container` column moves `queued → … → live` as the runner
    spawns its container; once it's `live` the agent starts on its own branch and begins planning
-   automatically. Press `a` to open its plan when it's ready.
+   automatically.
 3. **Respond when it needs you.** The `turn` column shows whether the agent is working or waiting
-   on you. When it wants a decision, like signing off on that plan, press `t` to attach to its
-   session and steer it; run **`/advance`** there to approve its plan or to advance to the next
-   stage in the workflow from whatever stage you're in. Detach any session with `Ctrl-b d` (or
-   your own `tmux` prefix + `d`) to return to the dashboard.
-4. **Review what ships.** For `github-peer-reviewed` the agent opens a PR (press `p` on the
-   dashboard to open it in your browser); for `local-git-self-reviewed` it commits to the task
-   branch for you to diff locally. Either way nothing lands until you `/advance` it: you own what
-   ships.
+   on you. Press `t` to attach to its session, then detach with `Ctrl-b d` (or your own `tmux`
+   prefix + `d`) to return to the same dashboard and highlighted task.
+4. **Open and approve the plan.** When `plan.md` is ready, press `a`, select `plan.md`, and press
+   Enter. Press `t` to attach again, give any correction, and invoke the **`advance`** operation:
+   `/advance` in Claude or `$advance` in Codex. The dashboard advances to `ITERATING` while the
+   agent implements and tests the change. The [workflow guide](docs/workflows/README.md) documents
+   command syntax for the other harnesses and workflows they support.
+5. **Review what ships.** The agent opens a PR; press `p` on the dashboard to open it in your
+   browser. For the example request, the PR should add only `hello-panopticon.txt`, containing one
+   line: `hello from Panopticon`. Attach and invoke `advance` with the same harness-specific syntax
+   to approve the self-reviewed gate. The task moves through `MERGING`; success is a merged PR and
+   a `COMPLETE` dashboard task with no remaining task container. Configure GitHub branch protection
+   as the hard merge control.
+
+When you finish evaluating Panopticon, run `panopticon stop`. It stops Panopticon task containers
+and its dedicated tmux server; stored configuration, credentials, task records, and artifacts
+remain on disk. Verify teardown with:
+
+```sh
+docker ps --filter label=panopticon.task
+tmux -L panopticon has-session 2>/dev/null; test $? -ne 0
+```
+
+Both checks exit successfully when teardown is complete: Docker lists no Panopticon task
+containers and the dedicated tmux server is gone. Running `panopticon stop` again also succeeds.
 
 ## Configuration
 

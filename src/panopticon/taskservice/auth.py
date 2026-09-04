@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
 import os
 import re
+import secrets
 import stat
 import tempfile
 from dataclasses import dataclass
@@ -47,6 +49,7 @@ class AuthTokens:
 TASK_CAPABILITY_PREFIX = "ptc1"
 TASK_CAPABILITY_PROFILE = "self"
 TASK_CAPABILITY_DOMAIN = b"panopticon-task-capability-v1\0"
+BOOTSTRAP_AUTH_FILE = "task-service-auth.json"
 
 
 def _base64url(value: bytes) -> str:
@@ -118,12 +121,12 @@ def credential_path(reference: str, *, secrets_dir: str | Path | None = None) ->
     root = Path(secrets_dir) if secrets_dir is not None else _secrets_dir()
     root = root.resolve()
     candidate = Path(reference)
-    if candidate.is_absolute():
+    if candidate.is_absolute() or candidate.name != reference or reference in {"", ".", ".."}:
         raise _credential_error()
-    resolved = (root / candidate).resolve()
-    if resolved.parent != root or candidate.name != reference:
-        raise _credential_error()
-    return resolved
+    # Keep the final path component unresolved so the O_NOFOLLOW check in _read_regular_file can
+    # reject a credential-path symlink. Resolving it here would silently turn a symlink into its
+    # target before the guarded open and defeat the no-follow boundary.
+    return root / candidate
 
 
 def _parse_tokens(contents: str, *, allow_runtime_snapshot: bool = False) -> AuthTokens:
@@ -174,6 +177,35 @@ def _read_regular_file(path: Path) -> str:
 
 def load_tokens(reference: str, *, secrets_dir: str | Path | None = None) -> AuthTokens:
     return _parse_tokens(_read_regular_file(credential_path(reference, secrets_dir=secrets_dir)))
+
+
+def ensure_bootstrap_credential(*, secrets_dir: str | Path | None = None) -> str:
+    """Create or reuse the private credential used by zero-config integrated startup."""
+    root = Path(secrets_dir) if secrets_dir is not None else _secrets_dir()
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    destination = credential_path(BOOTSTRAP_AUTH_FILE, secrets_dir=root)
+
+    if os.path.lexists(destination):
+        load_tokens(BOOTSTRAP_AUTH_FILE, secrets_dir=root)
+        return BOOTSTRAP_AUTH_FILE
+
+    fd, temporary_name = tempfile.mkstemp(prefix=".task-service-auth-", dir=root)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            json.dump({"read": [], "write": [secrets.token_urlsafe(32)]}, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        # Another starter may win the atomic publish race. In that case, validate and converge
+        # on its value below rather than replacing it.
+        with contextlib.suppress(FileExistsError):
+            os.link(temporary, destination, follow_symlinks=False)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+    load_tokens(BOOTSTRAP_AUTH_FILE, secrets_dir=root)
+    return BOOTSTRAP_AUTH_FILE
 
 
 def load_client_token(

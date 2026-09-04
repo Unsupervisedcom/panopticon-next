@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
@@ -11,6 +12,7 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
+from panopticon.harnesses.pi import API_KEY_ENV_VARS
 from panopticon.terminal import quickstart as qs
 
 
@@ -127,30 +129,58 @@ def test_choose_harness_uses_numbered_picker_for_several_candidates(
     assert "pi: not installed — install pi" in output
 
 
-def test_detect_git_url_from_origin(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(cmd: list[str], **_: Any) -> Any:
-        r = MagicMock()
-        r.stdout = "https://github.com/example/repo.git\n"
-        return r
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
+def test_detect_git_url_from_origin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 2119: REQ-054.2.1
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/example/repo.git",
+        ],
+        check=True,
+    )
+    monkeypatch.chdir(tmp_path)
     assert qs.detect_git_url() == "https://github.com/example/repo.git"
 
 
-def test_detect_git_url_fallback_on_missing_git(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_detect_git_url_rejects_missing_git(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(cmd: list[str], **_: Any) -> Any:
         raise FileNotFoundError("git not found")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    assert qs.detect_git_url() == qs._FALLBACK_GIT_URL
+    with pytest.raises(RuntimeError, match="must run inside a Git repository"):
+        qs.detect_git_url()
 
 
-def test_detect_git_url_fallback_on_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_detect_git_url_rejects_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(cmd: list[str], **_: Any) -> Any:
         raise subprocess.CalledProcessError(128, cmd)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    assert qs.detect_git_url() == qs._FALLBACK_GIT_URL
+    with pytest.raises(RuntimeError, match="must run inside a Git repository"):
+        qs.detect_git_url()
+
+
+def test_detect_git_url_rejects_a_repo_without_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 2119: REQ-054.2.1
+    # 2119: REQ-054.2.3
+    calls = 0
+
+    def fake_run(cmd: list[str], **_: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return MagicMock(stdout="true\n")
+        raise subprocess.CalledProcessError(2, cmd)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError, match="no `origin` URL"):
+        qs.detect_git_url()
 
 
 @pytest.mark.parametrize(
@@ -164,8 +194,12 @@ def test_detect_git_url_fallback_on_nonzero_exit(monkeypatch: pytest.MonkeyPatch
         qs._FALLBACK_GIT_URL,
     ],
 )
-def test_choose_enabled_workflow_forge(git_url: str) -> None:
-    assert qs.choose_enabled_workflow(git_url) == "github-peer-reviewed"
+def test_choose_enabled_workflows_forge(git_url: str) -> None:
+    # 2119: REQ-054.4.1
+    assert qs.choose_enabled_workflows(git_url) == (
+        "github-self-reviewed",
+        "github-peer-reviewed",
+    )
 
 
 @pytest.mark.parametrize(
@@ -177,11 +211,14 @@ def test_choose_enabled_workflow_forge(git_url: str) -> None:
         "C:\\repos\\widget",
     ],
 )
-def test_choose_enabled_workflow_local(git_url: str) -> None:
-    assert qs.choose_enabled_workflow(git_url) == "local-git-self-reviewed"
+def test_choose_enabled_workflows_local(git_url: str) -> None:
+    assert qs.choose_enabled_workflows(git_url) == ("local-git-self-reviewed",)
 
 
 def test_ensure_secrets_file_creates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 2119: REQ-054.5.1
+    # 2119: REQ-054.5.2
+    # 2119: REQ-054.5.3
     import panopticon.core.dirs as dirs_mod
 
     monkeypatch.setattr(dirs_mod, "user_config_dir", lambda: tmp_path)
@@ -191,18 +228,37 @@ def test_ensure_secrets_file_creates(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert name == "panopticon.env"
     secrets = tmp_path / "secrets" / name
     assert secrets.exists()
+    assert stat.S_IMODE((tmp_path / "secrets").stat().st_mode) == 0o700
+    assert stat.S_IMODE(secrets.lstat().st_mode) == 0o600
+    assert stat.S_ISREG(secrets.lstat().st_mode)
+    assert not secrets.is_symlink()
     content = secrets.read_text()
-    # Placeholder assignments are commented out — the user uncomments the one they use.
-    assert "# CLAUDE_CODE_OAUTH_TOKEN=" in content
-    assert "# CODEX_API_KEY=" in content
-    assert "# CODEX_ACCESS_TOKEN=" in content
-    assert "# GEMINI_API_KEY=" in content
-    assert "# GH_TOKEN=" in content
-    assert "\nCLAUDE_CODE_OAUTH_TOKEN=" not in content
-    assert "\nGH_TOKEN=" not in content
+    # Every credential accepted by the documented path appears as an empty, commented placeholder.
+    lines = content.splitlines()
+    placeholders = {
+        line.removeprefix("# ").split("=", 1)[0]
+        for line in lines
+        if line.startswith("# ") and line.endswith("=")
+    }
+    expected = {
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "ANTHROPIC_API_KEY",
+        "CODEX_API_KEY",
+        "CODEX_ACCESS_TOKEN",
+        "OPENAI_API_KEY",
+        "GH_TOKEN",
+        *API_KEY_ENV_VARS,
+    }
+    assert expected <= placeholders
+    assert all(not line.startswith(tuple(f"{key}=" for key in expected)) for line in lines)
+    assert "required when Claude is selected; optional otherwise" in content
+    assert "required when Codex is selected; optional otherwise" in content
+    assert "required when Pi or Outfitter is selected; optional" in content
+    assert "required for GitHub repositories; optional for local-only repositories" in content
 
 
 def test_ensure_secrets_file_no_overwrite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 2119: REQ-054.5.4
     import panopticon.core.dirs as dirs_mod
 
     monkeypatch.setattr(dirs_mod, "user_config_dir", lambda: tmp_path)
@@ -210,10 +266,84 @@ def test_ensure_secrets_file_no_overwrite(tmp_path: Path, monkeypatch: pytest.Mo
     existing_content = "MY_EXISTING_SECRET=abc\n"
     secrets_path = tmp_path / "secrets" / "panopticon.env"
     secrets_path.parent.mkdir(parents=True)
+    secrets_path.parent.chmod(0o700)
     secrets_path.write_text(existing_content)
+    secrets_path.chmod(0o600)
+
+    before = secrets_path.lstat()
 
     qs.ensure_secrets_file()
     assert secrets_path.read_text() == existing_content
+    after = secrets_path.lstat()
+    assert (after.st_ino, after.st_mode, after.st_uid) == (
+        before.st_ino,
+        before.st_mode,
+        before.st_uid,
+    )
+
+
+def test_ensure_secrets_file_rejects_an_insecure_directory_without_repair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 2119: REQ-054.5.5
+    # 2119: REQ-054.5.6
+    import panopticon.core.dirs as dirs_mod
+
+    monkeypatch.setattr(dirs_mod, "user_config_dir", lambda: tmp_path)
+    secrets_dir = tmp_path / "secrets"
+    secrets_dir.mkdir(mode=0o755)
+    before = secrets_dir.lstat()
+
+    with pytest.raises(ValueError, match="secrets directory is unsafe") as raised:
+        qs.ensure_secrets_file()
+
+    assert str(secrets_dir) in str(raised.value)
+    after = secrets_dir.lstat()
+    assert (after.st_ino, after.st_mode, after.st_uid) == (
+        before.st_ino,
+        before.st_mode,
+        before.st_uid,
+    )
+
+
+@pytest.mark.parametrize("kind", ["insecure", "directory", "symlink"])
+def test_ensure_secrets_file_rejects_unsafe_destinations_without_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    # 2119: REQ-054.5.5
+    # 2119: REQ-054.5.6
+    import panopticon.core.dirs as dirs_mod
+
+    monkeypatch.setattr(dirs_mod, "user_config_dir", lambda: tmp_path)
+    secrets_dir = tmp_path / "secrets"
+    secrets_dir.mkdir(mode=0o700)
+    destination = secrets_dir / "panopticon.env"
+    if kind == "insecure":
+        destination.write_text("KEEP=me\n")
+        destination.chmod(0o644)
+    elif kind == "directory":
+        destination.mkdir()
+    else:
+        target = tmp_path / "target.env"
+        target.write_text("KEEP=target\n")
+        target.chmod(0o600)
+        destination.symlink_to(target)
+    before = destination.lstat()
+    target_contents = destination.read_bytes() if destination.is_file() else None
+
+    with pytest.raises(ValueError, match="secrets file is unsafe") as raised:
+        qs.ensure_secrets_file()
+
+    assert str(destination) in str(raised.value)
+    after = destination.lstat()
+    assert (after.st_ino, after.st_mode, after.st_uid, after.st_size) == (
+        before.st_ino,
+        before.st_mode,
+        before.st_uid,
+        before.st_size,
+    )
+    if target_contents is not None:
+        assert destination.read_bytes() == target_contents
 
 
 @pytest.mark.parametrize(
@@ -230,6 +360,7 @@ def test_repo_id_from_url(url: str, expected: str) -> None:
 
 
 def test_setup_repo_dedups_on_remote_url(capsys: pytest.CaptureFixture[str]) -> None:
+    # 2119: REQ-054.4.1
     # A registered repo whose git_url matches (modulo a trailing ``.git``) → no re-registration;
     # its (id, name) is returned.
     class _HasRepo:
@@ -256,12 +387,13 @@ def test_setup_repo_dedups_on_remote_url(capsys: pytest.CaptureFixture[str]) -> 
     # The reused repo had no enabled workflows, so the forge lifecycle is merged in.
     assert fake_client.updated == {
         "repo_id": "other",
-        "enabled_workflows": ["github-peer-reviewed"],
+        "enabled_workflows": ["github-self-reviewed", "github-peer-reviewed"],
     }
     assert "already configured" in capsys.readouterr().out
 
 
 def test_setup_repo_creates_when_absent() -> None:
+    # 2119: REQ-054.4.1
     created: dict[str, Any] = {}
 
     class _Empty:
@@ -281,7 +413,10 @@ def test_setup_repo_creates_when_absent() -> None:
     assert created["git_url"] == "https://github.com/x/y.git"
     assert created["env_file"] == "panopticon.env"
     # A hosted-forge remote enables the forge lifecycle so the repo can create a coding task.
-    assert created["enabled_workflows"] == ["github-peer-reviewed"]
+    assert created["enabled_workflows"] == [
+        "github-self-reviewed",
+        "github-peer-reviewed",
+    ]
 
 
 def test_setup_repo_records_the_chosen_default_harness_without_a_model() -> None:
@@ -327,7 +462,8 @@ def test_setup_repo_enables_local_workflow_for_local_remote() -> None:
     assert created["enabled_workflows"] == ["local-git-self-reviewed"]
 
 
-def test_setup_repo_dedups_on_derived_id_when_remote_differs() -> None:
+def test_setup_repo_dedups_on_derived_id_and_preserves_existing_workflows() -> None:
+    # 2119: REQ-054.4.1
     # The existing repo's stored remote (ssh form) doesn't normalize-match the https origin, but its
     # id equals the id we'd derive — so it's reused (not re-created, which would collide).
     class _HasRepo:
@@ -339,7 +475,7 @@ def test_setup_repo_dedups_on_derived_id_when_remote_differs() -> None:
                     "id": "y",
                     "name": "x/y",
                     "git_url": "git@github.com:x/y.git",
-                    "enabled_workflows": ["github-peer-reviewed"],
+                    "enabled_workflows": ["custom", "github-peer-reviewed"],
                 }
             ]
 
@@ -348,7 +484,15 @@ def test_setup_repo_dedups_on_derived_id_when_remote_differs() -> None:
             return {}
 
         def update_repo(self, repo_id: str, **changes: Any) -> dict[str, object]:
-            raise AssertionError("workflow already enabled — should not update")
+            assert repo_id == "y"
+            assert changes == {
+                "enabled_workflows": [
+                    "custom",
+                    "github-peer-reviewed",
+                    "github-self-reviewed",
+                ]
+            }
+            return {}
 
     fake_client = _HasRepo()
     repo_id, name = qs.setup_repo(fake_client, "https://github.com/x/y.git", "/tmp/env")  # type: ignore[arg-type]

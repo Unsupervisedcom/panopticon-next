@@ -23,6 +23,7 @@ import os
 import shlex
 import subprocess
 from collections.abc import Callable, Sequence
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import httpx
@@ -75,6 +76,94 @@ def _default_service_host(platform: str) -> str:
     return "127.0.0.1" if platform == "darwin" else "0.0.0.0"
 
 
+def _integrated_session_exists(
+    *, run: Callable[..., subprocess.CompletedProcess[bytes]] | None = None
+) -> bool:
+    from panopticon.sessionservice.tmux_defaults import defaults_argv
+
+    do_run = run or subprocess.run
+    return any(
+        do_run(
+            [
+                "tmux",
+                "-L",
+                "panopticon",
+                *defaults_argv("panopticon"),
+                "has-session",
+                "-t",
+                name,
+            ],
+            capture_output=True,
+        ).returncode
+        == 0
+        for name in ("service", "runner", "dashboard")
+    )
+
+
+def _ensure_integrated_auth(
+    *, run: Callable[..., subprocess.CompletedProcess[bytes]] | None = None
+) -> None:
+    from panopticon.taskservice.auth import (
+        BOOTSTRAP_AUTH_FILE,
+        credential_path,
+        ensure_bootstrap_credential,
+        environment_token,
+    )
+
+    reference = os.environ.get("PANOPTICON_SERVICE_AUTH_FILE") or None
+    mode = os.environ.get("PANOPTICON_SERVICE_AUTH_MODE") or None
+    if mode == "disabled":
+        return
+    if mode not in {None, "enforced"}:
+        raise ValueError("authentication mode must be disabled or enforced")
+    if reference:
+        environment_token()
+        os.environ["PANOPTICON_SERVICE_AUTH_MODE"] = "enforced"
+        return
+    if mode == "enforced":
+        raise ValueError("authentication credential file is required in enforced mode")
+
+    bootstrap_exists = os.path.lexists(credential_path(BOOTSTRAP_AUTH_FILE))
+    if not bootstrap_exists and _integrated_session_exists(run=run):
+        raise RuntimeError(
+            "Panopticon found an existing unauthenticated stack. Run `panopticon stop`, "
+            "then start it again to enable authentication."
+        )
+
+    os.environ["PANOPTICON_SERVICE_AUTH_FILE"] = ensure_bootstrap_credential()
+    os.environ["PANOPTICON_SERVICE_AUTH_MODE"] = "enforced"
+    environment_token()
+
+
+def _select_existing_integrated_auth() -> None:
+    """Select an existing bootstrap credential for client-only commands in a fresh shell."""
+    from panopticon.taskservice.auth import (
+        BOOTSTRAP_AUTH_FILE,
+        credential_path,
+        ensure_bootstrap_credential,
+        environment_token,
+    )
+
+    reference = os.environ.get("PANOPTICON_SERVICE_AUTH_FILE") or None
+    mode = os.environ.get("PANOPTICON_SERVICE_AUTH_MODE") or None
+    if mode == "disabled":
+        return
+    if mode not in {None, "enforced"}:
+        raise ValueError("authentication mode must be disabled or enforced")
+    if reference:
+        environment_token()
+        os.environ["PANOPTICON_SERVICE_AUTH_MODE"] = "enforced"
+        return
+    if mode == "enforced":
+        raise ValueError("authentication credential file is required in enforced mode")
+    if not os.path.lexists(credential_path(BOOTSTRAP_AUTH_FILE)):
+        return
+
+    os.environ["PANOPTICON_SERVICE_AUTH_FILE"] = ensure_bootstrap_credential()
+    os.environ["PANOPTICON_SERVICE_AUTH_MODE"] = "enforced"
+    environment_token()
+
+
 def _run_migrate() -> None:
     import importlib.resources
 
@@ -95,7 +184,11 @@ def _start_sessions(
     do_run = run or subprocess.run
     python = sys.executable
     log_paths = _private_log_paths()
-    service_host = os.environ.get("PANOPTICON_HOST") or _default_service_host(sys.platform)
+    service_host = os.environ.get("PANOPTICON_HOST") or (
+        "127.0.0.1"
+        if os.environ.get("PANOPTICON_SERVICE_AUTH_MODE") == "disabled"
+        else _default_service_host(sys.platform)
+    )
     for name, cmd in [
         (
             "service",
@@ -155,6 +248,11 @@ def main(
     client: TaskServiceClient | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog="panopticon", description="panopticon operator CLI")
+    try:
+        installed_version = version("panopticon-app")
+    except PackageNotFoundError:
+        installed_version = "unknown"
+    parser.add_argument("--version", action="version", version=f"%(prog)s {installed_version}")
     parser.add_argument(
         "--service-url",
         default=os.environ.get("PANOPTICON_SERVICE_URL", DEFAULT_SERVICE_URL),
@@ -219,6 +317,7 @@ def main(
         if (message := docker_daemon.preflight_message("host")) is not None:
             print(message)
             return 1
+        _ensure_integrated_auth()
         _run_migrate()
         _start_sessions()
         return 0
@@ -233,15 +332,24 @@ def main(
         environment_token()
         if doctor.report(doctor.run_checks()) != 0:
             return 1
+        try:
+            git_url = _qs.detect_git_url()
+        except RuntimeError as exc:
+            print(f"panopticon: {exc}")
+            return 1
+        _ensure_integrated_auth()
 
         _run_migrate()
         _start_sessions()
         _qs.wait_for_service(args.service_url)
-        env_file = _qs.ensure_secrets_file()
+        try:
+            env_file = _qs.ensure_secrets_file()
+        except ValueError as exc:
+            print(f"panopticon: {exc}")
+            return 1
         harness = _qs.choose_harness(
             _qs.detect_harnesses(environ=_qs.harness_environment(env_file))
         )
-        git_url = _qs.detect_git_url()
         qs_client = _make_client(args.service_url)
         repo_id, repo_name = _qs.setup_repo(qs_client, git_url, env_file, default_harness=harness)
         task_id = _qs.ensure_setup_repo_task(qs_client, repo_id, repo_name)
@@ -272,11 +380,14 @@ def main(
             )
         return 0
 
-    client = client or _make_client(args.service_url)
     if args.command == "tasks":
+        _select_existing_integrated_auth()
+        client = client or _make_client(args.service_url)
         for t in client.list_tasks():
             print(f"{t['id']}  {t['state']:<10}  {t['turn']:<5}  {t['slug'] or '-'}")
     elif args.command == "dashboard":
+        _select_existing_integrated_auth()
+        client = client or _make_client(args.service_url)
         from panopticon.terminal.console import make_runner_switch, make_service_switch, switch_to
         from panopticon.terminal.dashboard import run
 
@@ -317,10 +428,13 @@ def main(
             if (message := docker_daemon.preflight_message("start")) is not None:
                 print(message)
                 return 1
+            _ensure_integrated_auth()
             _run_migrate()
             _start_sessions()
         from panopticon.terminal.console import run_console_local
 
+        _select_existing_integrated_auth()
+        client = client or _make_client(args.service_url)
         run_console_local(args.service_url, client=client, join=getattr(args, "task", None))
     return 0
 

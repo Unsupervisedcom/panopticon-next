@@ -19,7 +19,7 @@ This workflow is **shown for every repo by default** (no opt-in needed).
 
 | State | What happens | Who advances |
 |---|---|---|
-| **ITERATING** | The agent works on whatever you ask, back and forth, with no gates. | **You**, by marking it COMPLETE (`/advance`) when you're satisfied. |
+| **ITERATING** | The agent works on whatever you ask, back and forth, with no gates. | **You**, by invoking `advance` with your harness's syntax (see the [workflow guide](README.md)) when you're satisfied. |
 | **COMPLETE** | Terminal. | n/a |
 
 The agent waits for your first instruction on entry, then works until you call it done.

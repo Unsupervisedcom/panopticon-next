@@ -5,10 +5,14 @@ from __future__ import annotations
 
 import importlib.resources
 import json
+import os
+import pty
+import select
 import shlex
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from panopticon.core import Actor
@@ -34,12 +38,14 @@ def _shell_function(name: str) -> str:
 
 
 _SETUP_PI_AUTH = _shell_function("setup_pi_auth")
+_SETUP_CODEX_AUTH = _shell_function("setup_codex_auth")
+_STORE_TOKEN = _shell_function("store_token")
 
 
 def _sh(body: str) -> str:
     """Run ``body`` after the helpers in a POSIX shell; return its stdout."""
     result = subprocess.run(
-        ["sh", "-c", f"{_LIB}\n{body}"],
+        ["sh", "-c", f"PANOPTICON_PYTHON={shlex.quote(sys.executable)}\n{_LIB}\n{body}"],
         capture_output=True,
         text=True,
         check=True,
@@ -328,7 +334,7 @@ def test_outfitter_uses_real_pi_auth_conditions(tmp_path: Path) -> None:
     env_key.write_text("ANTHROPIC_API_KEY=secret\n")
     auth_file = tmp_path / "auth-file"
     auth_file.mkdir()
-    (auth_file / "auth.json").write_text("{}")
+    (auth_file / "auth.json").write_text('{"credential":"value"}')
     no_credentials = tmp_path / "no-credentials"
     no_credentials.write_text("")
 
@@ -368,10 +374,100 @@ def test_codex_repo_auth_check_accepts_env_file_or_credential_dir(tmp_path: Path
         _sh(f"codex_repo_auth_configured {q_env} {q_creds} && echo yes || echo no").strip() == "yes"
     )
     env_file.write_text("")
-    (credentials / "auth.json").write_text("{}")
+    (credentials / "auth.json").write_text('{"credential":"value"}')
     assert (
         _sh(f"codex_repo_auth_configured {q_env} {q_creds} && echo yes || echo no").strip() == "yes"
     )
+
+
+def test_codex_setup_adopts_host_environment_credential_for_task_containers(
+    tmp_path: Path,
+) -> None:
+    env_file = tmp_path / "repo.env"
+    body = f"""
+harness_configured=0
+env_file={shlex.quote(str(env_file))}
+PANOPTICON_ENV_FILE={shlex.quote(str(env_file))}
+credential_path=''
+CODEX_API_KEY=host-codex-key
+add_summary() {{ :; }}
+{_STORE_TOKEN}
+{_SETUP_CODEX_AUTH}
+printf 'y\n' | setup_codex_auth
+"""
+    output = _sh(body)
+
+    assert "A CODEX_API_KEY is set in your environment (ending ...-key)." in output
+    assert "for task containers to use? [y/N]" in output
+    assert env_file.read_text() == "CODEX_API_KEY=host-codex-key\n"
+    assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
+
+
+def test_codex_setup_accepts_a_hidden_pasted_credential(tmp_path: Path) -> None:
+    env_file = tmp_path / "repo.env"
+    body = f"""
+harness_configured=0
+env_file={shlex.quote(str(env_file))}
+PANOPTICON_ENV_FILE={shlex.quote(str(env_file))}
+credential_path=''
+add_summary() {{ :; }}
+{_STORE_TOKEN}
+{_SETUP_CODEX_AUTH}
+read_secret() {{ IFS= read -r value; printf '%s' "$value"; }}
+printf 'CODEX_ACCESS_TOKEN\npasted-access-token\n' | setup_codex_auth
+"""
+    output = _sh(body)
+
+    assert "Paste a Codex credential for task containers" in output
+    assert env_file.read_text() == "CODEX_ACCESS_TOKEN=pasted-access-token\n"
+
+
+def test_read_secret_disables_echo_before_showing_its_prompt() -> None:
+    command = (
+        f"{_LIB}\n"
+        "value=$(read_secret 'Secret: '); "
+        "[ \"$value\" = eager-secret ] && printf 'stored\\n'"
+    )
+    master_fd, slave_fd = pty.openpty()
+    process = subprocess.Popen(
+        ["/bin/sh", "-c", command],
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+    output = bytearray()
+    deadline = time.monotonic() + 5
+    try:
+        while b"Secret: " not in output and time.monotonic() < deadline:
+            readable, _, _ = select.select([master_fd], [], [], 0.1)
+            if readable:
+                output.extend(os.read(master_fd, 4096))
+        assert b"Secret: " in output
+        os.write(master_fd, b"eager-secret\n")
+        while process.poll() is None and time.monotonic() < deadline:
+            readable, _, _ = select.select([master_fd], [], [], 0.1)
+            if readable:
+                output.extend(os.read(master_fd, 4096))
+        assert process.wait(timeout=1) == 0
+        while select.select([master_fd], [], [], 0)[0]:
+            try:
+                chunk = os.read(master_fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            output.extend(chunk)
+    finally:
+        os.close(master_fd)
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+
+    transcript = output.decode(errors="replace")
+    assert "stored" in transcript
+    assert "eager-secret" not in transcript
 
 
 def test_pi_auth_helpers_use_the_adapter_api_key_vars(tmp_path: Path) -> None:
@@ -390,12 +486,16 @@ def test_pi_auth_helpers_use_the_adapter_api_key_vars(tmp_path: Path) -> None:
 def test_shell_script_pi_flow_lists_adapter_vars_and_reads_hidden_input() -> None:
     script = WF.shell_script()
     assert f"PANOPTICON_PI_API_KEY_ENV_VARS='{' '.join(API_KEY_ENV_VARS)}'" in script
-    assert "read -r -s _rs_value" in script
+    assert "read -r -s -p" in script
+    assert "read_secret 'Provider API key (input hidden): '" in script
     assert 'store_token "$pi_var" "$pi_key"' in script
 
 
 def test_shell_script_codex_flow_logs_in_copies_private_auth_and_updates_repo() -> None:
     script = WF.shell_script()
+    assert "Paste a Codex credential for task containers" in script
+    assert 'store_token "$_sca_var" "$_sca_val"' in script
+    assert 'store_token "$codex_var" "$codex_key"' in script
     assert "codex login" in script
     assert 'cp "$HOME/.codex/auth.json" "$credential_path/auth.json"' in script
     assert 'chmod 600 "$credential_path/auth.json"' in script
@@ -466,6 +566,84 @@ def test_shell_script_converges_on_a_summary_and_completes_on_a_final_enter() ->
     # the completion (panopticon_advance) is the final action — after the credential-check branches,
     # run on any route — not gated on `claude setup-token` succeeding
     assert script.rindex("panopticon_advance") > script.rindex("claude setup-token")
+
+
+# 2119: REQ-054.7.5
+def test_final_readiness_gate_waits_for_each_required_credential_before_advancing(
+    tmp_path: Path,
+) -> None:
+    """Execute the real final gate in POSIX sh, changing missing credentials at re-check."""
+    final_gate = _FULL_SCRIPT[_FULL_SCRIPT.index("# Every route converges here:") :]
+    scenarios = (
+        (
+            "missing-harness-auth",
+            "GH_TOKEN=github-token\n",
+            "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-harness-token",
+            "Missing task-container authentication for claude.",
+        ),
+        (
+            "missing-github-token",
+            "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-harness-token\n",
+            "GH_TOKEN=github-token",
+            "Missing GH_TOKEN for the GitHub workflow.",
+        ),
+        (
+            "both-present",
+            ("CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-harness-token\nGH_TOKEN=github-token\n"),
+            "",
+            "",
+        ),
+    )
+
+    for name, initial_credentials, credential_added_at_recheck, missing_message in scenarios:
+        scenario_dir = tmp_path / name
+        scenario_dir.mkdir()
+        env_file = scenario_dir / "repo.env"
+        env_file.write_text(initial_credentials)
+        events = scenario_dir / "events"
+        shell = f"""
+{_LIB}
+{_shell_function("refresh_readiness")}
+PANOPTICON_ENV_FILE={shlex.quote(str(env_file))}
+default_harness=claude
+credential_path=''
+repo_url=https://github.com/example/disposable.git
+summary=''
+dashboard_hint='detach hint'
+read_count=0
+read() {{
+    read_count=$((read_count + 1))
+    if [ "$read_count" -eq 1 ] \
+        && [ -n {shlex.quote(credential_added_at_recheck)} ]; then
+        printf '%s\n' recheck >> {shlex.quote(str(events))}
+        printf '%s\n' {shlex.quote(credential_added_at_recheck)} \
+            >> {shlex.quote(str(env_file))}
+    else
+        printf '%s\n' finish >> {shlex.quote(str(events))}
+    fi
+}}
+panopticon_advance() {{ printf '%s\n' advance >> {shlex.quote(str(events))}; }}
+{final_gate}
+"""
+        completed = subprocess.run(
+            ["sh", "-c", shell],
+            capture_output=True,
+            text=True,
+            check=True,
+            stdin=subprocess.DEVNULL,
+        )
+
+        observed_events = events.read_text().splitlines()
+        if credential_added_at_recheck:
+            assert observed_events == ["recheck", "finish", "advance"]
+            assert "Setup is incomplete; Panopticon will not mark this task complete yet." in (
+                completed.stdout
+            )
+            assert missing_message in completed.stdout
+        else:
+            assert observed_events == ["finish", "advance"]
+            assert "Setup is incomplete" not in completed.stdout
+        assert "All required task-container credentials are configured." in completed.stdout
 
 
 def test_extract_oauth_token_pulls_the_token_out_of_a_noisy_capture() -> None:
@@ -729,7 +907,8 @@ def test_shell_script_offers_adopt_paste_and_default_no_consent() -> None:
     script = WF.shell_script()
     # each credential can be adopted from the operator's env or pasted inline (fast path for an
     # already-authenticated operator — no cancel-and-restart)
-    assert "Paste a Claude token" in script and "Paste a GitHub token" in script
+    assert "Paste a Claude token" in script and "Paste a Codex credential" in script
+    assert "Paste a GitHub token" in script
     # adoption confirms *which* token via a masked tail, and every prompt is default-No (no [Y/n])
     assert "mask_last4" in script
     assert "[Y/n]" not in script
@@ -775,6 +954,32 @@ def test_env_file_has_var_detects_only_active_lines(tmp_path: Path) -> None:
     assert (
         _sh(f"env_file_has_var GH_TOKEN {missing} && echo present || echo absent").strip()
         == "absent"
+    )
+
+
+def test_repo_auth_checks_reject_empty_values_and_invalid_auth_json(tmp_path: Path) -> None:
+    env_file = tmp_path / "repo.env"
+    credentials = tmp_path / "credentials"
+    credentials.mkdir()
+    auth_file = credentials / "auth.json"
+    q_env = shlex.quote(str(env_file))
+    q_creds = shlex.quote(str(credentials))
+
+    env_file.write_text("OPENAI_API_KEY=\nGH_TOKEN=   \n")
+    auth_file.write_text("")
+    assert _sh(f"env_file_has_var GH_TOKEN {q_env} && echo yes || echo no").strip() == "no"
+    assert (
+        _sh(f"codex_repo_auth_configured {q_env} {q_creds} && echo yes || echo no").strip() == "no"
+    )
+
+    auth_file.write_text("not-json")
+    assert (
+        _sh(f"codex_repo_auth_configured {q_env} {q_creds} && echo yes || echo no").strip() == "no"
+    )
+
+    auth_file.write_text("{}")
+    assert (
+        _sh(f"codex_repo_auth_configured {q_env} {q_creds} && echo yes || echo no").strip() == "no"
     )
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,8 +29,8 @@ _TERMINAL_STATES = {"COMPLETE", "DROPPED"}
 #: The opt-in coding workflows quickstart enables for a repo (kept in sync with the workflow
 #: classes' ``name`` ClassVars): the forge lifecycle for hosted remotes, the forge-free one for
 #: local-only repos.
-_FORGE_WORKFLOW = "github-peer-reviewed"
-_LOCAL_WORKFLOW = "local-git-self-reviewed"
+_FORGE_WORKFLOWS = ("github-self-reviewed", "github-peer-reviewed")
+_LOCAL_WORKFLOWS = ("local-git-self-reviewed",)
 
 #: URL schemes that mean a networked (hosted-forge) remote rather than a local path.
 _FORGE_SCHEMES = ("https://", "http://", "ssh://", "git://", "ftp://", "ftps://")
@@ -159,24 +160,38 @@ def _secrets_template() -> str:
 
 
 def detect_git_url() -> str:
-    """Return the git remote URL for origin in CWD, or the panopticon fallback.
-
-    Quickstart adopts whatever repo it's run in; the fallback covers running outside a git
-    checkout (or one without an ``origin`` remote).
-    """
+    """Return the origin URL for the repository in the current working directory."""
     import subprocess
 
     try:
+        subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        raise RuntimeError(
+            "quickstart must run inside a Git repository; change into the repository you want "
+            "Panopticon to manage and try again"
+        ) from exc
+
+    try:
         result = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
+            ["git", "config", "--get", "remote.origin.url"],
             capture_output=True,
             text=True,
             check=True,
         )
         url = result.stdout.strip()
-        return url or _FALLBACK_GIT_URL
+        if url:
+            return url
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return _FALLBACK_GIT_URL
+        pass
+    raise RuntimeError(
+        "the current Git repository has no `origin` URL; add an `origin` remote for the "
+        "repository you want Panopticon to manage and try again"
+    )
 
 
 def _normalize_url(git_url: str) -> str:
@@ -215,19 +230,19 @@ def _is_forge_url(git_url: str) -> bool:
     return at != -1 and colon > at and (slash == -1 or colon < slash)
 
 
-def choose_enabled_workflow(git_url: str) -> str:
-    """The opt-in workflow quickstart enables for a repo, chosen from its remote URL.
+def choose_enabled_workflows(git_url: str) -> tuple[str, ...]:
+    """The opt-in workflows quickstart enables for a repo, chosen from its remote URL.
 
-    A hosted-forge remote gets the forge lifecycle (``github-peer-reviewed``); a local-only repo
-    gets the forge-free ``local-git-self-reviewed``.
+    A hosted-forge remote gets both GitHub lifecycles so a new evaluator can choose the shorter
+    self-reviewed path or a second-person review gate. A local-only repo gets the forge-free flow.
     """
-    return _FORGE_WORKFLOW if _is_forge_url(git_url) else _LOCAL_WORKFLOW
+    return _FORGE_WORKFLOWS if _is_forge_url(git_url) else _LOCAL_WORKFLOWS
 
 
-def _ensure_workflow_enabled(
-    client: TaskServiceClient, repo: dict[str, object], workflow: str
+def _ensure_workflows_enabled(
+    client: TaskServiceClient, repo: dict[str, object], workflows: tuple[str, ...]
 ) -> None:
-    """Add ``workflow`` to an existing repo's ``enabled_workflows`` if it's missing.
+    """Add ``workflows`` to an existing repo's enabled set without removing operator choices.
 
     Merges rather than replaces, so a re-run (or a repo registered before quickstart enabled a
     workflow) gets the coding lifecycle without clobbering entries the operator set by hand. A
@@ -235,11 +250,12 @@ def _ensure_workflow_enabled(
     """
     raw = repo.get("enabled_workflows")
     enabled = [str(w) for w in raw] if isinstance(raw, list) else []
-    if workflow in enabled:
+    merged = [*enabled, *(workflow for workflow in workflows if workflow not in enabled)]
+    if merged == enabled:
         return
     repo_id = str(repo["id"])
-    client.update_repo(repo_id, enabled_workflows=[*enabled, workflow])
-    print(f"  → Enabled the {workflow!r} workflow for repo {repo_id!r}.")
+    client.update_repo(repo_id, enabled_workflows=merged)
+    print(f"  → Enabled workflows for repo {repo_id!r}: {', '.join(workflows)}.")
 
 
 def ensure_secrets_file() -> str:
@@ -252,11 +268,49 @@ def ensure_secrets_file() -> str:
 
     secrets_dir = _secrets_dir()
     secrets_path = secrets_dir / "panopticon.env"
-    secrets_dir.mkdir(parents=True, exist_ok=True)
-    if secrets_path.exists():
+    secrets_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    directory = secrets_dir.lstat()
+    current_uid = getattr(os, "geteuid", lambda: directory.st_uid)()
+    if (
+        secrets_dir.is_symlink()
+        or not stat.S_ISDIR(directory.st_mode)
+        or directory.st_uid != current_uid
+        or directory.st_mode & 0o077
+    ):
+        raise ValueError(
+            f"secrets directory is unsafe: {secrets_dir} must be an owner-only directory (0700)"
+        )
+    if os.path.lexists(secrets_path):
+        fd = -1
+        try:
+            fd = os.open(
+                secrets_path,
+                os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0),
+            )
+            existing = os.fstat(fd)
+            if (
+                not stat.S_ISREG(existing.st_mode)
+                or existing.st_uid != current_uid
+                or existing.st_mode & 0o077
+            ):
+                raise ValueError
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                f"secrets file is unsafe: {secrets_path} must be an owner-only regular file (0600)"
+            ) from exc
+        finally:
+            if fd >= 0:
+                os.close(fd)
         print(f"Secrets file already exists: {secrets_path}")
     else:
-        secrets_path.write_text(_secrets_template())
+        fd = os.open(
+            secrets_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            handle.write(_secrets_template())
         print(f"Created secrets template: {secrets_path}")
         print("  → The setup-repo task will add harness auth; add GH_TOKEN there or by hand.")
     return secrets_path.name
@@ -306,21 +360,20 @@ def setup_repo(
 ) -> tuple[str, str]:
     """Register the repo quickstart is run in with the task service; return its ``(id, name)``.
 
-    Enables the opt-in coding workflow appropriate to the repo's remote — the forge lifecycle
-    (``github-peer-reviewed``) for a hosted remote, the forge-free ``local-git-self-reviewed`` for a
-    local-only one (see :func:`choose_enabled_workflow`) — so a fresh quickstart repo can create a
-    normal coding task without a hand-edit.
+    Enables the opt-in coding workflows appropriate to the repo's remote — both GitHub lifecycles
+    for a hosted remote, or the forge-free ``local-git-self-reviewed`` workflow for a local-only
+    remote (see :func:`choose_enabled_workflows`).
 
     Idempotent: an already-registered repo (matched by remote URL or derived id, see
     :func:`_find_existing_repo`) is reused rather than re-registered — and still has the workflow
     ensured (merged in if absent) — and a create that races into a conflict falls back to the same
     reuse. The name is used to seed the setup-repo task's memo.
     """
-    workflow = choose_enabled_workflow(git_url)
+    workflows = choose_enabled_workflows(git_url)
     existing = _find_existing_repo(client, git_url)
     if existing is not None:
         print(f"Repo already configured for {git_url!r} — skipping registration.")
-        _ensure_workflow_enabled(client, existing, workflow)
+        _ensure_workflows_enabled(client, existing, workflows)
         repo_id = str(existing["id"])
         if default_harness is not None and existing.get("default_harness") != default_harness:
             client.update_repo(repo_id, default_harness=default_harness)
@@ -333,7 +386,7 @@ def setup_repo(
             repo_id,
             git_url,
             env_file=env_file,
-            enabled_workflows=[workflow],
+            enabled_workflows=list(workflows),
             default_harness=default_harness,
         )
     except httpx.HTTPStatusError as err:
@@ -344,11 +397,11 @@ def setup_repo(
         print(f"Repo {repo_id!r} already exists — reusing it.")
         raced = _find_existing_repo(client, git_url)
         if raced is not None:
-            _ensure_workflow_enabled(client, raced, workflow)
+            _ensure_workflows_enabled(client, raced, workflows)
         return repo_id, repo_id
     print(f"Registered repo {repo_id!r} (git_url={git_url!r}).")
     print(f"  → Secrets file: {env_file}")
-    print(f"  → Enabled the {workflow!r} workflow.")
+    print(f"  → Enabled workflows: {', '.join(workflows)}.")
     return repo_id, repo_id
 
 

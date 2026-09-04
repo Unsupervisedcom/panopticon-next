@@ -24,6 +24,10 @@ long random values using that alphabet; short values, spaces, control characters
 quotes, and backslashes are rejected at startup. The file must be owned by the Panopticon process
 user with no group or other permissions (normally mode `0600`); insecure files are rejected.
 Configure every task-service and runner host with the same filename reference.
+Integrated startup (`panopticon start`, `panopticon host`, and `panopticon quickstart`) creates a
+private `task-service-auth.json` credential on first use and selects enforced mode automatically.
+It reuses that credential on later starts. To select a different credential explicitly:
+
 The required steady-state configuration is enforced mode:
 
 ```sh
@@ -31,13 +35,14 @@ export PANOPTICON_SERVICE_AUTH_FILE=task-service-auth.json
 export PANOPTICON_SERVICE_AUTH_MODE=enforced
 ```
 
-The standalone task-service launcher defaults to `127.0.0.1`. The integrated `panopticon start`
-and `panopticon host` commands default to `127.0.0.1` on Darwin and `0.0.0.0` on Linux and Windows
-so native containers can reach the service. On native Linux this compatibility default
-intentionally listens on every host interface because bridge containers cannot reach host
+The standalone task-service launcher defaults to `127.0.0.1`. With enforced authentication, the
+integrated `panopticon start` and `panopticon host` commands default to `127.0.0.1` on Darwin and
+`0.0.0.0` on Linux and Windows so native containers can reach the service. Disabled integrated
+startup defaults to loopback on every platform. On native Linux the authenticated compatibility
+default intentionally listens on every host interface because bridge containers cannot reach host
 loopback; safe operation therefore depends on enforced task-service authentication plus
-independently encrypted and access-controlled transport. `PANOPTICON_HOST` overrides both launch
-paths when the operator selects another container-reachable intended interface. Bearer tokens
+independently encrypted and access-controlled transport. `PANOPTICON_HOST` overrides these launch
+defaults when the operator selects another container-reachable intended interface. Bearer tokens
 travel over HTTP, so a broad bind is appropriate only where every reachable interface has those
 protections.
 
@@ -46,10 +51,11 @@ containers reach the loopback-bound service. Panopticon does not probe which run
 the conservative Darwin default is the same for both.
 
 Authentication mode is reported at startup; disabled mode produces a warning. Enforced mode is
-the steady state. Disabled mode is the operator's break-glass recovery path: clear an invalid
-`PANOPTICON_SERVICE_AUTH_FILE` reference and restart the service with
-`PANOPTICON_SERVICE_AUTH_MODE=disabled`, restore or replace the host-local credential file, then
-restart the fleet directly in enforced mode.
+the steady state. Disabled mode is the operator's explicit break-glass recovery path: clear an
+invalid `PANOPTICON_SERVICE_AUTH_FILE` reference and restart the service with
+`PANOPTICON_SERVICE_AUTH_MODE=disabled`. Integrated startup binds loopback in this mode unless you
+also set `PANOPTICON_HOST`; restore or replace the host-local credential file, then restart the
+fleet directly in enforced mode.
 
 Integrated startup creates missing tmux sessions with the invoking process's current authentication
 environment, but deliberately leaves existing service, runner, dashboard, and task sessions alive.
@@ -308,5 +314,6 @@ Pick the model per task via `starting_model` (pi's own `--model` syntax, e.g. `s
 `sonnet:high`, `openai/gpt-4o`); unset, pi picks its own default.
 
 **Known gap:** pi has no MCP client, so workflow skills that name an MCP tool directly (outside
-the two operations this harness itself renders) won't work unmodified under pi — see the
-`panopticon.harnesses.pi` module docstring for exactly which ones.
+the two operations this harness itself renders) won't work unmodified under pi. That includes the
+built-in planned GitHub workflows; use Claude or Codex for the documented first-task walkthrough.
+See the `panopticon.harnesses.pi` module docstring for exactly which skills are affected.

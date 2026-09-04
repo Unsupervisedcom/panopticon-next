@@ -134,6 +134,10 @@ profile's `cli_specific/pi/auth.json` when that file exists, otherwise from
 `~/.pi/agent/auth.json`. Bootstrap links the credential-dir file at that native fallback; it does
 not overwrite profile-owned auth.
 
+Like direct Pi tasks, Outfitter tasks currently cannot execute workflow skills that require
+Panopticon's MCP tools. Use Claude or Codex for the complete planned GitHub workflow in the
+new-user walkthrough.
+
 Panopticon launches Outfitter interactively in tmux. Outfitter also supports Pi's headless flags
 (`-p`/`--print`, `--export`, and `--list-models`): its source appends pass-through arguments after
 profile controls and suppresses its interactive runtime extension for those modes. A live

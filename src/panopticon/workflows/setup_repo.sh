@@ -45,30 +45,34 @@ echo
 
 # Work out what's already set up and what this repo needs. "Configured" means the repo's env-file
 # or credential directory carries auth — a host-only environment variable or native login is not
-# visible to task containers.
-harness_configured=0
-case "$default_harness" in
-    claude)
-        if env_file_has_var CLAUDE_CODE_OAUTH_TOKEN "${PANOPTICON_ENV_FILE:-}" \
-            || env_file_has_var ANTHROPIC_API_KEY "${PANOPTICON_ENV_FILE:-}"; then
-            harness_configured=1
-        fi
-        ;;
-    codex)
-        codex_repo_auth_configured "${PANOPTICON_ENV_FILE:-}" "$credential_path" \
-            && harness_configured=1
-        ;;
-    pi|outfitter)
-        pi_repo_auth_configured "${PANOPTICON_ENV_FILE:-}" "$credential_path" \
-            && harness_configured=1
-        ;;
-esac
-gh_needed=0
-gh_configured=0
-if is_github_url "$repo_url"; then
-    gh_needed=1
-    env_file_has_var GH_TOKEN "${PANOPTICON_ENV_FILE:-}" && gh_configured=1
-fi
+# visible to task containers. This is a function because the final gate re-checks after the operator
+# edits the env-file from another terminal.
+refresh_readiness() {
+    harness_configured=0
+    case "$default_harness" in
+        claude)
+            if env_file_has_var CLAUDE_CODE_OAUTH_TOKEN "${PANOPTICON_ENV_FILE:-}" \
+                || env_file_has_var ANTHROPIC_API_KEY "${PANOPTICON_ENV_FILE:-}"; then
+                harness_configured=1
+            fi
+            ;;
+        codex)
+            codex_repo_auth_configured "${PANOPTICON_ENV_FILE:-}" "$credential_path" \
+                && harness_configured=1
+            ;;
+        pi|outfitter)
+            pi_repo_auth_configured "${PANOPTICON_ENV_FILE:-}" "$credential_path" \
+                && harness_configured=1
+            ;;
+    esac
+    gh_needed=0
+    gh_configured=0
+    if is_github_url "$repo_url"; then
+        gh_needed=1
+        env_file_has_var GH_TOKEN "${PANOPTICON_ENV_FILE:-}" && gh_configured=1
+    fi
+}
+refresh_readiness
 
 # What we know about the repo, and what its setup entails — two bulleted lists up front.
 echo "This repo:"
@@ -191,8 +195,7 @@ setup_claude_token() {
     echo
     echo "Paste a Claude token to store it (a CLAUDE_CODE_OAUTH_TOKEN or an ANTHROPIC_API_KEY),"
     echo "or press Enter to mint one with 'claude setup-token'."
-    printf '> '
-    read pasted
+    pasted=$(read_secret '> ')
     if [ -n "$pasted" ]; then
         _pv=CLAUDE_CODE_OAUTH_TOKEN
         case "$pasted" in sk-ant-api*) _pv=ANTHROPIC_API_KEY ;; esac
@@ -218,16 +221,60 @@ setup_claude_auth() {
     fi
 }
 
-# Full Codex dispatch. Repo env credentials or a shared credential-dir auth.json need no work;
-# otherwise run Codex's browser login, then copy the native auth file into the repo's shared dir.
+# Full Codex dispatch. Repo env credentials or a shared credential-dir auth.json need no work.
+# Otherwise offer to adopt a host-environment credential into the repo env-file (with explicit
+# consent), let the operator paste one with hidden input, or fall back to browser login and copy the
+# resulting native auth file into the repo's shared credential directory.
 setup_codex_auth() {
-    if [ -n "${CODEX_API_KEY:-}" ] || [ -n "${OPENAI_API_KEY:-}" ] \
-        || [ -n "${CODEX_ACCESS_TOKEN:-}" ] \
-        || { [ -n "$credential_path" ] && [ -f "$credential_path/auth.json" ]; }; then
-        echo "Codex credentials already satisfy the harness auth check; no login is needed."
-        add_summary "Codex auth: already configured; skipped login."
+    if [ "$harness_configured" -eq 1 ]; then
+        echo "Codex credentials are already configured for task containers; no login is needed."
+        add_summary "Codex auth: already configured for task containers; skipped login."
         return
     fi
+
+    _sca_var=""
+    _sca_val=""
+    if [ -n "${CODEX_API_KEY:-}" ]; then
+        _sca_var=CODEX_API_KEY
+        _sca_val=$CODEX_API_KEY
+    elif [ -n "${OPENAI_API_KEY:-}" ]; then
+        _sca_var=OPENAI_API_KEY
+        _sca_val=$OPENAI_API_KEY
+    elif [ -n "${CODEX_ACCESS_TOKEN:-}" ]; then
+        _sca_var=CODEX_ACCESS_TOKEN
+        _sca_val=$CODEX_ACCESS_TOKEN
+    fi
+    if [ -n "$_sca_val" ]; then
+        echo "A $_sca_var is set in your environment (ending $(mask_last4 "$_sca_val"))."
+        printf 'Add it to %s for task containers to use? [y/N] ' "$env_file"
+        read answer
+        case "$answer" in
+            [Yy]*)
+                store_token "$_sca_var" "$_sca_val" "your environment" "Codex credential"
+                return
+                ;;
+        esac
+    fi
+
+    echo
+    echo "Paste a Codex credential for task containers, or press Enter to use 'codex login'."
+    printf 'Environment variable to store [OPENAI_API_KEY]: '
+    read codex_var
+    [ -n "$codex_var" ] || codex_var=OPENAI_API_KEY
+    case "$codex_var" in
+        CODEX_API_KEY|OPENAI_API_KEY|CODEX_ACCESS_TOKEN) ;;
+        *)
+            echo "$codex_var is not a supported Codex credential variable."
+            add_summary "Codex auth: no credential stored — unrecognized environment variable $codex_var."
+            return
+            ;;
+    esac
+    codex_key=$(read_secret 'Codex credential (input hidden; press Enter for browser login): ')
+    if [ -n "$codex_key" ]; then
+        store_token "$codex_var" "$codex_key" "hidden input" "Codex credential"
+        return
+    fi
+
     if ! command -v codex >/dev/null 2>&1; then
         echo "The codex CLI is not installed. Install it, then resume this setup task."
         add_summary "Codex auth: codex CLI not installed — login was not run."
@@ -279,8 +326,7 @@ setup_pi_auth() {
         add_summary "Pi auth: no key stored — unrecognized environment variable $pi_var."
         return
     fi
-    printf 'Provider API key (input hidden): '
-    pi_key=$(read_secret)
+    pi_key=$(read_secret 'Provider API key (input hidden): ')
     if [ -n "$pi_key" ]; then
         store_token "$pi_var" "$pi_key" "hidden input" "Pi auth"
     else
@@ -306,8 +352,7 @@ setup_gh_token() {
     fi
     echo
     echo "Paste a GitHub token to store it, or press Enter to skip (add GH_TOKEN to $env_file yourself)."
-    printf '> '
-    read pasted
+    pasted=$(read_secret '> ')
     if [ -n "$pasted" ]; then
         store_token GH_TOKEN "$pasted" "the token you pasted" "GH_TOKEN"
     else
@@ -349,6 +394,22 @@ else
     echo "  • Nothing to do — everything was already set up."
 fi
 echo
+refresh_readiness
+while [ "$harness_configured" -ne 1 ] \
+    || { [ "$gh_needed" -eq 1 ] && [ "$gh_configured" -ne 1 ]; }; do
+    echo "Setup is incomplete; Panopticon will not mark this task complete yet."
+    [ "$harness_configured" -eq 1 ] \
+        || echo "  • Missing task-container authentication for $default_harness."
+    if [ "$gh_needed" -eq 1 ] && [ "$gh_configured" -ne 1 ]; then
+        echo "  • Missing GH_TOKEN for the GitHub workflow."
+    fi
+    echo "$dashboard_hint"
+    printf 'After updating the repo credentials, press Enter to re-check. '
+    read _
+    refresh_readiness
+    echo
+done
+echo "All required task-container credentials are configured."
 printf 'Press Enter to complete this task and return to the dashboard. '
 read _
 # panopticon_advance is provided by the panopticon shell lib (loaded by the session service).

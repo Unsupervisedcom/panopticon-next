@@ -1,7 +1,8 @@
 # macOS setup
 
 Install and first run are the same on macOS as anywhere else — see the
-[README](../README.md) (`pipx install panopticon-app`, then `panopticon quickstart`). This page
+[new-user walkthrough](getting-started.md) (`pipx install panopticon-app==0.0.6`, then
+`panopticon quickstart`). This page
 covers only what's **macOS-specific**.
 
 ## Use OrbStack or Docker Desktop
@@ -18,7 +19,7 @@ docker info
 
 `panopticon doctor` checks this (along with tmux, git, Python, and at least one registered harness
 CLI), and
-`panopticon quickstart` runs it for you before doing anything.
+`panopticon quickstart` runs it before creating Panopticon state.
 
 Task containers run inside the selected runtime's Linux VM rather than on your host directly —
 which is also why the container's Linux-only tooling (`groupmod`, `useradd`, `gosu`, … in

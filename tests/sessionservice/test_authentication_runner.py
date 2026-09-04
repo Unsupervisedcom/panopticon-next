@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import socket
 import stat
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -30,14 +31,21 @@ class _Recorder:
         return ""
 
 
+@pytest.fixture
+def short_tmp_path() -> Path:
+    """Keep AF_UNIX fixture paths below macOS's 104-byte limit."""
+    with tempfile.TemporaryDirectory(prefix="pan-auth-") as directory:
+        yield Path(directory)
+
+
 @pytest.mark.parametrize(
     "existing_kind", ["missing", "directory", "fifo", "socket", "symlink", "malformed"]
 )
 def test_spawn_rejects_missing_service_credential_before_docker(
-    tmp_path: Path, existing_kind: str
+    short_tmp_path: Path, existing_kind: str
 ) -> None:
     # 2119: REQ-035.28.1
-    secrets = tmp_path / "secrets"
+    secrets = short_tmp_path / "secrets"
     secrets.mkdir()
     credential = secrets / "task-service-auth.json"
     original_stat = None

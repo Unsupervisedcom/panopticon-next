@@ -129,6 +129,17 @@ def test_integrated_service_shell_quotes_configured_host(
     assert _host_options(command) == [configured_host]
 
 
+# 2119: REQ-035.29.1
+# 2119: REQ-035.52.4
+@pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+def test_disabled_integrated_service_defaults_to_loopback(
+    monkeypatch: pytest.MonkeyPatch, platform: str
+) -> None:
+    monkeypatch.setenv("PANOPTICON_SERVICE_AUTH_MODE", "disabled")
+    command = _service_command(monkeypatch, platform=platform)
+    assert _host_options(command) == ["127.0.0.1"]
+
+
 # 2119: REQ-046.5.1
 def test_auth_docs_describe_one_coherent_platform_aware_bind_policy() -> None:
     auth_docs = (Path(__file__).parents[2] / "docs" / "auth.md").read_text()
@@ -138,13 +149,15 @@ def test_auth_docs_describe_one_coherent_platform_aware_bind_policy() -> None:
         if block.startswith("The standalone task-service")
     )
     assert " ".join(paragraph.splitlines()) == (
-        "The standalone task-service launcher defaults to `127.0.0.1`. The integrated "
-        "`panopticon start` and `panopticon host` commands default to `127.0.0.1` on Darwin and "
-        "`0.0.0.0` on Linux and Windows so native containers can reach the service. "
-        "On native Linux this compatibility default intentionally listens on every host interface "
-        "because bridge containers cannot reach host loopback; safe operation therefore depends "
-        "on enforced task-service authentication plus independently encrypted and access-controlled "
-        "transport. `PANOPTICON_HOST` overrides both launch paths when the operator selects another "
-        "container-reachable intended interface. Bearer tokens travel over HTTP, so a broad bind "
-        "is appropriate only where every reachable interface has those protections."
+        "The standalone task-service launcher defaults to `127.0.0.1`. With enforced "
+        "authentication, the integrated `panopticon start` and `panopticon host` commands default "
+        "to `127.0.0.1` on Darwin and `0.0.0.0` on Linux and Windows so native containers can reach "
+        "the service. Disabled integrated startup defaults to loopback on every platform. On native "
+        "Linux the authenticated compatibility default intentionally listens on every host "
+        "interface because bridge containers cannot reach host loopback; safe operation therefore "
+        "depends on enforced task-service authentication plus independently encrypted and "
+        "access-controlled transport. `PANOPTICON_HOST` overrides these launch defaults when the "
+        "operator selects another container-reachable intended interface. Bearer tokens travel over "
+        "HTTP, so a broad bind is appropriate only where every reachable interface has those "
+        "protections."
     )

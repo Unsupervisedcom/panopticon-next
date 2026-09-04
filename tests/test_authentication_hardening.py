@@ -12,6 +12,7 @@ import socket
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -33,6 +34,13 @@ from panopticon.terminal import __main__ as terminal_cli
 
 class _Completed:
     returncode = 1
+
+
+@pytest.fixture
+def short_tmp_path() -> Path:
+    """Keep AF_UNIX fixture paths below macOS's 104-byte limit."""
+    with tempfile.TemporaryDirectory(prefix="pan-auth-") as directory:
+        yield Path(directory)
 
 
 def _asgi_status(
@@ -349,11 +357,11 @@ def test_non_ascii_operator_token_header_is_rejected_without_server_error(
     "invalid_kind", ["missing", "directory", "fifo", "socket", "symlink", "malformed"]
 )
 def test_shell_runner_rejects_an_invalid_service_credential_before_tmux(
-    tmp_path: Path, invalid_kind: str
+    short_tmp_path: Path, invalid_kind: str
 ) -> None:
     # 2119: REQ-035.28.1
     calls: list[list[str]] = []
-    invalid = tmp_path / "invalid.json"
+    invalid = short_tmp_path / "invalid.json"
     original_stat = None
     symlink_stat = None
     target_stat = None
@@ -369,7 +377,7 @@ def test_shell_runner_rejects_an_invalid_service_credential_before_tmux(
         bound_socket.bind(str(invalid))
         original_stat = invalid.stat()
     elif invalid_kind == "symlink":
-        target = tmp_path / "target.json"
+        target = short_tmp_path / "target.json"
         target.write_text("unchanged")
         invalid.symlink_to(target)
         symlink_stat = invalid.lstat()
@@ -387,7 +395,7 @@ def test_shell_runner_rejects_an_invalid_service_credential_before_tmux(
     ):
         ShellRunner(
             "http://svc:8000",
-            secrets_dir=tmp_path,
+            secrets_dir=short_tmp_path,
             auth_file=invalid.name,
             run=record,
         ).spawn("t1", script="echo hi")
