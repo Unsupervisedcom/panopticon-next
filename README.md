@@ -95,14 +95,14 @@ pipx ensurepath
 In that new terminal, install the versioned evaluator build:
 
 ```sh
-pipx install panopticon-app==0.0.6
+pipx install panopticon-next==0.0.6
 panopticon --version
 ```
 
 Expected result: `panopticon --version` prints `panopticon 0.0.6` without requiring a checkout or
 `uv`.
 
-The distribution is **`panopticon-app`**, but the command you run and the package you import are
+The distribution is **`panopticon-next`**, but the command you run and the package you import are
 both **`panopticon`**. To work from a checkout, run `uv sync` and then `uv run panopticon doctor`.
 
 ## Quickstart

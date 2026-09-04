@@ -38,7 +38,7 @@ RUN --mount=type=bind,source=.,target=/ctx \
     if [ -n "${PANOPTICON_WHEEL}" ]; then \
       pip install --no-cache-dir "/ctx/${PANOPTICON_WHEEL}"; \
     else \
-      pip install --no-cache-dir "panopticon-app==${PANOPTICON_VERSION}"; \
+      pip install --no-cache-dir "panopticon-next==${PANOPTICON_VERSION}"; \
     fi \
  && if [ -f /ctx/install-packaged-source.sh ]; then \
       bash /ctx/install-packaged-source.sh; \

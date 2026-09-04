@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.9--d33546bbbed8",
+  "requirementId": "REQ-054.7.9",
+  "hash": "d33546bbbed8",
+  "verdict": "pass",
+  "summary": "Live PTY sends the documented artifact and PR keys, rejects pre-key handoffs, and real host-opener recorders require one exact task artifact path with matching bytes and the exact canonical task PR URL.",
+  "timestamp": "2026-09-04T17:25:08.058Z"
+}

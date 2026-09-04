@@ -1,5 +1,5 @@
 [project]
-name = "panopticon-app"
+name = "panopticon-next"
 version = "0.0.6"
 description = "Self-hosted control plane for running a fleet of coding agents in isolated containers, governed by configurable workflows."
 readme = "README.md"

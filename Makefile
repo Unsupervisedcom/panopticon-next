@@ -55,11 +55,11 @@ build:  ## Build the base task-container image (override with IMAGE=)
 	uv build --wheel --out-dir src/panopticon/docker/
 	docker build \
 	  --tag $(IMAGE) \
-	  --build-arg PANOPTICON_WHEEL=$$(ls -1 src/panopticon/docker/panopticon_app*.whl | xargs -n1 basename) \
+	  --build-arg PANOPTICON_WHEEL=$$(ls -1 src/panopticon/docker/panopticon_next*.whl | xargs -n1 basename) \
 	  --build-arg PANOPTICON_BASE_FINGERPRINT=$$(uv run python -c 'from panopticon.sessionservice.images import _base_fingerprint; print(_base_fingerprint())') \
 	  --file src/panopticon/docker/Dockerfile \
 	  src/panopticon/docker/
-	rm -f src/panopticon/docker/panopticon_app*.whl
+	rm -f src/panopticon/docker/panopticon_next*.whl
 
 clean:  ## Remove the base image and any composed panopticon-* images
 	-docker rmi --force $(IMAGE)

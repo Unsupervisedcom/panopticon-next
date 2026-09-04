@@ -30,14 +30,13 @@ build is supplied as a wheel beside this walkthrough. Open the extracted evaluat
 directory in the new terminal and install that wheel in an isolated environment:
 
 ```sh
-pipx install ./panopticon_app-0.0.6-py3-none-any.whl
+pipx install ./panopticon_next-0.0.6-py3-none-any.whl
 panopticon --version
 panopticon doctor
 ```
 
-The immutable public-distribution command will be `pipx install panopticon-app==0.0.6` after that
-version is published. It is named here for the release contract, but it is not the current private
-evaluator path and is not required for this walkthrough.
+The immutable public-distribution command is `pipx install panopticon-next==0.0.6`. The local wheel
+path above remains available for an offline or independently checksummed evaluation.
 
 Expected result: `panopticon --version` prints `panopticon 0.0.6` without requiring a source
 checkout, and `doctor` ends with `All prerequisites satisfied.` Do not continue until both checks
@@ -196,7 +195,7 @@ above from the wheel's directory.
 
 ```sh
 export PANOPTICON_NEW_USER_ACCEPTANCE=I_AM_RUNNING_ON_A_DISPOSABLE_HOST
-export PANOPTICON_ACCEPTANCE_INSTALL_SPEC='panopticon-app @ file:///absolute/path/to/panopticon_app-0.0.6-py3-none-any.whl#sha256=<reviewed-wheel-sha256>'
+export PANOPTICON_ACCEPTANCE_INSTALL_SPEC='panopticon-next @ file:///absolute/path/to/panopticon_next-0.0.6-py3-none-any.whl#sha256=<reviewed-wheel-sha256>'
 export PANOPTICON_ACCEPTANCE_GITHUB_REPO='https://github.com/example/panopticon-acceptance-demo.git'
 export PANOPTICON_ACCEPTANCE_BASE_SHA='<reviewed 40-character default-branch SHA>'
 export PANOPTICON_ACCEPTANCE_HARNESS='codex'

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.6--488db4ef8688",
+  "requirementId": "REQ-054.7.6",
+  "hash": "488db4ef8688",
+  "verdict": "pass",
+  "summary": "Live journey creates the sole post-setup coding task through doc-parsed dashboard PTY inputs and drives both human gates from the attached agent pane; preexisting tasks, direct mutations, automatic transitions, wrong task attributes, and missing advance histories fail.",
+  "timestamp": "2026-09-04T17:25:02.783Z"
+}

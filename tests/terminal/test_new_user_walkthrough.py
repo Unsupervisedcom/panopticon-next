@@ -18,13 +18,14 @@ CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
 
 def test_install_docs_name_one_immutable_distribution_version() -> None:
     # 2119: REQ-054.1.1
-    command = "pipx install panopticon-app==0.0.6"
-    assert command in README
-    assert command in WALKTHROUGH
-    assert "panopticon-app @ git+" not in README
-    assert "panopticon-app @ git+" not in WALKTHROUGH
-    assert "@main" not in README
-    assert "@main" not in WALKTHROUGH
+    command = "pipx install panopticon-next==0.0.6"
+    for document in (README, WALKTHROUGH):
+        assert document.count(command) == 1
+        remaining = document.replace(command, "", 1)
+        remaining = remaining.replace("pipx install ./panopticon_next-0.0.6-py3-none-any.whl", "")
+        assert "pipx install " not in remaining
+        assert "panopticon-next @ git+" not in document
+        assert "@main" not in document
 
 
 def test_ci_installs_the_wheel_and_runs_its_executable_outside_the_checkout() -> None:
@@ -120,7 +121,7 @@ def test_walkthrough_documents_retention_and_verifiable_teardown() -> None:
 def test_walkthrough_names_every_input_instead_of_relying_on_hidden_state() -> None:
     # 2119: REQ-054.7.4
     documented_inputs = (
-        "pipx install panopticon-app==0.0.6",
+        "pipx install panopticon-next==0.0.6",
         "cd /path/to/disposable-repo",
         "git remote get-url origin",
         "working authentication for the selected harness",

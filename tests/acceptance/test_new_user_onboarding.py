@@ -43,8 +43,8 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _WALKTHROUGH_PATH = _ROOT / "docs" / "getting-started.md"
-_WALKTHROUGH_SHA256 = "8a38fcbb93a4989d8368ab557c9b1a7fc4a68d6649a3e115739c5da5c7b24ffd"
-_ACCEPTANCE_SOURCE_AST_SHA256 = "97147eb0032c397b10977b20d42fd6c4f72bed80add43108c022edc414265b01"
+_WALKTHROUGH_SHA256 = "a19e5841a398e3d2406579812c284a6dec874ad7bbd5e688b631379009280d11"
+_ACCEPTANCE_SOURCE_AST_SHA256 = "7438e7dc7854c3b01c0050a139ea76a477091ed9570eb4445a632125abc9422d"
 _OPT_IN = "I_AM_RUNNING_ON_A_DISPOSABLE_HOST"
 _REQUIRED = (
     "PANOPTICON_NEW_USER_ACCEPTANCE",
@@ -68,12 +68,12 @@ _PTY_BUFFER_LIMIT = 128 * 1024
 _SESSION_SWITCH_PROBE_KEYS = b"\x00"
 _DIAGNOSTIC_LIMIT = 12_000
 _HASHED_LOCAL_WHEEL = re.compile(
-    r"panopticon-app @ file:///\S+\.whl#sha256=[0-9a-f]{64}\Z", re.IGNORECASE
+    r"panopticon-next @ file:///\S+\.whl#sha256=[0-9a-f]{64}\Z", re.IGNORECASE
 )
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _LEGACY_WORKTREE_STATE = ("panopticon.db", "artifacts", "layers", "cache", "tasks")
 _WALKTHROUGH_SEQUENCE = (
-    "pipx install ./panopticon_app-0.0.6-py3-none-any.whl",
+    "pipx install ./panopticon_next-0.0.6-py3-none-any.whl",
     "panopticon --version",
     "panopticon doctor",
     "panopticon quickstart",
@@ -524,7 +524,7 @@ def _allowed_pre_setup_command(call_path: str, node: ast.Call) -> bool:
             "['panopticon', '--version']",
             "['panopticon', 'doctor']",
             "['pipx', 'ensurepath']",
-            "['pipx', 'runpip', 'panopticon-app', 'show', 'panopticon-app']",
+            "['pipx', 'runpip', 'panopticon-next', 'show', 'panopticon-next']",
             "install_argv",
         }
     if call_path == "subprocess.run":
@@ -1045,7 +1045,7 @@ def _walkthrough_contract_errors(contents: str) -> list[str]:
         "sudo apt-get update",
         "sudo apt-get install --yes pipx",
         "pipx ensurepath",
-        "pipx install ./panopticon_app-0.0.6-py3-none-any.whl",
+        "pipx install ./panopticon_next-0.0.6-py3-none-any.whl",
         "panopticon --version",
         "panopticon doctor",
         "cd /path/to/disposable-repo",
@@ -1117,7 +1117,7 @@ def _documented_walkthrough(contents: str) -> DocumentedWalkthrough:
         raise ValueError("; ".join(errors))
     user_walkthrough = contents.split("## Maintainer:", 1)[0]
     install_lines = re.findall(
-        r"(?m)^(pipx install \./panopticon_app-([0-9]+(?:\.[0-9]+){2})-py3-none-any\.whl)$",
+        r"(?m)^(pipx install \./panopticon_next-([0-9]+(?:\.[0-9]+){2})-py3-none-any\.whl)$",
         user_walkthrough,
     )
     if len(install_lines) != 1:
@@ -1911,7 +1911,7 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
     assert shutil.which("panopticon", path=env["PATH"]) == str(panopticon)
     version = _run(["panopticon", "--version"], env=env, cwd=tmp_path).stdout.strip()
     package = _run(
-        ["pipx", "runpip", "panopticon-app", "show", "panopticon-app"],
+        ["pipx", "runpip", "panopticon-next", "show", "panopticon-next"],
         env=env,
         cwd=tmp_path,
     ).stdout
@@ -2418,10 +2418,10 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
 
 
 def _valid_local_install_spec(tmp_path: Path) -> str:
-    wheel = tmp_path / "panopticon_app-0.0.6-py3-none-any.whl"
+    wheel = tmp_path / "panopticon_next-0.0.6-py3-none-any.whl"
     wheel.write_bytes(b"reviewed evaluator wheel")
     digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
-    return f"panopticon-app @ {wheel.as_uri()}#sha256={digest}"
+    return f"panopticon-next @ {wheel.as_uri()}#sha256={digest}"
 
 
 def test_complete_configuration_enables_clean_host_acceptance(tmp_path: Path) -> None:
@@ -2472,7 +2472,7 @@ def test_live_driver_consumes_the_current_documented_walkthrough_contract() -> N
     assert walkthrough.install_argv == (
         "pipx",
         "install",
-        "./panopticon_app-0.0.6-py3-none-any.whl",
+        "./panopticon_next-0.0.6-py3-none-any.whl",
     )
     assert walkthrough.quickstart_argv == ("panopticon", "quickstart")
     assert walkthrough.task_prompt == (
@@ -2499,16 +2499,18 @@ def test_live_install_version_is_bound_to_the_user_walkthrough() -> None:
 
 def test_live_install_command_is_bound_to_the_documented_wheel(tmp_path: Path) -> None:
     walkthrough = _documented_walkthrough(_WALKTHROUGH_PATH.read_text())
-    correct = tmp_path / "panopticon_app-0.0.6-py3-none-any.whl"
-    wrong = tmp_path / "panopticon_app-1.2.3-py3-none-any.whl"
+    correct = tmp_path / "panopticon_next-0.0.6-py3-none-any.whl"
+    wrong = tmp_path / "panopticon_next-1.2.3-py3-none-any.whl"
 
     wheel_path, argv = _documented_local_wheel(
-        f"panopticon-app @ {correct.as_uri()}#sha256={'a' * 64}", walkthrough
+        f"panopticon-next @ {correct.as_uri()}#sha256={'a' * 64}", walkthrough
     )
     assert wheel_path == correct
     assert tuple(argv) == walkthrough.install_argv
     with pytest.raises(AssertionError, match="artifact named in the walkthrough"):
-        _documented_local_wheel(f"panopticon-app @ {wrong.as_uri()}#sha256={'a' * 64}", walkthrough)
+        _documented_local_wheel(
+            f"panopticon-next @ {wrong.as_uri()}#sha256={'a' * 64}", walkthrough
+        )
 
 
 @pytest.mark.parametrize("fragment", (*_WALKTHROUGH_SEQUENCE, *_WALKTHROUGH_PLACEHOLDERS))
@@ -2576,13 +2578,13 @@ def test_walkthrough_contract_rejects_unexecuted_commands_and_placeholders(
 
 
 def test_hash_pinned_local_wheel_enables_offline_bundle_acceptance(tmp_path: Path) -> None:
-    wheel = tmp_path / "panopticon_app-1.2.3-py3-none-any.whl"
+    wheel = tmp_path / "panopticon_next-1.2.3-py3-none-any.whl"
     wheel.write_bytes(b"reviewed evaluator wheel")
     digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
     values = {
         "PANOPTICON_NEW_USER_ACCEPTANCE": _OPT_IN,
         "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": (
-            f"panopticon-app @ {wheel.as_uri()}#sha256={digest}"
+            f"panopticon-next @ {wheel.as_uri()}#sha256={digest}"
         ),
         "PANOPTICON_ACCEPTANCE_GITHUB_REPO": (
             "https://github.com/acme/panopticon-acceptance-disposable.git"
@@ -2879,14 +2881,16 @@ def test_post_setup_request_audit_rejects_mutating_http_methods() -> None:
 
 
 def test_local_wheel_acceptance_rejects_missing_or_symlinked_artifacts(tmp_path: Path) -> None:
-    target = tmp_path / "panopticon_app-1.2.3-py3-none-any.whl"
+    target = tmp_path / "panopticon_next-1.2.3-py3-none-any.whl"
     target.write_bytes(b"reviewed evaluator wheel")
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
-    link = tmp_path / "linked-panopticon_app-1.2.3-py3-none-any.whl"
+    link = tmp_path / "linked-panopticon_next-1.2.3-py3-none-any.whl"
     link.symlink_to(target)
     values = {
         "PANOPTICON_NEW_USER_ACCEPTANCE": _OPT_IN,
-        "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": (f"panopticon-app @ {link.as_uri()}#sha256={digest}"),
+        "PANOPTICON_ACCEPTANCE_INSTALL_SPEC": (
+            f"panopticon-next @ {link.as_uri()}#sha256={digest}"
+        ),
         "PANOPTICON_ACCEPTANCE_GITHUB_REPO": (
             "https://github.com/acme/panopticon-acceptance-disposable.git"
         ),
@@ -2899,7 +2903,7 @@ def test_local_wheel_acceptance_rejects_missing_or_symlinked_artifacts(tmp_path:
 
     assert _configuration(values) is None
     values["PANOPTICON_ACCEPTANCE_INSTALL_SPEC"] = (
-        f"panopticon-app @ {(tmp_path / 'missing.whl').as_uri()}#sha256={digest}"
+        f"panopticon-next @ {(tmp_path / 'missing.whl').as_uri()}#sha256={digest}"
     )
     assert _configuration(values) is None
 
@@ -3039,7 +3043,7 @@ def test_live_diagnostics_are_bounded_and_redact_both_credentials() -> None:
 
 def test_live_configuration_repr_omits_both_credentials() -> None:
     config = LiveConfiguration(
-        install_spec="panopticon-app==1.2.3",
+        install_spec="panopticon-next==1.2.3",
         repo_url="https://github.com/acme/panopticon-acceptance-disposable.git",
         base_sha="a" * 40,
         github_token="github-secret",
@@ -3091,16 +3095,16 @@ def test_clean_host_acceptance_requires_every_explicit_input(tmp_path: Path, mis
     ("key", "value"),
     [
         ("PANOPTICON_NEW_USER_ACCEPTANCE", "1"),
-        ("PANOPTICON_ACCEPTANCE_INSTALL_SPEC", "panopticon-app"),
-        ("PANOPTICON_ACCEPTANCE_INSTALL_SPEC", "panopticon-app @ git+https://github.com/a/b@main"),
+        ("PANOPTICON_ACCEPTANCE_INSTALL_SPEC", "panopticon-next"),
+        ("PANOPTICON_ACCEPTANCE_INSTALL_SPEC", "panopticon-next @ git+https://github.com/a/b@main"),
         (
             "PANOPTICON_ACCEPTANCE_INSTALL_SPEC",
-            "panopticon-app @ https://token@example.com/panopticon_app-1.2.3-py3-none-any.whl#sha256="
+            "panopticon-next @ https://token@example.com/panopticon_next-1.2.3-py3-none-any.whl#sha256="
             + "a" * 64,
         ),
         (
             "PANOPTICON_ACCEPTANCE_INSTALL_SPEC",
-            "panopticon-app @ git+https://token@example.com/a/b@" + "a" * 40,
+            "panopticon-next @ git+https://token@example.com/a/b@" + "a" * 40,
         ),
         ("PANOPTICON_ACCEPTANCE_GITHUB_REPO", "https://token@github.com/acme/repo"),
         ("PANOPTICON_ACCEPTANCE_GITHUB_REPO", "https://gitlab.com/acme/repo"),
@@ -3143,7 +3147,7 @@ def test_complete_live_configuration_enters_the_real_journey(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config = LiveConfiguration(
-        install_spec="panopticon-app==1.2.3",
+        install_spec="panopticon-next==1.2.3",
         repo_url="https://github.com/acme/panopticon-acceptance-disposable.git",
         base_sha="a" * 40,
         github_token="github-token",

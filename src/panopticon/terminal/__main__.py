@@ -249,7 +249,7 @@ def main(
 ) -> int:
     parser = argparse.ArgumentParser(prog="panopticon", description="panopticon operator CLI")
     try:
-        installed_version = version("panopticon-app")
+        installed_version = version("panopticon-next")
     except PackageNotFoundError:
         installed_version = "unknown"
     parser.add_argument("--version", action="version", version=f"%(prog)s {installed_version}")

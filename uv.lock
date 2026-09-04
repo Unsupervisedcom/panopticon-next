@@ -753,7 +753,7 @@ wheels = [
 ]
 
 [[package]]
-name = "panopticon-app"
+name = "panopticon-next"
 version = "0.0.6"
 source = { editable = "." }
 dependencies = [

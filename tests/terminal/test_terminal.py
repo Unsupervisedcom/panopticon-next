@@ -19,7 +19,7 @@ def test_version_reports_installed_distribution(capsys: pytest.CaptureFixture[st
     with pytest.raises(SystemExit) as raised:
         cli.main(["--version"])
     assert raised.value.code == 0
-    assert capsys.readouterr().out.strip() == f"panopticon {version('panopticon-app')}"
+    assert capsys.readouterr().out.strip() == f"panopticon {version('panopticon-next')}"
 
 
 class _FakeClient:

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.8--e93926065846",
+  "requirementId": "REQ-054.7.8",
+  "hash": "e93926065846",
+  "verdict": "pass",
+  "summary": "Live journey forks real quickstart onto a POSIX PTY, sends parsed t and Ctrl-b d keys through that terminal, observes the sole tmux client move dashboard-to-selected-task-and-back, and preserves the original dashboard pane ID and PID; wrong-key and premature-switch cases are rejected.",
+  "timestamp": "2026-09-04T17:25:16.075Z"
+}
