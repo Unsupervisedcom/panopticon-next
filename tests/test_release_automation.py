@@ -4,6 +4,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+RELEASE_PLEASE_WORKFLOW = (ROOT / ".github" / "workflows" / "release-please.yml").read_text()
+CI_WORKFLOW = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
 
 
 def _publish_image_job() -> str:
@@ -22,6 +24,7 @@ def test_published_release_builds_image_from_the_release_artifact() -> None:
 
 def test_image_uses_and_verifies_the_new_release_version() -> None:
     image_job = _publish_image_job()
+    assert "shopt -s nullglob" in image_job
     assert 'version="${GITHUB_REF_NAME#v}"' in image_job
     assert 'version("panopticon-next")' in image_job
     assert "from panopticon.sessionservice.images import _base_fingerprint" in image_job
@@ -40,3 +43,13 @@ def test_image_is_published_to_ghcr_for_both_supported_architectures() -> None:
     assert "push: true" in image_job
     assert "type=raw,value=${{ env.VERSION }}" in image_job
     assert "type=raw,value=latest,enable=${{ !github.event.release.prerelease }}" in image_job
+
+
+def test_release_workflows_fail_closed_and_limit_the_default_token() -> None:
+    smoke = CI_WORKFLOW.partition("      - name: Smoke-test clean wheel\n")[2]
+    assert smoke, "CI workflow has no clean-wheel smoke test"
+    assert "run: |\n          set -euo pipefail" in smoke
+    assert "permissions:\n  contents: read" in RELEASE_PLEASE_WORKFLOW
+    assert "contents: write" not in RELEASE_PLEASE_WORKFLOW
+    assert "issues: write" not in RELEASE_PLEASE_WORKFLOW
+    assert "pull-requests: write" not in RELEASE_PLEASE_WORKFLOW

@@ -86,6 +86,7 @@ jobs:
       - name: Prepare release image inputs
         run: |
           set -euo pipefail
+          shopt -s nullglob
           version="${GITHUB_REF_NAME#v}"
           if [ "$version" = "$GITHUB_REF_NAME" ]; then
             echo "Release tag must start with v; got '$GITHUB_REF_NAME'." >&2

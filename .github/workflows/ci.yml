@@ -42,6 +42,7 @@ jobs:
 
       - name: Smoke-test clean wheel
         run: |
+          set -euo pipefail
           uv venv --python 3.13 .wheel-venv
           uv pip install --python .wheel-venv/bin/python dist/*.whl
           cd /tmp

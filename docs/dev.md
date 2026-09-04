@@ -107,11 +107,22 @@ release builds both Python distributions, publishes them to PyPI with trusted pu
 publishes the same release wheel in a multi-platform base image at
 `ghcr.io/unsupervisedcom/panopticon-next:<version>`. Non-prereleases also update the `latest` tag.
 
-GitHub Actions MUST have access to a `RELEASE_PLEASE_TOKEN` secret whose token can write contents,
-issues, and pull requests. This follows the dedicated-PAT convention used by the ai-outfitter
-repositories because organization policy can prevent the default `GITHUB_TOKEN` from opening PRs.
-PyPI MUST configure `Unsupervisedcom/panopticon-next`, workflow `release.yml`, and environment
-`pypi` as a trusted publisher before the first release.
+Complete this setup before merging the automation PR:
+
+1. GitHub Actions MUST have access to a `RELEASE_PLEASE_TOKEN` repository or inherited
+   organization secret. Its fine-grained PAT MUST grant `Unsupervisedcom/panopticon-next` write
+   access to contents, issues, and pull requests. This follows the dedicated-PAT convention used
+   by the ai-outfitter repositories because organization policy can prevent the default
+   `GITHUB_TOKEN` from opening PRs.
+2. GitHub MUST have an environment named `pypi`.
+3. The `panopticon-next` project on PyPI MUST configure a trusted publisher with owner
+   `Unsupervisedcom`, repository `panopticon-next`, workflow `release.yml`, and environment `pypi`.
+   Trusted publishing uses GitHub OIDC, so no `PYPI_TOKEN` secret is needed.
+
+Before merging each generated release PR, an independent reviewer MUST approve it. Inspect the
+proposed version and stop for explicit user approval if it is a major version or carries a breaking
+change. After merge, verify that the GitHub Release, PyPI version, immutable GHCR version tag, and
+non-prerelease `latest` tag were published successfully.
 
 The image job uses the release wheel rather than resolving an unpinned package from the index. It
 MUST verify that the release tag, wheel metadata, image CLI version, and base-image fingerprint all
