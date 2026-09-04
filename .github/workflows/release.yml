@@ -26,7 +26,7 @@ jobs:
 
       - name: Verify release tag matches package version
         run: |
-          package_version=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          package_version=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
           test "$GITHUB_REF_NAME" = "v$package_version"
 
       - name: Build distributions
