@@ -3,6 +3,7 @@ COMPLETE, run as a host shell script rather than a task container."""
 
 from __future__ import annotations
 
+import errno
 import importlib.resources
 import json
 import os
@@ -66,6 +67,16 @@ def _fake_script_bin(tmp_path: Path, script_body: str) -> Path:
     fake.write_text(script_body)
     fake.chmod(0o755)
     return bin_dir
+
+
+def _read_pty(fd: int) -> bytes:
+    """Treat Linux's EIO on a closed PTY slave as end-of-file."""
+    try:
+        return os.read(fd, 4096)
+    except OSError as exc:
+        if exc.errno == errno.EIO:
+            return b""
+        raise
 
 
 def test_default_workflow_runner_type_is_docker() -> None:
@@ -443,19 +454,22 @@ def test_read_secret_disables_echo_before_showing_its_prompt() -> None:
         while b"Secret: " not in output and time.monotonic() < deadline:
             readable, _, _ = select.select([master_fd], [], [], 0.1)
             if readable:
-                output.extend(os.read(master_fd, 4096))
+                chunk = _read_pty(master_fd)
+                if not chunk:
+                    break
+                output.extend(chunk)
         assert b"Secret: " in output
         os.write(master_fd, b"eager-secret\n")
         while process.poll() is None and time.monotonic() < deadline:
             readable, _, _ = select.select([master_fd], [], [], 0.1)
             if readable:
-                output.extend(os.read(master_fd, 4096))
+                chunk = _read_pty(master_fd)
+                if not chunk:
+                    break
+                output.extend(chunk)
         assert process.wait(timeout=1) == 0
         while select.select([master_fd], [], [], 0)[0]:
-            try:
-                chunk = os.read(master_fd, 4096)
-            except OSError:
-                break
+            chunk = _read_pty(master_fd)
             if not chunk:
                 break
             output.extend(chunk)
