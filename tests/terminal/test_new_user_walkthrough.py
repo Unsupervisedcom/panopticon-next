@@ -6,6 +6,7 @@ import os
 import stat
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,6 +15,7 @@ WALKTHROUGH = (ROOT / "docs" / "getting-started.md").read_text()
 WALKTHROUGH_TEXT = " ".join(WALKTHROUGH.split())
 WALKTHROUGH_FOLDED = WALKTHROUGH_TEXT.casefold()
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+RELEASE_VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
 
 
 def test_install_docs_name_one_public_install_and_onboarding_command() -> None:
@@ -23,7 +25,9 @@ def test_install_docs_name_one_public_install_and_onboarding_command() -> None:
         assert command in document
         remaining = document.replace(command, "")
         remaining = remaining.replace("pipx install panopticon-next", "")
-        remaining = remaining.replace("pipx install ./panopticon_next-0.2.8-py3-none-any.whl", "")
+        remaining = remaining.replace(
+            f"pipx install ./panopticon_next-{RELEASE_VERSION}-py3-none-any.whl", ""
+        )
         assert "pipx install " not in remaining
         assert "panopticon-next @ git+" not in document
         assert "@main" not in document

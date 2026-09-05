@@ -1,0 +1,184 @@
+name: Release to PyPI
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Verify release tag matches package version
+        run: |
+          package_version=$(uv run python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          test "$GITHUB_REF_NAME" = "v$package_version"
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/panopticon-next
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-image:
+    name: Publish Docker image
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Prepare release image inputs
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          version="${GITHUB_REF_NAME#v}"
+          if [ "$version" = "$GITHUB_REF_NAME" ]; then
+            echo "Release tag must start with v; got '$GITHUB_REF_NAME'." >&2
+            exit 1
+          fi
+
+          wheels=(dist/*.whl)
+          if [ "${#wheels[@]}" -ne 1 ]; then
+            echo "Expected exactly one release wheel; found ${#wheels[@]}." >&2
+            exit 1
+          fi
+
+          uv venv --python 3.13 "$RUNNER_TEMP/image-venv"
+          uv pip install --python "$RUNNER_TEMP/image-venv/bin/python" "${wheels[0]}"
+          installed_version=$("$RUNNER_TEMP/image-venv/bin/python" -c 'from importlib.metadata import version; print(version("panopticon-next"))')
+          if [ "$installed_version" != "$version" ]; then
+            echo "Release tag version '$version' does not match wheel version '$installed_version'." >&2
+            exit 1
+          fi
+
+          fingerprint=$("$RUNNER_TEMP/image-venv/bin/python" -c 'from panopticon.sessionservice.images import _base_fingerprint; print(_base_fingerprint())')
+          wheel=$(basename -- "${wheels[0]}")
+          cp -- "${wheels[0]}" "src/panopticon/docker/$wheel"
+
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "WHEEL=$wheel" >> "$GITHUB_ENV"
+          echo "BASE_FINGERPRINT=$fingerprint" >> "$GITHUB_ENV"
+
+      - name: Build smoke-test image
+        run: |
+          docker build \
+            --tag "$IMAGE:$VERSION-smoke" \
+            --build-arg "PANOPTICON_VERSION=$VERSION" \
+            --build-arg "PANOPTICON_WHEEL=$WHEEL" \
+            --build-arg "PANOPTICON_BASE_FINGERPRINT=$BASE_FINGERPRINT" \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --file src/panopticon/docker/Dockerfile \
+            src/panopticon/docker/
+
+      - name: Smoke test release image
+        run: |
+          set -euo pipefail
+          actual=$(docker run --rm --entrypoint panopticon "$IMAGE:$VERSION-smoke" --version)
+          if [ "$actual" != "panopticon $VERSION" ]; then
+            echo "Expected image CLI version 'panopticon $VERSION'; got '$actual'." >&2
+            exit 1
+          fi
+          actual_fingerprint=$(docker image inspect --format '{{ index .Config.Labels "io.panopticon.base-fingerprint" }}' "$IMAGE:$VERSION-smoke")
+          test "$actual_fingerprint" = "$BASE_FINGERPRINT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve published image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ env.VERSION }}
+            type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and publish multi-platform image
+        uses: docker/build-push-action@v6
+        with:
+          context: src/panopticon/docker/
+          file: src/panopticon/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            PANOPTICON_VERSION=${{ env.VERSION }}
+            PANOPTICON_WHEEL=${{ env.WHEEL }}
+            PANOPTICON_BASE_FINGERPRINT=${{ env.BASE_FINGERPRINT }}
+          cache-from: type=gha,scope=release-image
+          cache-to: type=gha,mode=max,scope=release-image

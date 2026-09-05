@@ -16,6 +16,11 @@ make check
 npx --yes rfc2119@0.7.0 check
 ```
 
+Release Please derives versions and changelog entries from Conventional Commit headers. Commits
+that should produce a release MUST use `fix:` for a patch or `feat:` for a feature. A breaking
+change MUST NOT use a `type!:` header or `BREAKING CHANGE:` footer without explicit maintainer
+approval.
+
 Do not commit credentials, task transcripts, operator configuration, private planning documents,
 or artifacts from a live fleet. Use synthetic fixtures in tests.
 
