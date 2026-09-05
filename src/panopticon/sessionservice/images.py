@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import importlib.resources
 import logging
+import shutil
 import tempfile
 from collections.abc import Iterator, Sequence
 from functools import cache
@@ -90,18 +91,22 @@ def _stage_packaged_source(destination: Path) -> None:
         target.write_bytes(resource.read_bytes())
 
 
-def _base_fingerprint() -> str:
+def _base_fingerprint(wheel: Path | None = None) -> str:
     """Fingerprint every packaged input that defines the base image.
 
-    The package version matters because the production build installs that exact release. The
-    Dockerfile and entrypoint define the base build context, while the installed package source
-    defines the code task containers execute.
+    The package version matters when the production build installs that exact release. A local
+    wheel's contents matter for an unpublished build because they define dependencies and entry
+    points. The Dockerfile and entrypoint define the base build context, while the installed
+    package source defines the code task containers execute.
     """
     import panopticon
     import panopticon.docker as _docker_pkg
 
     digest = hashlib.sha256()
     digest.update(panopticon.__version__.encode())
+    if wheel is not None:
+        digest.update(b"\0wheel\0")
+        digest.update(wheel.read_bytes())
     digest.update(b"\0packaged-source\0")
     digest.update(_packaged_source_digest())
     for name in ("Dockerfile", "entrypoint.sh"):
@@ -113,8 +118,15 @@ def _base_fingerprint() -> str:
 class ImageBuilder:
     """Builds composed task images on the local Docker daemon (one host)."""
 
-    def __init__(self, *, base: str = DEFAULT_IMAGE, run: CommandRunner = _subprocess_run) -> None:
+    def __init__(
+        self,
+        *,
+        base: str = DEFAULT_IMAGE,
+        wheel: Path | None = None,
+        run: CommandRunner = _subprocess_run,
+    ) -> None:
         self._base = base
+        self._wheel = wheel
         self._run = run
 
     def build(
@@ -142,7 +154,7 @@ class ImageBuilder:
         import panopticon
         import panopticon.docker as _docker_pkg
 
-        fingerprint = _base_fingerprint()
+        fingerprint = _base_fingerprint(self._wheel)
         dockerfile_ref = importlib.resources.files(_docker_pkg) / "Dockerfile"
         entrypoint_ref = importlib.resources.files(_docker_pkg) / "entrypoint.sh"
         source_installer_ref = importlib.resources.files(_docker_pkg) / "install-packaged-source.sh"
@@ -155,14 +167,21 @@ class ImageBuilder:
             entrypoint_path.write_bytes(entrypoint_ref.read_bytes())
             source_installer_path.write_bytes(source_installer_ref.read_bytes())
             _stage_packaged_source(context_path / "panopticon-source" / "panopticon")
+            build_args = [
+                "--build-arg",
+                f"PANOPTICON_VERSION={panopticon.__version__}",
+            ]
+            if self._wheel is not None:
+                wheel_name = self._wheel.name
+                shutil.copyfile(self._wheel, context_path / wheel_name)
+                build_args.extend(["--build-arg", f"PANOPTICON_WHEEL={wheel_name}"])
             self._run(
                 [
                     "docker",
                     "build",
                     "--tag",
                     self._base,
-                    "--build-arg",
-                    f"PANOPTICON_VERSION={panopticon.__version__}",
+                    *build_args,
                     "--build-arg",
                     f"PANOPTICON_BASE_FINGERPRINT={fingerprint}",
                     "--file",
@@ -179,7 +198,7 @@ class ImageBuilder:
         tag has no matching label, so package upgrades rebuild it before any task is spawned.
         Returns ``True`` if a build was triggered, ``False`` when the current image is reusable.
         """
-        fingerprint = _base_fingerprint()
+        fingerprint = _base_fingerprint(self._wheel)
         current = self._run(
             [
                 "docker",

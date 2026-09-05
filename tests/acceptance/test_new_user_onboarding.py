@@ -48,8 +48,8 @@ _RELEASE_VERSION = cast(
     str, tomllib.loads((_ROOT / "pyproject.toml").read_text())["project"]["version"]
 )
 _RELEASE_WHEEL = f"panopticon_next-{_RELEASE_VERSION}-py3-none-any.whl"
-_WALKTHROUGH_SHA256 = "7b0c93a0b2f95016950e87822bd3d7a2b7b4f24f681928d701ab4676e0ffd2b8"
-_ACCEPTANCE_SOURCE_AST_SHA256 = "ba1c67a9cca4ba1c59fbbaf3e21c934200357161f892bcef1d039c7cecc28939"
+_WALKTHROUGH_SHA256 = "a34ddeb6d4d643b4dfd8253b8eca311f7b2b39319b475dc36601a4a03d5ef1d3"
+_ACCEPTANCE_SOURCE_AST_SHA256 = "c5a486fa055d95077e921d3c635cbff6bfb75b030bc6c595bf2677073c87d280"
 _OPT_IN = "I_AM_RUNNING_ON_A_DISPOSABLE_HOST"
 _REQUIRED = (
     "PANOPTICON_NEW_USER_ACCEPTANCE",
@@ -78,7 +78,8 @@ _HASHED_LOCAL_WHEEL = re.compile(
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _LEGACY_WORKTREE_STATE = ("panopticon.db", "artifacts", "layers", "cache", "tasks")
 _WALKTHROUGH_SEQUENCE = (
-    f"pipx install ./{_RELEASE_WHEEL}",
+    f"PANOPTICON_RELEASE_VERSION={_RELEASE_VERSION} # x-release-please-version",
+    'pipx install "./panopticon_next-${PANOPTICON_RELEASE_VERSION}-py3-none-any.whl"',
     "panopticon --version",
     "panopticon doctor",
     "panopticon quickstart",
@@ -1022,7 +1023,11 @@ def _local_wheel_matches(wheel_path: Path, expected_hash: str) -> bool:
 def _walkthrough_contract_errors(contents: str) -> list[str]:
     """Return missing, duplicated, or out-of-order steps that would desync the live driver."""
     errors: list[str] = []
-    release_version = re.search(r"panopticon_next-([0-9]+(?:\.[0-9]+){2})-", contents)
+    release_version = re.search(
+        r"(?m)^PANOPTICON_RELEASE_VERSION=([0-9]+(?:\.[0-9]+){2}) "
+        r"# x-release-please-version$",
+        contents,
+    )
     digest_input = (
         contents.replace(release_version.group(1), "RELEASE_VERSION")
         if release_version is not None
@@ -1056,7 +1061,8 @@ def _walkthrough_contract_errors(contents: str) -> list[str]:
         "sudo apt-get update",
         "sudo apt-get install --yes pipx",
         "pipx ensurepath",
-        f"pipx install ./{_RELEASE_WHEEL}",
+        f"PANOPTICON_RELEASE_VERSION={_RELEASE_VERSION} # x-release-please-version",
+        'pipx install "./panopticon_next-${PANOPTICON_RELEASE_VERSION}-py3-none-any.whl"',
         "panopticon --version",
         "panopticon doctor",
         "cd /path/to/disposable-repo",
@@ -1103,6 +1109,7 @@ def _walkthrough_contract_errors(contents: str) -> list[str]:
         "PANOPTICON_SERVICE_AUTH_FILE",
         "PANOPTICON_SERVICE_AUTH_MODE",
         "PANOPTICON_SERVICE_AUTH_TOKEN",
+        "PANOPTICON_RELEASE_VERSION",
     }
     unknown_environment_names = set(re.findall(r"\bPANOPTICON_[A-Z0-9_]+\b", contents)) - (
         allowed_environment_names
@@ -1127,12 +1134,21 @@ def _documented_walkthrough(contents: str) -> DocumentedWalkthrough:
     if errors:
         raise ValueError("; ".join(errors))
     user_walkthrough = contents.split("## Maintainer:", 1)[0]
-    install_lines = re.findall(
-        r"(?m)^(pipx install \./panopticon_next-([0-9]+(?:\.[0-9]+){2})-py3-none-any\.whl)$",
+    version_lines = re.findall(
+        r"(?m)^PANOPTICON_RELEASE_VERSION=([0-9]+(?:\.[0-9]+){2}) "
+        r"# x-release-please-version$",
         user_walkthrough,
     )
-    if len(install_lines) != 1:
-        raise ValueError("walkthrough must define one exact versioned install command")
+    install_lines = re.findall(
+        r'(?m)^pipx install "(\./panopticon_next-\$\{PANOPTICON_RELEASE_VERSION\}'
+        r'-py3-none-any\.whl)"$',
+        user_walkthrough,
+    )
+    if len(version_lines) != 1 or len(install_lines) != 1:
+        raise ValueError("walkthrough must define one release version and wheel install command")
+    install_version = version_lines[0]
+    wheel_path = install_lines[0].replace("${PANOPTICON_RELEASE_VERSION}", install_version)
+    install_command = f"pipx install {wheel_path}"
     quickstart_lines = re.findall(r"(?m)^panopticon quickstart(?:[ \t].*)?$", user_walkthrough)
     if quickstart_lines != ["panopticon quickstart"]:
         raise ValueError("walkthrough must define one exact quickstart command")
@@ -1162,8 +1178,8 @@ def _documented_walkthrough(contents: str) -> DocumentedWalkthrough:
     if detach_labels != {"Ctrl-b d"}:
         raise ValueError("walkthrough must consistently define tmux detach as Ctrl-b d")
     return DocumentedWalkthrough(
-        install_version=install_lines[0][1],
-        install_argv=tuple(shlex.split(install_lines[0][0])),
+        install_version=install_version,
+        install_argv=tuple(shlex.split(install_command)),
         quickstart_argv=tuple(shlex.split(quickstart_lines[0])),
         task_prompt=task_prompt,
         advance_commands={name.lower(): command for name, command in advance_commands.items()},
