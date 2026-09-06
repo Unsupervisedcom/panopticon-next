@@ -26,11 +26,17 @@ def test_install_docs_name_one_public_install_and_onboarding_command() -> None:
         remaining = document.replace(command, "")
         remaining = remaining.replace("pipx install panopticon-next", "")
         remaining = remaining.replace(
-            f"pipx install ./panopticon_next-{RELEASE_VERSION}-py3-none-any.whl", ""
+            'pipx install "./panopticon_next-${PANOPTICON_RELEASE_VERSION}-py3-none-any.whl"',
+            "",
         )
         assert "pipx install " not in remaining
         assert "panopticon-next @ git+" not in document
         assert "@main" not in document
+
+
+def test_release_marker_cannot_consume_the_wheel_compatibility_tag() -> None:
+    assert f"PANOPTICON_RELEASE_VERSION={RELEASE_VERSION} # x-release-please-version" in WALKTHROUGH
+    assert "x-release-please-start-version\npipx install" not in WALKTHROUGH
 
 
 def test_ci_installs_the_wheel_and_runs_its_executable_outside_the_checkout() -> None:

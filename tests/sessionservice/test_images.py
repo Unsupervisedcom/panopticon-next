@@ -150,11 +150,13 @@ class _MultiRecorder:
         self._installed_purelib = installed_purelib
         self.calls: list[tuple[list[str], bool]] = []
         self.packaged_source: dict[str, bytes] = {}
+        self.staged_wheels: tuple[str, ...] = ()
 
     def __call__(self, args: Sequence[str], *, check: bool = True, verbose: bool = False) -> str:
         self.calls.append((list(args), check))
         source = Path(args[-1]) / "panopticon-source" / "panopticon"
         if args[:2] == ["docker", "build"] and source.is_dir():
+            self.staged_wheels = tuple(path.name for path in Path(args[-1]).glob("*.whl"))
             self.packaged_source = {
                 path.relative_to(source).as_posix(): path.read_bytes()
                 for path in source.rglob("*")
@@ -405,6 +407,14 @@ def test_rebuilt_base_image_executes_revised_packaged_source(
     _use_packaged_source(monkeypatch, source)
     _clear_source_fingerprint_cache()
     image = f"panopticon-source-delivery-{os.getpid()}"
+    wheel_directory = tmp_path / "dist"
+    subprocess.run(
+        ["uv", "build", "--wheel", "--out-dir", str(wheel_directory)],
+        cwd=Path(__file__).parents[2],
+        check=True,
+    )
+    wheels = tuple(wheel_directory.glob("*.whl"))
+    assert len(wheels) == 1
 
     def installed_value() -> str:
         result = subprocess.run(
@@ -425,7 +435,7 @@ def test_rebuilt_base_image_executes_revised_packaged_source(
         return result.stdout.strip()
 
     try:
-        builder = ImageBuilder(base=image)
+        builder = ImageBuilder(base=image, wheel=wheels[0])
         builder.build_base()
         assert installed_value() == "stale source"
 
@@ -508,3 +518,25 @@ def test_build_base_unconditional() -> None:
     assert file_arg.endswith("Dockerfile")
     assert Path(file_arg).parent == Path(build_cmd[-1])
     assert "sessionservice/images.py" in rec.packaged_source
+
+
+def test_build_base_can_install_a_local_unpublished_wheel(tmp_path: Path) -> None:
+    wheel = tmp_path / "panopticon_next-9.9.9-py3-none-any.whl"
+    wheel.write_bytes(b"candidate wheel")
+    rec = _MultiRecorder("")
+
+    ImageBuilder(base="panopticon-base", wheel=wheel, run=rec).build_base()
+
+    build_args = _build_args(rec.calls[0][0])
+    assert "PANOPTICON_WHEEL=panopticon_next-9.9.9-py3-none-any.whl" in build_args
+    assert rec.staged_wheels == (wheel.name,)
+
+
+def test_local_wheel_contents_participate_in_the_base_fingerprint(tmp_path: Path) -> None:
+    wheel = tmp_path / "panopticon_next-9.9.9-py3-none-any.whl"
+    wheel.write_bytes(b"first candidate")
+    first = _base_fingerprint(wheel)
+
+    wheel.write_bytes(b"revised candidate")
+
+    assert _base_fingerprint(wheel) != first

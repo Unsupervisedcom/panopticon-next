@@ -30,9 +30,8 @@ build is supplied as a wheel beside this walkthrough. Open the extracted evaluat
 directory in the new terminal and install that wheel in an isolated environment:
 
 ```sh
-# x-release-please-start-version
-pipx install ./panopticon_next-0.2.8-py3-none-any.whl
-# x-release-please-end
+PANOPTICON_RELEASE_VERSION=0.2.8 # x-release-please-version
+pipx install "./panopticon_next-${PANOPTICON_RELEASE_VERSION}-py3-none-any.whl"
 panopticon --version
 panopticon doctor
 ```
@@ -200,9 +199,7 @@ above from the wheel's directory.
 
 ```sh
 export PANOPTICON_NEW_USER_ACCEPTANCE=I_AM_RUNNING_ON_A_DISPOSABLE_HOST
-# x-release-please-start-version
-export PANOPTICON_ACCEPTANCE_INSTALL_SPEC='panopticon-next @ file:///absolute/path/to/panopticon_next-0.2.8-py3-none-any.whl#sha256=<reviewed-wheel-sha256>'
-# x-release-please-end
+export PANOPTICON_ACCEPTANCE_INSTALL_SPEC="panopticon-next @ file:///absolute/path/to/panopticon_next-${PANOPTICON_RELEASE_VERSION}-py3-none-any.whl#sha256=<reviewed-wheel-sha256>"
 export PANOPTICON_ACCEPTANCE_GITHUB_REPO='https://github.com/example/panopticon-acceptance-demo.git'
 export PANOPTICON_ACCEPTANCE_BASE_SHA='<reviewed 40-character default-branch SHA>'
 export PANOPTICON_ACCEPTANCE_HARNESS='codex'
