@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-005.4.1--e586ed991cc0",
+  "requirementId": "REQ-005.4.1",
+  "hash": "e586ed991cc0",
+  "verdict": "pass",
+  "summary": "Tests execute the real setup path for wholly missing, partially existing, and already-existing catalog directories, including idempotent rerun.",
+  "timestamp": "2026-09-08T22:29:15.114Z"
+}

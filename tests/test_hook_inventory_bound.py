@@ -120,12 +120,13 @@ def test_every_registered_pi_runtime_injects_the_bounded_extension(tmp_path: Pat
     assert (tmp_path / ".pi" / "agent" / PI_EXTENSION_FILE).read_text() == TURN_EXTENSION
     assert (tmp_path / ".outfitter" / OUTFITTER_EXTENSION_FILE).read_text() == TURN_EXTENSION
 
-    launch = LaunchContext(home=tmp_path, cwd=Path("/workspace"))
-    for harness, expected_extension in (
-        (PiHarness(), tmp_path / ".pi" / "agent" / PI_EXTENSION_FILE),
-        (OutfitterHarness(), tmp_path / ".outfitter" / OUTFITTER_EXTENSION_FILE),
+    for harness, expected_extension, starting_model in (
+        (PiHarness(), tmp_path / ".pi" / "agent" / PI_EXTENSION_FILE, None),
+        (OutfitterHarness(), tmp_path / ".outfitter" / OUTFITTER_EXTENSION_FILE, "vega"),
     ):
-        argv = harness.argv(launch)
+        argv = harness.argv(
+            LaunchContext(home=tmp_path, cwd=Path("/workspace"), starting_model=starting_model)
+        )
         assert argv.count("--extension") == 1
         extension_index = argv.index("--extension")
         assert argv[extension_index + 1] == str(expected_extension)

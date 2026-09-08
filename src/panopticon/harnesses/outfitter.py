@@ -206,11 +206,13 @@ class OutfitterHarness(Harness):
 
     def argv(self, ctx: LaunchContext) -> list[str]:
         """Launch the selected Outfitter agent through pi with Panopticon pass-through args."""
+        if not ctx.starting_model:
+            raise ValueError(
+                "the Outfitter harness requires an agent slug; select a concrete agent or set "
+                "the repository's default_model"
+            )
         config_dir = self.config_dir(ctx.home)
-        argv = ["outfitter", "run"]
-        if ctx.starting_model:
-            argv.append(ctx.starting_model)
-        argv += ["--harness", "pi", "--strict"]
+        argv = ["outfitter", "run", ctx.starting_model, "--harness", "pi"]
 
         extension = config_dir / EXTENSION_FILE
         overview = config_dir / WORKFLOW_OVERVIEW_FILE

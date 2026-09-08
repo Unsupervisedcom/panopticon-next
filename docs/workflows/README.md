@@ -21,7 +21,7 @@ lifecycle — see [Tasks](../tasks.md).
 | [`spike`](spike.md) | **Open-ended** agent work with no gates. Use for exploration, debugging, and research, until you call it done. | Nothing lands on its own |
 | [`orchestrator`](orchestrator.md) | An agent that **decomposes a goal into child tasks**, each pre-planned and handed to you ready to approve. Use to fan work out across agents. | New pre-planned child tasks |
 | [`outfitter-founder`](outfitter-catalog.md) | The Outfitter community catalog's **founder** package: work and commit locally, get an independent review, then push as the human. Resolved from the operator's `.agents` catalog. | A reviewed branch pushed to the forge |
-| [`outfitter-engineer`](outfitter-catalog.md) | The catalog's **engineer** package: research, develop, open a draft PR, get an independent review, then merge as the human. | A GitHub PR (independently reviewed) |
+| [`outfitter-engineer`](outfitter-catalog.md) | The catalog's **engineer** package: scope an issue, develop, open a draft PR, get an independent review, then merge as the human. | A GitHub PR (independently reviewed) |
 | [`outfitter-software-factory`](outfitter-catalog.md) | The catalog's **software-factory** package: a resident engineer takes one typed issue through CI and independent review to a platform-performed merge. | A GitHub PR merged by the platform |
 | [`setup-repo`](setup-repo.md) | A host-side **setup utility** (no container) that dispatches auth setup for the repo's default harness. Launched from the repos screen, not the task picker. | Harness auth in the repo's env-file or credential directory |
 

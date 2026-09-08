@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.27.1--dd7c1baf1855",
+  "requirementId": "REQ-035.27.1",
+  "hash": "dd7c1baf1855",
+  "verdict": "pass",
+  "summary": "Live production processes report both resolved modes, disabled mode is verified at warning level, and docs require enforced steady state.",
+  "timestamp": "2026-09-08T22:29:19.130Z"
+}

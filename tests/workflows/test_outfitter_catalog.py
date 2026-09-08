@@ -153,6 +153,27 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(tmp_path: Path) -> N
     _provide(root / "cache" / "repos" / key, _package(title="From the uri checkout"))
     assert load_catalog_workflow("sample", root=root).title == "From the uri checkout"
 
+    credentialed = "git+https://user:secret@example.test/private.git"
+    redacted = "git+https://REDACTED@example.test/private.git"
+    private_key = base64.urlsafe_b64encode(f"{redacted}#v1.0.0".encode()).decode().rstrip("=")
+    custom_cache = tmp_path / "custom-cache"
+    (root / "settings.yml").write_text(
+        yaml.safe_dump(
+            {
+                "cache_directory": str(custom_cache),
+                "sources": [{"uri": credentialed, "ref": "v1.0.0"}],
+            }
+        )
+    )
+    _provide(custom_cache / "repos" / private_key, _package(title="From the private checkout"))
+    assert load_catalog_workflow("sample", root=root).title == "From the private checkout"
+
+    (root / "settings.yml").write_text(
+        yaml.safe_dump({"sources": [{"uri": uri, "ref": "v1.0.0", "path": "../escape"}]})
+    )
+    with pytest.raises(InvalidCatalogWorkflow, match="must stay inside"):
+        load_catalog_workflow("sample", root=root)
+
 
 # 2119: 1.4
 def test_settings_local_sources_replace_the_settings_list_wholesale(tmp_path: Path) -> None:
@@ -249,6 +270,37 @@ def test_an_unresolvable_nested_workflow_is_rejected(tmp_path: Path) -> None:
     )
     with pytest.raises(InvalidCatalogWorkflow, match="cycle-a -> cycle-b -> cycle-a"):
         load_catalog_workflow("cycle-a", root=root)
+    # Only a registered root must be a chain. A nested workflow remains one projected gate,
+    # so its valid DAG may fan out without invalidating the root.
+    _provide(
+        root,
+        _package(
+            id="nested-dag",
+            nodes=[
+                {"id": "classify", "action": "classify", "description": "Classify."},
+                {
+                    "id": "bug",
+                    "action": "file-bug",
+                    "description": "Bug.",
+                    "needs": ["classify"],
+                },
+                {
+                    "id": "feature",
+                    "action": "file-feature",
+                    "description": "Feature.",
+                    "needs": ["classify"],
+                },
+            ],
+        ),
+    )
+    _provide(
+        root,
+        _package(
+            id="delegates-to-dag",
+            nodes=[{"id": "triage", "workflow": "nested-dag", "description": "Triage."}],
+        ),
+    )
+    assert load_catalog_workflow("delegates-to-dag", root=root).id == "delegates-to-dag"
 
 
 # -- 2: contract validation ----------------------------------------------------------
@@ -475,6 +527,8 @@ def test_an_empty_agents_root_skips_the_workflows_without_failing(
     registry = discover_workflows(_home_workflows=tmp_path / "none")
     assert not {name for name in registry if name.startswith("outfitter-")}
     assert "spike" in registry  # the rest of the registry is unaffected
+    (empty / "settings.yml").write_text("workflows:\n")
+    assert enabled_workflows(empty) == ()
 
 
 # 2119: 4.4
@@ -499,15 +553,31 @@ def test_a_broken_package_is_skipped_and_the_rest_register(
         ],
     )
     _provide(root, duplicate_labels)
-    (root / "settings.yml").write_text("workflows: [good, broken, broken-projection]\n")
+    reserved_terminal = _package(
+        id="reserved-terminal",
+        nodes=[{"id": "complete", "action": "finish", "description": "Finish."}],
+    )
+    _provide(root, reserved_terminal)
+    method_name = _package(
+        id="method-name",
+        integrations={},
+        nodes=[{"id": "tools", "action": "inspect", "description": "Inspect."}],
+    )
+    _provide(root, method_name)
+    (root / "settings.yml").write_text(
+        "workflows: [good, broken, broken-projection, reserved-terminal, method-name]\n"
+    )
     monkeypatch.setenv(AGENTS_ENV, str(root))
     registry = discover_workflows(_home_workflows=tmp_path / "none")
     assert "outfitter-good" in registry
     assert "outfitter-broken" not in registry
     assert "outfitter-broken-projection" not in registry
+    assert "outfitter-reserved-terminal" not in registry
+    assert registry["outfitter-method-name"].tools() == ()
     assert "spike" in registry
     assert "skipping catalog package 'broken'" in caplog.text
     assert "skipping catalog package 'broken-projection'" in caplog.text
+    assert "skipping catalog package 'reserved-terminal'" in caplog.text
 
 
 # -- 5: skills and tools -------------------------------------------------------------
@@ -546,6 +616,12 @@ def test_forge_skills_follow_the_package_actions() -> None:
     ]
     factory_like = _forge_package("open-draft-pr", "wait-for-required-ci", "merge-after-approval")
     assert [s.name for s in _workflow_for(factory_like).skills()] == [
+        "open-pr",
+        "babysit-ci",
+        "babysit-merge",
+    ]
+    current_engineer = _forge_package("open-draft-pr", "verify-and-merge-as-human")
+    assert [s.name for s in _workflow_for(current_engineer).skills()] == [
         "open-pr",
         "babysit-ci",
         "babysit-merge",

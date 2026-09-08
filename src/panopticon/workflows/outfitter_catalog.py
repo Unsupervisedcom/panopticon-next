@@ -10,11 +10,12 @@ root enables** onto the workflow interface — no per-package Python class, and 
 to adopt a new package.
 
 The packages are **resolved through the operator's Outfitter ``.agents`` root**
-(``$PANOPTICON_AGENTS``, default ``~/.agents``) at workflow instantiation, the same layered
-graph Outfitter resolves: the root's own ``workflows/<id>/workflow.yaml`` first, then each
+(``$PANOPTICON_AGENTS``, default ``~/.agents``) at workflow instantiation: the root's own
+``workflows/<id>/workflow.yaml`` first, then each direct
 ``sources`` entry of ``settings.yml`` (``settings.local.yml`` replaces the list wholesale) in
-listed order, a remote source living at the checkout Outfitter caches under
-``cache/repos/<base64url(uri#ref)>``. The pin is therefore the source ref in the ``.agents``
+listed order, a remote source living under Outfitter's effective cache directory (the root's
+``cache/`` by default) at ``repos/<base64url(redacted-uri#ref)>``. The pin is therefore the
+source ref in the ``.agents``
 settings, and upgrading or enabling a workflow is an ``.agents`` change, not a Panopticon release.
 Nothing is vendored into this repository, and a host whose root enables no workflows registers no
 Outfitter workflows. Nested workflow dependencies remain resolvable without becoming top-level
@@ -35,9 +36,7 @@ LLM-free:
 - A node that performs an ``action`` is agent work: the agent enters on its own turn, records
   the node's description as its one responsibility, and advances itself once it is met.
 - A node that delegates to a nested ``workflow`` (``adversarial-review`` in all three) is the
-  operator's sign-off gate: it is user-advanced, and its label is the node id — ``REVIEW`` — so
-  a repo that declares a reviewer launch pair gets the governed cross-model review task from
-  ADR 0014 / REQ-013 on entry. The built-ins here leave the pair unset (REQ-002.27).
+  operator's sign-off gate: it is user-advanced, and its label is the node id — ``REVIEW``.
 - A node whose actor is a ``human`` is the human's work: user turn on entry, user-advanced,
   and no agent responsibilities.
 - A node whose actor is a ``system`` (the platform merging after every gate) is observed by
@@ -47,8 +46,9 @@ Skills are the existing GitHub-forge procedures, selected by the actions a packa
 performs (``open-draft-pr`` → ``open-pr``, ``wait-for-required-ci`` → ``babysit-ci``, the merge
 actions → ``babysit-merge``) plus a small ``push-branch`` skill for the founder's
 ``push-as-human``. A task's harness is the operator's choice as usual; under the ``outfitter``
-harness the task's starting model is the Outfitter **agent slug**, so the actor profiles are
-surfaced in each state's description for the operator to pick.
+harness the task's starting model is a required, concrete Outfitter **agent slug**. Catalog actor
+profiles are surfaced in state descriptions as role guidance, but an abstract role such as
+``engineer`` is not directly launchable; choose one of the catalog's concrete residents.
 """
 
 from __future__ import annotations
@@ -65,8 +65,9 @@ from typing import Any, ClassVar, cast
 import yaml
 
 from panopticon.core.models import Actor, Responsibility, Skill, Tool
-from panopticon.core.state import BaseState, Complete, InitialState, State
+from panopticon.core.state import TERMINAL_LABELS, BaseState, Complete, InitialState, State
 from panopticon.core.workflow import InvalidWorkflow, WorkflowUnavailable
+from panopticon.harnesses import HARNESSES
 from panopticon.workflows.github_forge import GithubForgeWorkflow
 
 #: Environment override for the Outfitter ``.agents`` root the packages are resolved from.
@@ -83,6 +84,7 @@ _ACTION_SKILLS: Mapping[str, tuple[str, ...]] = {
     "open-draft-pr": ("open-pr", "babysit-ci"),  # a draft PR implies keeping its CI green
     "wait-for-required-ci": ("babysit-ci",),
     "merge-as-human": ("babysit-merge",),
+    "verify-and-merge-as-human": ("babysit-merge",),
     "merge-after-approval": ("babysit-merge",),
     "push-as-human": ("push-branch",),
 }
@@ -155,7 +157,7 @@ def enabled_workflows(root: Path) -> tuple[str, ...]:
     """Workflow roots enabled by settings, as Outfitter's ordered-set union."""
     enabled: list[str] = []
     for document in _settings_layers(root):
-        raw = document.get("workflows", [])
+        raw = document.get("workflows") or []
         if not isinstance(raw, list):
             raise InvalidCatalogWorkflow("Outfitter settings: `workflows` must be a list")
         layer_enabled: set[str] = set()
@@ -169,6 +171,24 @@ def enabled_workflows(root: Path) -> tuple[str, ...]:
             if workflow_id not in enabled:
                 enabled.append(workflow_id)
     return tuple(enabled)
+
+
+def _cache_directory(root: Path) -> Path:
+    """The effective Outfitter cache root, including a local settings override."""
+    for document in reversed(_settings_layers(root)):
+        if "cache_directory" not in document:
+            continue
+        configured = _require_str(
+            document["cache_directory"], where="Outfitter settings: cache_directory"
+        )
+        path = Path(configured)
+        return path if path.is_absolute() else root / path
+    return root / "cache"
+
+
+def _redact_uri_credentials(uri: str) -> str:
+    """Mirror Outfitter's persisted cache-key redaction for credentialed URIs."""
+    return re.sub(r"(//)[^/@\s]+@", r"\1REDACTED@", uri)
 
 
 def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
@@ -188,11 +208,33 @@ def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
             raise InvalidCatalogWorkflow(f"agents source {source!r}: a local source needs a `path`")
         local = Path(subpath)
         return local if local.is_absolute() else root / local
-    target = uri if isinstance(uri, str) else f"git+https://github.com/{github}.git"
+    if uri is not None and github is not None:
+        raise InvalidCatalogWorkflow(
+            f"agents source {source!r}: declare exactly one of `uri` or `github`"
+        )
+    if uri is not None:
+        target = _require_str(uri, where="agents source: uri")
+    else:
+        shorthand = _require_str(github, where="agents source: github")
+        target = f"git+https://github.com/{shorthand}.git"
     ref = source.get("ref") or ""
-    key = base64.urlsafe_b64encode(f"{target}#{ref}".encode()).decode().rstrip("=")
-    checkout = root / "cache" / "repos" / key
-    return checkout / subpath if isinstance(subpath, str) and subpath else checkout
+    if not isinstance(ref, str):
+        raise InvalidCatalogWorkflow(f"agents source {source!r}: `ref` must be a string")
+    cache_target = _redact_uri_credentials(target)
+    key = base64.urlsafe_b64encode(f"{cache_target}#{ref}".encode()).decode().rstrip("=")
+    checkout = _cache_directory(root) / "repos" / key
+    if not isinstance(subpath, str) or not subpath:
+        return checkout
+    if Path(subpath).is_absolute():
+        raise InvalidCatalogWorkflow(
+            f"agents source {source!r}: remote `path` must be relative to its checkout"
+        )
+    selected = Path(os.path.abspath(checkout / subpath))
+    if not selected.is_relative_to(Path(os.path.abspath(checkout))):
+        raise InvalidCatalogWorkflow(
+            f"agents source {source!r}: remote `path` must stay inside its checkout"
+        )
+    return selected
 
 
 def catalog_layers(root: Path) -> tuple[Path, ...]:
@@ -279,7 +321,9 @@ def _str_list(value: object, *, where: str) -> tuple[str, ...]:
     return items
 
 
-def parse_catalog_workflow(document: object, *, source: str = "workflow.yaml") -> CatalogWorkflow:
+def parse_catalog_workflow(
+    document: object, *, source: str = "workflow.yaml", require_chain: bool = True
+) -> CatalogWorkflow:
     """Validate a parsed ``workflow.yaml`` against Outfitter's contract and Panopticon's chain rule.
 
     Contract checks mirror ``workflow.schema.json`` plus the resolver's referential rules: ids,
@@ -379,8 +423,26 @@ def parse_catalog_workflow(document: object, *, source: str = "workflow.yaml") -
         actors=actors,
         environments=environments,
         integrations=integrations,
-        nodes=_chain(nodes, source=source),
+        nodes=_chain(nodes, source=source)
+        if require_chain
+        else _dependency_order(nodes, source=source),
     )
+
+
+def _dependency_order(nodes: Mapping[str, CatalogNode], *, source: str) -> tuple[CatalogNode, ...]:
+    """Topologically order a valid DAG without applying Panopticon's root chain rule."""
+    pending = dict(nodes)
+    ordered: list[CatalogNode] = []
+    resolved: set[str] = set()
+    while pending:
+        ready = [node for node in pending.values() if set(node.needs) <= resolved]
+        if not ready:
+            raise InvalidCatalogWorkflow(f"{source}: workflow nodes contain a dependency cycle")
+        for node in ready:
+            ordered.append(node)
+            resolved.add(node.id)
+            del pending[node.id]
+    return tuple(ordered)
 
 
 def _chain(nodes: Mapping[str, CatalogNode], *, source: str) -> tuple[CatalogNode, ...]:
@@ -421,8 +483,13 @@ def _package_path(workflow_id: str, root: Path) -> Path:
     layers = catalog_layers(root)
     for layer in layers:
         path = layer / "workflows" / workflow_id / "workflow.yaml"
-        if path.is_file():
-            return path
+        try:
+            if path.is_file():
+                return path
+        except OSError as error:
+            raise InvalidCatalogWorkflow(
+                f"cannot inspect catalog package path {path}: {error}"
+            ) from error
     raise CatalogUnavailable(
         f"catalog package {workflow_id!r} is not provided by the agents root {root} "
         f"(searched its workflows/ directory and {len(layers) - 1} configured source(s))"
@@ -463,7 +530,7 @@ def _load_catalog_workflow(
         document = yaml.safe_load(content)
     except yaml.YAMLError as error:
         raise InvalidCatalogWorkflow(f"{path}: not valid YAML: {error}") from error
-    workflow = parse_catalog_workflow(document, source=str(path))
+    workflow = parse_catalog_workflow(document, source=str(path), require_chain=not stack)
     if workflow.id != workflow_id:
         raise InvalidCatalogWorkflow(
             f"{path}: package id {workflow.id!r} does not match its directory {workflow_id!r}"
@@ -516,6 +583,12 @@ def project_states(workflow: CatalogWorkflow) -> tuple[type[BaseState], ...]:
             f"catalog package {workflow.id!r}: node ids collapse to duplicate Panopticon state "
             f"labels {duplicates}"
         )
+    reserved = sorted(set(labels) & TERMINAL_LABELS)
+    if reserved:
+        raise InvalidCatalogWorkflow(
+            f"catalog package {workflow.id!r}: node ids use reserved terminal state labels "
+            f"{reserved}"
+        )
 
     states: list[type[BaseState]] = []
     for index, node in enumerate(workflow.nodes):
@@ -539,7 +612,8 @@ def project_states(workflow: CatalogWorkflow) -> tuple[type[BaseState], ...]:
             if index == 0:  # InitialState waits for the user's first instruction; keep that
                 attrs["turn_on_enter"] = Actor.USER
             attrs["responsibilities"] = (Responsibility(node.action or node.id, node.description),)
-        states.append(cast(type[BaseState], type(node.id.replace("-", "_"), (base,), attrs)))
+        state_name = f"_catalog_state_{node.id.replace('-', '_').replace('.', '_')}"
+        states.append(cast(type[BaseState], type(state_name, (base,), attrs)))
     return tuple(states)
 
 
@@ -630,7 +704,11 @@ def catalog_workflow(workflow_id: str) -> OutfitterCatalogWorkflow:
             "__qualname__": f"catalog_workflow.{workflow_id}",
         },
     )
-    return cast(OutfitterCatalogWorkflow, cls())
+    workflow = cast(OutfitterCatalogWorkflow, cls())
+    # Validate while still inside workflow_provider's per-package failure boundary. Discovery
+    # validates again, but the graph is cached and one malformed catalog can never abort startup.
+    workflow.validate_registration(HARNESSES)
+    return workflow
 
 
 def workflow_provider() -> Iterator[OutfitterCatalogWorkflow]:
@@ -652,5 +730,5 @@ def workflow_provider() -> Iterator[OutfitterCatalogWorkflow]:
     for workflow_id in workflow_ids:
         try:
             yield catalog_workflow(workflow_id)
-        except InvalidCatalogWorkflow as error:
+        except InvalidWorkflow as error:
             _log.warning("skipping catalog package %r: %s", workflow_id, error)

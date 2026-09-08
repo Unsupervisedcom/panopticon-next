@@ -15,8 +15,8 @@ examples.
 The projection keeps ADR 0004's rule that a workflow is code: the package supplies the node chain
 and its descriptions, while Python owns the gate policy, the skills, and the tools. Each node
 becomes one state in dependency order. Action nodes are agent work. A node that delegates to a
-nested workflow is the operator's sign-off gate. Its label in all three packages is `REVIEW`, so a
-declared reviewer launch pair engages the governed review task of `REQ-013` on entry.
+nested workflow is the operator's user-advanced sign-off gate. Its label in all three packages is
+`REVIEW`.
 
 ## Requirements
 
@@ -26,8 +26,9 @@ declared reviewer launch pair engages the governed review task of `REQ-013` on e
    defaulting to `~/.agents` — never from files shipped inside this repository.
 2. Resolution MUST take the first `workflows/<id>/workflow.yaml` provided by the root itself and
    then by each `settings.yml` source in listed order.
-3. A remote source MUST resolve at the root's `cache/repos/` checkout keyed by the unpadded
-   URL-safe base64 of `<uri>#<ref>`, a `github` shorthand normalizing to
+3. A remote source MUST resolve under the effective cache directory (`<root>/cache` by default,
+   overridden by `cache_directory`) at a checkout keyed by the unpadded URL-safe base64 of
+   `<credential-redacted-uri>#<ref>`, a `github` shorthand normalizing to
    `git+https://github.com/<owner>/<repo>.git`.
 4. A `sources` list in `settings.local.yml` MUST replace the `settings.yml` list wholesale.
 5. Loading a package that no layer provides MUST fail with an error naming the package and the
@@ -86,6 +87,8 @@ declared reviewer launch pair engages the governed review task of `REQ-013` on e
 - Panopticon never fetches or syncs a catalog itself: it reads only what Outfitter has already
   checked out under the `.agents` root, and upgrading the catalog is a change to that root's
   pinned sources, not to Panopticon.
+- Panopticon reads the root and its effective direct `sources`; Outfitter must materialize any
+  `remote_settings` or transitive source closure into a directly configured layer first.
 - Outfitter's agent definitions, skills, prompt fragments, and MCP declarations are not composed by
   Panopticon; a task's harness and model remain the operator's choice.
 - Packages whose nodes fan in or fan out are outside this change.

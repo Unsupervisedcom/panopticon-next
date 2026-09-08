@@ -12,16 +12,17 @@ roots themselves. The canonical implementation-plan packages look like:
 | Workflow | Package | Lifecycle |
 |---|---|---|
 | `outfitter-founder` | `founder` | `WORK → COMMIT → REVIEW → PUSH → COMPLETE` |
-| `outfitter-engineer` | `engineer` | `RESEARCH → DEVELOP → DRAFT → REVIEW → MERGE → COMPLETE` |
+| `outfitter-engineer` | `engineer` | `ISSUE → DEVELOP → DRAFT → REVIEW → MERGE → COMPLETE` |
 | `outfitter-software-factory` | `software-factory` | `PREPARE → IMPLEMENT → DRAFT → CI → REVIEW → MERGE → COMPLETE` |
 
 (plus `DROPPED`, reachable from any state.)
 
 The packages are resolved through the operator's Outfitter **`.agents` root**
 (`$PANOPTICON_AGENTS`, default `~/.agents`) when the service builds its workflow registry — the
-same layered graph Outfitter resolves: the root's own `workflows/` directory first, then each
+effective direct graph used by these catalogs: the root's own `workflows/` directory first, then each
 `sources` entry of `settings.yml` (`settings.local.yml` replaces the list wholesale) in listed
-order, a remote source at the checkout Outfitter caches under `cache/repos/`. Nothing is vendored:
+order, a remote source under the effective cache directory (`<root>/cache` by default, or
+`cache_directory`) keyed exactly as Outfitter keys it. Nothing is vendored:
 the pin and `workflows` enablement live in `.agents` settings, so upgrading or enabling the catalog
 is an `.agents` change, not a Panopticon release. On a host whose settings enable no roots,
 discovery registers none. A missing or invalid enabled root is skipped with a log line rather than
@@ -29,6 +30,23 @@ blocking startup. The `adversarial-review` package must be resolvable because th
 workflow nests it, but it does not become a separate Panopticon workflow.
 
 All three are **opt-in**: enable them for a repo before they appear in the task-creation picker.
+
+## Local smoke test from this worktree
+
+Point discovery at one of the real catalog checkouts and print the projected lifecycle before
+starting services:
+
+```console
+$ PANOPTICON_AGENTS=/home/ncrmro/repos/unsupervised/dotagents.worktrees/feat/resident-workflows \
+    uv run python -c 'from panopticon.workflows.outfitter_catalog import workflow_provider; print({w.name: w.ordered_phases() for w in workflow_provider()})'
+{'outfitter-software-factory': ['PREPARE', 'IMPLEMENT', 'DRAFT', 'CI', 'REVIEW', 'MERGE', 'COMPLETE']}
+```
+
+For a live task, start Panopticon from this worktree with the same `PANOPTICON_AGENTS`, enable
+`outfitter-software-factory` for the target repo, and set the repo pair to `outfitter` plus a
+concrete resident slug such as `vega`. The repo's `credential_dir` must contain a materialized copy
+of that catalog at `outfitter/.agents` and Pi authentication at `auth.json`. The host-side setting
+controls workflow discovery; the mounted credential copy supplies the isolated task container.
 
 ## How a package becomes a lifecycle
 
@@ -38,7 +56,7 @@ Panopticon's, not the catalog's:
 | Node kind | Projected state |
 |---|---|
 | Performs an `action` | Agent work. The agent enters on its own turn, has one responsibility (the node's description, keyed by the action name), and advances itself once it is met. |
-| Delegates to a nested `workflow` (`adversarial-review`) | **Your sign-off gate.** User-advanced. Its label is `REVIEW`, so a repo that declares a reviewer launch pair gets the governed cross-model review task (ADR 0014, REQ-013) on entry; otherwise you review and advance. |
+| Delegates to a nested `workflow` (`adversarial-review`) | **Your sign-off gate.** User-advanced. Its label is `REVIEW`; review the result and advance it explicitly. |
 | Actor is a `human` | Your work: entered on your turn, user-advanced, no agent responsibilities. |
 | Actor is a `system` (the platform merging after every gate) | Observed by the agent, which advances once the platform has acted. |
 
@@ -65,7 +83,7 @@ Research, implement, review, and merge changes through a human-authenticated eng
 
 | State | What happens | Who advances |
 |---|---|---|
-| **RESEARCH** | Investigate the problem and solution space. | The agent. |
+| **ISSUE** | Reproduce the report and file one scoped issue with checkable acceptance criteria. | The agent. |
 | **DEVELOP** | Implement and refine the change locally. | The agent. |
 | **DRAFT** | Open a draft pull request as the human (`open-pr`), then keep CI green (`babysit-ci`). | The agent. |
 | **REVIEW** | Request an independent review after CI passes. | **You**, once the verdict is addressed. |
@@ -94,10 +112,13 @@ the package reaches GitHub, as a CLI or through the GitHub MCP server.
 ## Harness and agent
 
 A task's harness is your choice, as for any workflow. Under the `outfitter` harness the task's
-starting-model field selects the Outfitter **agent slug**; each state's description names the actor
-profile the package expects, so select the organization binding (for the current AI Outfitter and
-Unsupervised catalogs, `engineer`). Under `claude`, `codex`, or `pi`, the state descriptions and
-skills carry the same lifecycle without Outfitter's composed agent.
+starting-model field must select a concrete Outfitter **agent slug**; each state's description
+names the actor role the package expects. Abstract bindings such as Unsupervised's `engineer` role
+are not launchable agents: select an existing resident that implements the role (`vega` or `luce`
+for Unsupervised; `vega-ai-outfitter` or `luce-ai-outfitter` for AI Outfitter). This starts a task
+session from the existing catalog; it does not deploy another Agent Operator resident. Under
+`claude`, `codex`, or `pi`, the state descriptions and skills carry the same lifecycle without
+Outfitter composition.
 
 ## What is not projected
 
@@ -105,6 +126,8 @@ Panopticon never fetches or syncs a catalog itself — it reads only what Outfit
 checked out under the `.agents` root — and it does not compose the
 packages' agent definitions, skills, prompt fragments, or MCP declarations. Environments and
 integrations are surfaced in the state descriptions for the agent, not provisioned.
+Only the root and its effective direct `sources` are read; run `outfitter sync` and make any
+`remote_settings` or transitive catalog dependency directly available before starting Panopticon.
 
 ## Related
 

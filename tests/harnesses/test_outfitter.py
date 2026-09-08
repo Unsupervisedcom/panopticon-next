@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from panopticon.core.models import Skill
 from panopticon.harnesses import INTERRUPT_PROMPT, BootstrapContext, LaunchContext
 from panopticon.harnesses.outfitter import (
@@ -167,7 +169,6 @@ def test_argv_passes_agent_and_panopticon_controls_through_to_pi(tmp_path: Path)
         "engineering-default",
         "--harness",
         "pi",
-        "--strict",
         "--append-prompt",
         str(tmp_path / ".outfitter" / WORKFLOW_OVERVIEW_FILE),
         "--",
@@ -189,7 +190,6 @@ def test_starting_model_is_an_agent_slug_not_a_pi_model(tmp_path: Path) -> None:
         "local-qwen-high",
         "--harness",
         "pi",
-        "--strict",
         "--",
     ]
     assert "--model" not in argv
@@ -200,12 +200,14 @@ def test_blank_overview_and_absent_skills_still_render_required_turn_extension(
     tmp_path: Path,
 ) -> None:
     HARNESS.bootstrap(_bootstrap_ctx(tmp_path, overview=" ", skills=[], operations={}))
-    assert HARNESS.argv(_ctx(tmp_path)) == [
+    with pytest.raises(ValueError, match="requires an agent slug"):
+        HARNESS.argv(_ctx(tmp_path))
+    assert HARNESS.argv(_ctx(tmp_path, starting_model="vega")) == [
         "outfitter",
         "run",
+        "vega",
         "--harness",
         "pi",
-        "--strict",
         "--",
         "--extension",
         str(tmp_path / ".outfitter" / EXTENSION_FILE),
@@ -229,7 +231,6 @@ def test_resume_uses_pi_native_state_fallback_and_interrupt_prompt(tmp_path: Pat
         "ignored-on-resume",
         "--harness",
         "pi",
-        "--strict",
         "--",
         "--continue",
         INTERRUPT_PROMPT,

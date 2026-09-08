@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.4--b00418070365",
+  "requirementId": "outfitter-workflows.4.4",
+  "hash": "b00418070365",
+  "verdict": "pass",
+  "summary": "Validation, label-collision, and reserved-terminal projection failures are each skipped with diagnostics while multiple valid packages and a built-in remain usable.",
+  "timestamp": "2026-09-08T22:34:26.611Z"
+}

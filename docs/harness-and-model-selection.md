@@ -119,7 +119,9 @@ and prepares `<credential_dir>/outfitter/.agents` as the catalog source mounted 
 
 The harness writes `~/.agents/settings.yml` with its generated local source first and adds the
 credential catalog when present. Populate `<credential_dir>/outfitter/.agents/agents/<slug>/agent.md`
-and its referenced resources, then set the task's `starting_model` to the selected agent slug.
+and its referenced resources, then set the task's `starting_model` to a concrete selected agent
+slug (or set that slug as the repository's `default_model`). Outfitter tasks reject an empty agent
+selection instead of entering Outfitter's interactive setup wizard.
 Panopticon does not fetch catalog sources inside a task; synchronize or populate that mounted
 catalog before launch.
 
