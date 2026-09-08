@@ -31,7 +31,7 @@ src/panopticon/
                    # its shell_script in a host tmux session (here: `claude setup-token`)) +
                    # Spec2119Human/Spec2119Auto/Spec2119AutoSol = spec-driven forge lifecycles with
                    # human-gated, automatic, and Sol-only-review variants;
-                   # outfitter_catalog.py = every Outfitter catalog package under the operator's
+                   # outfitter_catalog.py = each Outfitter workflow root enabled by the operator's
                    # `.agents` root ($PANOPTICON_AGENTS, default ~/.agents; its workflows/ dir,
                    # then each settings.yml source's cached checkout) registered dynamically
                    # as `outfitter-<id>` via workflow_provider() — no per-package class; skipped

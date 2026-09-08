@@ -24,6 +24,7 @@ from panopticon.workflows.outfitter_catalog import (
     OutfitterCatalogWorkflow,
     agents_root,
     catalog_workflow,
+    enabled_workflows,
     load_catalog_workflow,
     parse_catalog_workflow,
     project_states,
@@ -144,6 +145,25 @@ def test_settings_local_sources_replace_the_settings_list_wholesale(tmp_path: Pa
     # a local settings file without a `sources` key does not mask the committed list
     (root / "settings.local.yml").write_text(yaml.safe_dump({"default_agent": "founder"}))
     assert load_catalog_workflow("sample", root=root).title == "From settings.yml"
+
+
+# 2119: 4.5
+# 2119: 4.6
+def test_enabled_workflows_are_an_ordered_union_and_nested_packages_stay_private(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _provide(tmp_path / "root", _package(id="root", title="Root"))
+    _provide(root, _package(id="nested", title="Nested"))
+    (root / "settings.yml").write_text("workflows: [root]\n")
+    (root / "settings.local.yml").write_text("workflows: [root, local]\n")
+    _provide(root, _package(id="local", title="Local"))
+    assert enabled_workflows(root) == ("root", "local")
+
+    monkeypatch.setenv(AGENTS_ENV, str(root))
+    registry = discover_workflows(_home_workflows=tmp_path / "none")
+    assert "outfitter-root" in registry
+    assert "outfitter-local" in registry
+    assert "outfitter-nested" not in registry
 
 
 # 2119: 1.5
@@ -362,6 +382,7 @@ def test_discovery_registers_every_provided_package_without_code(
     root = tmp_path / "root"
     root.mkdir()
     (root / "settings.yml").write_text(yaml.safe_dump({"sources": [{"path": str(source)}]}))
+    (root / "settings.local.yml").write_text("workflows: [ship-it]\n")
     monkeypatch.setenv(AGENTS_ENV, str(root))
     registry = discover_workflows(_home_workflows=tmp_path / "none")
     shipped = registry["outfitter-ship-it"]
@@ -403,6 +424,7 @@ def test_a_broken_package_is_skipped_and_the_rest_register(
         ],
     )
     _provide(root, fan_out)
+    (root / "settings.yml").write_text("workflows: [good, broken]\n")
     monkeypatch.setenv(AGENTS_ENV, str(root))
     registry = discover_workflows(_home_workflows=tmp_path / "none")
     assert "outfitter-good" in registry

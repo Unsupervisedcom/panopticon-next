@@ -4,7 +4,7 @@ Verified from Outfitter's published docs and TypeScript source: it requires Node
 ``>=22.19.0``, agent CLIs are installed separately, and ``outfitter run <id>
 --harness pi -- <args>`` passes the remaining arguments to pi. Outfitter agents own provider,
 model, thinking, skills, extensions, and prompts, so Panopticon deliberately interprets a task's
-``starting_model`` as the Outfitter **profile id**, not as a model name.
+``starting_model`` as the Outfitter **agent slug**, not as a model name.
 
 Panopticon's additions ride through Outfitter's documented pass-through: the workflow overview
 via pi's ``--append-system-prompt``, :data:`panopticon.harnesses.pi.TURN_EXTENSION` via
@@ -64,13 +64,13 @@ def _top_level_scalar(text: str, key: str) -> str | bool | None:
         return None
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         value = value[1:-1]
-    if key == "template" and value.casefold() in {"true", "false"}:
+    if value.casefold() in {"true", "false"}:
         return value.casefold() == "true"
     return value or None
 
 
 class OutfitterHarness(Harness):
-    """Outfitter's profile manager/launcher, fixed to its primary pi adapter."""
+    """Outfitter's agent composer/launcher, fixed to its primary pi adapter."""
 
     name: ClassVar[str] = "outfitter"
     config_dirname: ClassVar[str] = ".outfitter"
@@ -78,7 +78,7 @@ class OutfitterHarness(Harness):
     install_hint: ClassVar[str] = (
         "Install Outfitter (`npm install --global @ai-outfitter/outfitter`)."
     )
-    field_label: ClassVar[str] = "profile"
+    field_label: ClassVar[str] = "agent"
 
     def __init__(self, profile_sources_root: Path | None = None) -> None:
         self.profile_sources_root = profile_sources_root
@@ -96,26 +96,24 @@ class OutfitterHarness(Harness):
         except OSError:
             return ()
 
-        profiles: dict[str, str] = {}
+        agents: dict[str, str] = {}
         for path in paths:
             try:
                 text = path.read_text()
             except (OSError, UnicodeError):
                 continue
-            profile_id = _top_level_scalar(text, "id")
-            if profile_id is None:
-                profile_id = path.parent.name
-            if not isinstance(profile_id, str) or _top_level_scalar(text, "abstract") is True:
+            agent_slug = path.parent.name
+            if _top_level_scalar(text, "abstract") is True:
                 continue
             description = _top_level_scalar(text, "description")
-            label = profile_id
+            label = agent_slug
             if isinstance(description, str):
                 summary = " ".join(description.split())
                 label = textwrap.shorten(
-                    f"{profile_id} — {summary}", width=PROFILE_LABEL_WIDTH, placeholder="…"
+                    f"{agent_slug} — {summary}", width=PROFILE_LABEL_WIDTH, placeholder="…"
                 )
-            profiles[profile_id] = label
-        return tuple(sorted(profiles.items()))
+            agents[agent_slug] = label
+        return tuple(sorted(agents.items()))
 
     def image_layer(self) -> str:
         """Install pinned Node, pi, and Outfitter releases.
@@ -207,7 +205,7 @@ class OutfitterHarness(Harness):
             auth.symlink_to(Path(credentials) / AUTH_FILE)
 
     def argv(self, ctx: LaunchContext) -> list[str]:
-        """Launch the selected Outfitter profile through pi with Panopticon pass-through args."""
+        """Launch the selected Outfitter agent through pi with Panopticon pass-through args."""
         config_dir = self.config_dir(ctx.home)
         argv = ["outfitter", "run"]
         if ctx.starting_model:

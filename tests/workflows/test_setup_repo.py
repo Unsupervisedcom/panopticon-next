@@ -310,12 +310,12 @@ dispatch_harness_auth outfitter || echo unsupported
         assert len(lines) == 2
         assert "Outfitter uses Pi credentials" in lines[0]
         assert lines[1] == "pi-auth-flow"
-        profiles = credential_path / "outfitter" / "profiles"
-        assert profiles.is_dir()
-        assert stat.S_IMODE(profiles.stat().st_mode) == 0o700
+        catalog = credential_path / "outfitter" / ".agents"
+        assert catalog.is_dir()
+        assert stat.S_IMODE(catalog.stat().st_mode) == 0o700
         rerun_lines = _sh(body).splitlines()
-        assert rerun_lines == lines  # an existing profiles directory remains a successful setup
-        assert profiles.is_dir()
+        assert rerun_lines == lines  # an existing catalog directory remains a successful setup
+        assert catalog.is_dir()
 
     assert stat.S_IMODE(new_path.stat().st_mode) == 0o700
 

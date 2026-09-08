@@ -88,7 +88,7 @@ def test_bootstrap_adds_existing_credential_profile_source(tmp_path: Path) -> No
     )
 
 
-def test_suggested_models_discovers_flat_and_directory_profiles(tmp_path: Path) -> None:
+def test_suggested_models_discovers_agents(tmp_path: Path) -> None:
     founder = tmp_path / "founder"
     founder.mkdir()
     (founder / "agent.md").write_text(
@@ -100,7 +100,7 @@ def test_suggested_models_discovers_flat_and_directory_profiles(tmp_path: Path) 
         '---\nname: "data-analyst"\nlabel: Data Analyst\n'
         'description: "Analyze product data with concise evidence."\n---\n'
     )
-    directory = tmp_path / "engineering"
+    directory = tmp_path / "engineering-default"
     directory.mkdir()
     (directory / "agent.md").write_text(
         "---\nname: 'engineering-default'\nlabel: Engineering Default\n"
@@ -109,7 +109,7 @@ def test_suggested_models_discovers_flat_and_directory_profiles(tmp_path: Path) 
 
     harness = OutfitterHarness(profile_sources_root=tmp_path)
 
-    assert harness.field_label == "profile"
+    assert harness.field_label == "agent"
     assert harness.suggested_models() == (
         ("data-analyst", "data-analyst — Analyze product data with concise evidence."),
         ("engineering-default", "engineering-default — Review, build, and ship."),
@@ -129,15 +129,14 @@ def test_suggested_models_block_description_degrades_to_id_only(tmp_path: Path) 
     )
 
 
-def test_suggested_models_skips_bad_and_template_profiles_and_truncates(tmp_path: Path) -> None:
+def test_suggested_models_skips_abstract_and_unreadable_agents_and_truncates(
+    tmp_path: Path,
+) -> None:
     template = tmp_path / "base"
     template.mkdir()
     (template / "agent.md").write_text(
         "---\nname: base\nabstract: TrUe\ndescription: Not directly launchable.\n---\n"
     )
-    missing_id = tmp_path / "missing-id"
-    missing_id.mkdir()
-    (missing_id / "agent.md").write_text("---\ndescription: Infer the directory id.\n---\n")
     long = tmp_path / "long"
     long.mkdir()
     (long / "agent.md").write_text("---\ndescription: " + "word " * 30 + "\n---\n")
@@ -158,7 +157,7 @@ def test_suggested_models_fails_soft_when_source_is_absent(tmp_path: Path) -> No
     assert OutfitterHarness(profile_sources_root=tmp_path / "missing").suggested_models() == ()
 
 
-def test_argv_passes_profile_and_panopticon_controls_through_to_pi(tmp_path: Path) -> None:
+def test_argv_passes_agent_and_panopticon_controls_through_to_pi(tmp_path: Path) -> None:
     HARNESS.bootstrap(_bootstrap_ctx(tmp_path))
     assert HARNESS.argv(
         _ctx(tmp_path, starting_model="engineering-default", initial_prompt="start now")
@@ -182,7 +181,7 @@ def test_argv_passes_profile_and_panopticon_controls_through_to_pi(tmp_path: Pat
     ]
 
 
-def test_starting_model_is_a_profile_id_not_a_pi_model(tmp_path: Path) -> None:
+def test_starting_model_is_an_agent_slug_not_a_pi_model(tmp_path: Path) -> None:
     argv = HARNESS.argv(_ctx(tmp_path, starting_model="local-qwen-high"))
     assert argv == [
         "outfitter",

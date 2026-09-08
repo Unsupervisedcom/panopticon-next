@@ -6,7 +6,7 @@ Outfitter publishes organization workflows as typed graphs (``workflows/<id>/wor
 ``action`` or delegate to a nested ``workflow``. Outfitter validates and distributes these
 packages; it never schedules or executes them. Panopticon *is* an execution engine for exactly
 this shape of lifecycle, so this module projects **every package the operator's ``.agents``
-root carries** onto the workflow interface — no per-package Python class, and no code change
+root enables** onto the workflow interface — no per-package Python class, and no code change
 to adopt a new package.
 
 The packages are **resolved through the operator's Outfitter ``.agents`` root**
@@ -15,8 +15,10 @@ graph Outfitter resolves: the root's own ``workflows/<id>/workflow.yaml`` first,
 ``sources`` entry of ``settings.yml`` (``settings.local.yml`` replaces the list wholesale) in
 listed order, a remote source living at the checkout Outfitter caches under
 ``cache/repos/<base64url(uri#ref)>``. The pin is therefore the source ref in the ``.agents``
-settings, and upgrading the catalog is an ``.agents`` change, not a Panopticon release. Nothing is vendored into this repository, and a host whose
-root provides no packages registers no Outfitter workflows. A package that is present but
+settings, and upgrading or enabling a workflow is an ``.agents`` change, not a Panopticon release.
+Nothing is vendored into this repository, and a host whose root enables no workflows registers no
+Outfitter workflows. Nested workflow dependencies remain resolvable without becoming top-level
+Panopticon workflows unless they are enabled separately. A package that is present but
 off-contract, or whose nodes do not form the single chain Panopticon projects, is skipped with
 a diagnostic — one broken or fan-out package never blocks the rest of the catalog or service
 startup. A nested reference (``adversarial-review`` in the canonical packages) must resolve by
@@ -45,9 +47,8 @@ Skills are the existing GitHub-forge procedures, selected by the actions a packa
 performs (``open-draft-pr`` → ``open-pr``, ``wait-for-required-ci`` → ``babysit-ci``, the merge
 actions → ``babysit-merge``) plus a small ``push-branch`` skill for the founder's
 ``push-as-human``. A task's harness is the operator's choice as usual; under the ``outfitter``
-harness the task's starting model is the Outfitter **profile id**, so the actor profiles the
-package names (``founder``, ``engineer``, ``resident-engineer``) are surfaced in each state's
-description for the operator to pick.
+harness the task's starting model is the Outfitter **agent slug**, so the actor profiles are
+surfaced in each state's description for the operator to pick.
 """
 
 from __future__ import annotations
@@ -114,23 +115,60 @@ def agents_root() -> Path:
     return Path(override) if override else Path.home() / ".agents"
 
 
+def _settings_document(path: Path) -> Mapping[str, Any] | None:
+    """Read one optional Outfitter settings layer as a mapping."""
+    if not path.is_file():
+        return None
+    try:
+        document = yaml.safe_load(path.read_text())
+    except (OSError, yaml.YAMLError) as error:
+        raise InvalidCatalogWorkflow(f"{path}: unreadable settings: {error}") from error
+    if document is None:
+        return {}
+    if not isinstance(document, Mapping):
+        raise InvalidCatalogWorkflow(f"{path}: settings must be a mapping")
+    return cast("Mapping[str, Any]", document)
+
+
+def _settings_layers(root: Path) -> tuple[Mapping[str, Any], ...]:
+    """Committed then local settings, matching Outfitter's low-to-high precedence."""
+    return tuple(
+        document
+        for name in ("settings.yml", "settings.local.yml")
+        if (document := _settings_document(root / name)) is not None
+    )
+
+
 def _configured_sources(root: Path) -> tuple[Mapping[str, Any], ...]:
-    """The ``sources`` list in effect: ``settings.local.yml``'s replaces ``settings.yml``'s wholesale."""
-    for name in ("settings.local.yml", "settings.yml"):
-        path = root / name
-        if not path.is_file():
-            continue
-        try:
-            document = yaml.safe_load(path.read_text())
-        except (OSError, yaml.YAMLError) as error:
-            raise InvalidCatalogWorkflow(f"{path}: unreadable settings: {error}") from error
-        if not isinstance(document, Mapping) or "sources" not in document:
+    """The effective ``sources`` list; the highest layer that declares it wins wholesale."""
+    for document in reversed(_settings_layers(root)):
+        if "sources" not in document:
             continue
         sources = document["sources"] or []
         if not isinstance(sources, list) or not all(isinstance(item, Mapping) for item in sources):
-            raise InvalidCatalogWorkflow(f"{path}: `sources` must be a list of mappings")
+            raise InvalidCatalogWorkflow("Outfitter settings: `sources` must be a list of mappings")
         return tuple(cast("Mapping[str, Any]", item) for item in sources)
     return ()
+
+
+def enabled_workflows(root: Path) -> tuple[str, ...]:
+    """Workflow roots enabled by settings, as Outfitter's ordered-set union."""
+    enabled: list[str] = []
+    for document in _settings_layers(root):
+        raw = document.get("workflows", [])
+        if not isinstance(raw, list):
+            raise InvalidCatalogWorkflow("Outfitter settings: `workflows` must be a list")
+        layer_enabled: set[str] = set()
+        for item in raw:
+            workflow_id = _require_slug(item, where="Outfitter settings: workflows")
+            if workflow_id in layer_enabled:
+                raise InvalidCatalogWorkflow(
+                    f"Outfitter settings: duplicate enabled workflow {workflow_id!r}"
+                )
+            layer_enabled.add(workflow_id)
+            if workflow_id not in enabled:
+                enabled.append(workflow_id)
+    return tuple(enabled)
 
 
 def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
@@ -588,31 +626,23 @@ def catalog_workflow(workflow_id: str) -> OutfitterCatalogWorkflow:
 
 
 def workflow_provider() -> Iterator[OutfitterCatalogWorkflow]:
-    """Every package the ``.agents`` root provides, projected — discovery's catalog hook.
+    """Every workflow root the ``.agents`` settings enable, projected — discovery's catalog hook.
 
-    Enumerates ``workflows/*/workflow.yaml`` across the root and every ``settings.yml`` source
-    checkout (per layer sorted, first layer to name an id claims it) and yields one workflow
-    per package that loads, validates, and projects. A package that
+    Enabled roots are an ordered-set union across ``settings.yml`` and ``settings.local.yml``.
+    Nested packages resolve as dependencies but do not register independently unless explicitly
+    enabled. A root that
     fails — off-contract, fan-in/fan-out nodes, an unresolvable nested reference — is skipped
-    with a diagnostic so the rest of the catalog still registers; a missing or empty root
-    yields nothing.
+    with a diagnostic so the rest of the catalog still registers; missing or empty settings yield
+    nothing.
     """
     root = agents_root()
     try:
-        layers = catalog_layers(root)
+        workflow_ids = enabled_workflows(root)
     except InvalidCatalogWorkflow as error:
         _log.warning("outfitter catalog disabled: %s", error)
         return
-    seen: set[str] = set()
-    for layer in layers:
-        workflows_dir = layer / "workflows"
-        if not workflows_dir.is_dir():
-            continue
-        for package_dir in sorted(workflows_dir.iterdir()):
-            if package_dir.name in seen or not (package_dir / "workflow.yaml").is_file():
-                continue
-            seen.add(package_dir.name)
-            try:
-                yield catalog_workflow(package_dir.name)
-            except InvalidCatalogWorkflow as error:
-                _log.warning("skipping catalog package %r: %s", package_dir.name, error)
+    for workflow_id in workflow_ids:
+        try:
+            yield catalog_workflow(workflow_id)
+        except InvalidCatalogWorkflow as error:
+            _log.warning("skipping catalog package %r: %s", workflow_id, error)

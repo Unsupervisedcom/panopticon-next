@@ -60,8 +60,9 @@ Each state is advanced by either **you** or the **agent**:
 
 - **Default-on vs. opt-in.** `spike` and `orchestrator` are shown for every repo by
   default. `github-peer-reviewed`, `github-self-reviewed`, `local-git-self-reviewed`, and
-  the three `outfitter-*` workflows are **opt-in**: enable them per repo (in the repo's workflow settings) before they show
-  up in the task-creation picker.
+  dynamically discovered `outfitter-*` workflows are **opt-in** twice: enable their roots in
+  `.agents/settings.yml`, then enable the resulting Panopticon workflow per repo before it appears
+  in the task-creation picker.
 - **Hidden utilities.** `setup-repo` is hidden from the pickers entirely; you launch it
   from the repos screen's setup hotkey, not by creating an ordinary task.
 

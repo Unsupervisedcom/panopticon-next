@@ -251,8 +251,8 @@ dispatch_harness_auth() {
         outfitter)
             echo "Outfitter uses Pi credentials."
             if [ -n "${credential_path:-}" ]; then
-                (umask 077 && mkdir -p "$credential_path/outfitter/profiles") \
-                    || echo "warning: couldn't prepare Outfitter's profiles directory" >&2
+                (umask 077 && mkdir -p "$credential_path/outfitter/.agents") \
+                    || echo "warning: couldn't prepare Outfitter's catalog directory" >&2
             fi
             setup_pi_auth
             ;;

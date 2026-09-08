@@ -5,11 +5,12 @@
 Outfitter's community catalog publishes organization workflows as typed graphs
 (`workflows/<id>/workflow.yaml`): actors, environments, integrations, and a DAG of nodes that each
 perform an action or delegate to a nested workflow. Outfitter validates and distributes these
-packages but never executes them. Panopticon runs lifecycles of exactly this shape, so every package the
-operator's Outfitter `.agents` root provides is read and projected onto a Panopticon workflow —
-no per-package code. Nothing is vendored: whatever catalog the root's `workflows/` directory
-carries is what runs; the canonical implementation-plan packages (`founder`, `engineer`,
-`software-factory`) are the motivating examples.
+packages but never executes them. Panopticon runs lifecycles of exactly this shape, so every
+workflow root enabled by the operator's Outfitter `.agents` settings is read and projected onto a
+Panopticon workflow — no per-package code. Nested dependencies resolve without registering as
+top-level workflows unless settings enable them separately. Nothing is vendored; the canonical
+implementation-plan packages (`founder`, `engineer`, `software-factory`) are the motivating
+examples.
 
 The projection keeps ADR 0004's rule that a workflow is code: the package supplies the node chain
 and its descriptions, while Python owns the gate policy, the skills, and the tools. Each node
@@ -58,13 +59,17 @@ declared reviewer launch pair engages the governed review task of `REQ-013` on e
 
 ### 4: Registration
 
-1. Workflow discovery MUST register `outfitter-<id>` as an opt-in workflow for every package the
-   `.agents` root provides that loads, validates, and projects — with no per-package code.
+1. Workflow discovery MUST register `outfitter-<id>` as an opt-in workflow for every workflow root
+   the `.agents` settings enable that loads, validates, and projects — with no per-package code.
 2. Each registered Outfitter workflow MUST leave `review_harness` and `review_model` unset.
-3. When the `.agents` root provides no packages, discovery MUST complete without failing and
-   without registering any Outfitter workflow.
+3. When the `.agents` settings enable no workflow roots, discovery MUST complete without failing
+   and without registering any Outfitter workflow.
 4. A provided package that fails validation or projection MUST be skipped with a diagnostic,
    leaving every other package and workflow registered.
+5. Workflow enablement MUST be the ordered-set union of `settings.yml` and
+   `settings.local.yml`.
+6. A nested workflow dependency MUST NOT register as a top-level workflow unless enabled
+   separately.
 
 ### 5: Skills and tools
 
@@ -81,6 +86,6 @@ declared reviewer launch pair engages the governed review task of `REQ-013` on e
 - Panopticon never fetches or syncs a catalog itself: it reads only what Outfitter has already
   checked out under the `.agents` root, and upgrading the catalog is a change to that root's
   pinned sources, not to Panopticon.
-- Outfitter's agent profiles, skills, prompt fragments, and MCP declarations are not composed by
+- Outfitter's agent definitions, skills, prompt fragments, and MCP declarations are not composed by
   Panopticon; a task's harness and model remain the operator's choice.
 - Packages whose nodes fan in or fan out are outside this change.

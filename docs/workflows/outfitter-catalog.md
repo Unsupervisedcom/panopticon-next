@@ -5,8 +5,9 @@ organization workflows as typed graphs (`workflows/<id>/workflow.yaml`): who act
 tool, or system actors), where (environments), with what (integrations), and a DAG of nodes that
 each perform an action or delegate to a nested workflow. Outfitter validates and distributes these
 packages and deliberately never executes them. Panopticon runs lifecycles of exactly this shape,
-so **every package your `.agents` root provides registers as a workflow named `outfitter-<id>`** —
-no per-package code. The canonical implementation-plan packages look like:
+so **every workflow root enabled in your `.agents` settings registers as
+`outfitter-<id>`** — no per-package code. Nested dependencies remain internal unless enabled as
+roots themselves. The canonical implementation-plan packages look like:
 
 | Workflow | Package | Lifecycle |
 |---|---|---|
@@ -20,12 +21,12 @@ The packages are resolved through the operator's Outfitter **`.agents` root**
 (`$PANOPTICON_AGENTS`, default `~/.agents`) when the service builds its workflow registry — the
 same layered graph Outfitter resolves: the root's own `workflows/` directory first, then each
 `sources` entry of `settings.yml` (`settings.local.yml` replaces the list wholesale) in listed
-order, a remote source at the checkout Outfitter caches under `cache/repos/`. Nothing is
-vendored: the pin is the source ref in the `.agents` settings, so upgrading the catalog is an
-`.agents` change, not a Panopticon release. On a host
-whose root does not provide the packages, discovery skips these workflows with a log line — never
-a startup failure. The `adversarial-review` package must be present too, because all three nest
-it.
+order, a remote source at the checkout Outfitter caches under `cache/repos/`. Nothing is vendored:
+the pin and `workflows` enablement live in `.agents` settings, so upgrading or enabling the catalog
+is an `.agents` change, not a Panopticon release. On a host whose settings enable no roots,
+discovery registers none. A missing or invalid enabled root is skipped with a log line rather than
+blocking startup. The `adversarial-review` package must be resolvable because the software-factory
+workflow nests it, but it does not become a separate Panopticon workflow.
 
 All three are **opt-in**: enable them for a repo before they appear in the task-creation picker.
 
@@ -90,19 +91,19 @@ The skills are the existing GitHub-forge procedures, selected by the actions a p
 actions → `babysit-merge`, and `push-as-human` → `push-branch`. The `gh` tool is declared whenever
 the package reaches GitHub, as a CLI or through the GitHub MCP server.
 
-## Harness and profile
+## Harness and agent
 
 A task's harness is your choice, as for any workflow. Under the `outfitter` harness the task's
-starting model is the Outfitter **profile id**; each state's description names the actor profile
-the package expects (`founder`, `engineer`, `resident-engineer`), so pick that profile when you
-create the task. Under `claude`, `codex`, or `pi`, the state descriptions and skills carry the same
-lifecycle without Outfitter's composed profile.
+starting-model field selects the Outfitter **agent slug**; each state's description names the actor
+profile the package expects, so select the organization binding (for the current AI Outfitter and
+Unsupervised catalogs, `engineer`). Under `claude`, `codex`, or `pi`, the state descriptions and
+skills carry the same lifecycle without Outfitter's composed agent.
 
 ## What is not projected
 
 Panopticon never fetches or syncs a catalog itself — it reads only what Outfitter has already
 checked out under the `.agents` root — and it does not compose the
-packages' agent profiles, skills, prompt fragments, or MCP declarations. Environments and
+packages' agent definitions, skills, prompt fragments, or MCP declarations. Environments and
 integrations are surfaced in the state descriptions for the agent, not provisioned.
 
 ## Related

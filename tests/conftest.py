@@ -51,6 +51,7 @@ def agents_fixture_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
     the ``outfitter-*`` workflows only where the developer's real ``~/.agents`` provides them.
     """
     root = tmp_path_factory.mktemp("agents-root")
+    (root / "settings.yml").write_text("workflows: [founder, engineer, software-factory]\n")
     packages = {
         "founder": ("Founder", ["work", "commit", "push"]),
         "engineer": ("Engineer", ["research", "develop", "merge"]),

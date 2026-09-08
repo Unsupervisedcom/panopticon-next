@@ -3,7 +3,7 @@
 ## Overview
 
 Repository setup recognizes Outfitter as a supported harness and prepares the credentials and
-profile directory that its Pi-based adapter consumes.
+catalog directory that its Pi-based adapter consumes.
 
 ## Requirements
 
@@ -19,6 +19,6 @@ profile directory that its Pi-based adapter consumes.
 
 1. While setting up an `outfitter` repository, repository setup MUST emit a notice contained on one output line stating that Outfitter uses Pi credentials.
 
-### REQ-005.4: Profile directory
+### REQ-005.4: Catalog directory
 
-1. When an Outfitter repository configures `credential_dir`, and `<credential_dir>/outfitter/profiles` can be made a directory by creating missing path components without removing or replacing an existing filesystem entry, repository setup MUST successfully ensure that path is a directory, including when it already exists.
+1. When an Outfitter repository configures `credential_dir`, and `<credential_dir>/outfitter/.agents` can be made a directory by creating missing path components without removing or replacing an existing filesystem entry, repository setup MUST successfully ensure that path is a directory, including when it already exists.
