@@ -37,7 +37,7 @@ Point discovery at one of the real catalog checkouts and print the projected lif
 starting services:
 
 ```console
-$ PANOPTICON_AGENTS=/home/ncrmro/repos/unsupervised/dotagents.worktrees/feat/resident-workflows \
+$ PANOPTICON_AGENTS=/path/to/catalog-root \
     uv run python -c 'from panopticon.workflows.outfitter_catalog import workflow_provider; print({w.name: w.ordered_phases() for w in workflow_provider()})'
 {'outfitter-software-factory': ['PREPARE', 'IMPLEMENT', 'DRAFT', 'CI', 'REVIEW', 'MERGE', 'COMPLETE']}
 ```

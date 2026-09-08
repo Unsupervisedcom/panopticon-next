@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-002.12.1--c41dfe7ac65a",
+  "requirementId": "REQ-002.12.1",
+  "hash": "c41dfe7ac65a",
+  "verdict": "pass",
+  "summary": "The test excludes review from both global and repository workflow menus while proving it remains registered and governor-created, with a visible workflow sanity check.",
+  "timestamp": "2026-09-08T23:45:44.374Z"
+}

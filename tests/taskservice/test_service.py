@@ -403,6 +403,17 @@ async def test_hidden_workflow_absent_from_both_menus_but_still_creatable(tmp_pa
     assert review.workflow == "review"
 
 
+async def test_shell_workflow_does_not_require_an_outfitter_agent(tmp_path: Path) -> None:
+    svc = await make_service(tmp_path)
+    await svc.update_repo("r1", {"default_harness": "outfitter", "default_model": None})
+
+    setup = await svc.create_task("r1", "setup-repo")
+
+    assert setup.workflow == "setup-repo"
+    assert setup.harness == "outfitter"
+    assert setup.starting_model is None
+
+
 async def test_list_workflow_infos_for_repo_hides_disabled_opt_out(tmp_path: Path) -> None:
     svc = await make_service(tmp_path)
     await svc.create_repo(

@@ -639,7 +639,11 @@ class TaskService:
         if starting_model is None and (harness is None or harness == selected_harness):
             task.starting_model = pair_model
         selected_runtime = get_harness(task.harness)
-        if selected_runtime.requires_starting_model and not (task.starting_model or "").strip():
+        if (
+            wf.runner_type == "docker"
+            and selected_runtime.requires_starting_model
+            and not (task.starting_model or "").strip()
+        ):
             raise ValueError(
                 f"{selected_runtime.name} harness requires a selected "
                 f"{selected_runtime.field_label}; "
