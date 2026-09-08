@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.5.1--d525555687c3",
+  "requirementId": "outfitter-workflows.5.1",
+  "hash": "d525555687c3",
+  "verdict": "pass",
+  "summary": "Two real projected catalogs containing open-draft-pr assert exact skill lists that include both open-pr and babysit-ci.",
+  "timestamp": "2026-09-08T21:48:26.634Z"
+}

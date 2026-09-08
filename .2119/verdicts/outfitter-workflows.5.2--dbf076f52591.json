@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.5.2--dbf076f52591",
+  "requirementId": "outfitter-workflows.5.2",
+  "hash": "dbf076f52591",
+  "verdict": "pass",
+  "summary": "Both merge-as-human and merge-after-approval counterexamples require babysit-merge in exact returned skill lists.",
+  "timestamp": "2026-09-08T21:48:27.945Z"
+}

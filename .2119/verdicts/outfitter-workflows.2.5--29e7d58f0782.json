@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.2.5--29e7d58f0782",
+  "requirementId": "outfitter-workflows.2.5",
+  "hash": "29e7d58f0782",
+  "verdict": "pass",
+  "summary": "Distinct real-parser counterexamples cover multiple roots, fan-in, fan-out, and unreachable nodes, with an out-of-file-order valid chain as control.",
+  "timestamp": "2026-09-08T21:48:09.587Z"
+}

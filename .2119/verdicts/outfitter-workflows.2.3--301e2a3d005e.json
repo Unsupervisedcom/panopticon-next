@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.2.3--301e2a3d005e",
+  "requirementId": "outfitter-workflows.2.3",
+  "hash": "301e2a3d005e",
+  "verdict": "pass",
+  "summary": "Parameterized real-parser cases independently reject undeclared actor, environment, integration, and needed-node references with branch-specific errors.",
+  "timestamp": "2026-09-08T21:48:07.261Z"
+}

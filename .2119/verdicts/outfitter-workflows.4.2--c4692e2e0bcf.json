@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.2--c4692e2e0bcf",
+  "requirementId": "outfitter-workflows.4.2",
+  "hash": "c4692e2e0bcf",
+  "verdict": "pass",
+  "summary": "Every nonempty workflow-provider result is directly checked for both review_harness and review_model being unset.",
+  "timestamp": "2026-09-08T21:48:19.567Z"
+}

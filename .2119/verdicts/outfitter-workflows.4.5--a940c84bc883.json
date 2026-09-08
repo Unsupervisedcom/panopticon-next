@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.5--a940c84bc883",
+  "requirementId": "outfitter-workflows.4.5",
+  "hash": "a940c84bc883",
+  "verdict": "pass",
+  "summary": "The exact tuple proves committed-first order, cross-file deduplication, and inclusion of a unique workflow contributed only by settings.local.yml.",
+  "timestamp": "2026-09-08T21:54:33.795Z"
+}

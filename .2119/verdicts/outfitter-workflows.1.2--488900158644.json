@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.2--488900158644",
+  "requirementId": "outfitter-workflows.1.2",
+  "hash": "488900158644",
+  "verdict": "pass",
+  "summary": "Tests distinguish root precedence, first-source precedence, and fallthrough from a missing first source to the second listed source.",
+  "timestamp": "2026-09-08T21:52:07.121Z"
+}

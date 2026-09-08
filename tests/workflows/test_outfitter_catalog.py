@@ -81,15 +81,28 @@ def _provide(layer: Path, document: dict[str, object]) -> Path:
 def test_packages_come_from_the_agents_root_and_nothing_is_shipped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv(AGENTS_ENV, str(tmp_path / "somewhere"))
-    assert agents_root() == tmp_path / "somewhere"
+    operator_root = _provide(tmp_path / "operator-agents", _package(title="From the environment"))
+    monkeypatch.setenv(AGENTS_ENV, str(operator_root))
+    assert agents_root() == operator_root
+    assert load_catalog_workflow("sample").title == "From the environment"
     monkeypatch.delenv(AGENTS_ENV)
-    assert agents_root() == Path.home() / ".agents"
+    fake_home = tmp_path / "home"
+    default_root = _provide(fake_home / ".agents", _package(title="From the default root"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+    assert agents_root() == default_root
+    assert load_catalog_workflow("sample").title == "From the default root"
     # the default root is read only when no explicit root is passed
     root = _provide(tmp_path / "root", _package(title="From the root"))
     assert load_catalog_workflow("sample", root=root).title == "From the root"
     # and the repository ships no catalog: there is no package directory beside the module
     assert not (Path(outfitter_catalog.__file__).with_name("outfitter")).exists()
+    fake_module = tmp_path / "installed" / "outfitter_catalog.py"
+    fake_module.parent.mkdir()
+    fake_module.write_text("")
+    _provide(fake_module.parent, _package(title="Forbidden packaged fallback"))
+    monkeypatch.setattr(outfitter_catalog, "__file__", str(fake_module))
+    with pytest.raises(CatalogUnavailable):
+        load_catalog_workflow("sample", root=tmp_path / "empty-root")
 
 
 # 2119: 1.2
@@ -102,6 +115,12 @@ def test_the_root_layer_wins_then_sources_in_listed_order(tmp_path: Path) -> Non
         yaml.safe_dump({"sources": [{"path": str(first)}, {"path": str(second)}]})
     )
     assert load_catalog_workflow("sample", root=root).title == "From the first source"
+    first_only_other = tmp_path / "first-only-other"
+    first_only_other.mkdir()
+    (root / "settings.yml").write_text(
+        yaml.safe_dump({"sources": [{"path": str(first_only_other)}, {"path": str(second)}]})
+    )
+    assert load_catalog_workflow("sample", root=root).title == "From the second source"
     _provide(root, _package(title="From the root itself"))
     assert load_catalog_workflow("sample", root=root).title == "From the root itself"
 
@@ -125,8 +144,10 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(tmp_path: Path) -> N
     _provide(root / "cache" / "repos" / expected_key, _package(title="From the checkout"))
     assert load_catalog_workflow("sample", root=root).title == "From the checkout"
     # a `uri` source resolves the same way, and the key is unpadded url-safe base64
-    uri = "git+ssh://forgejo@git.example.com:2222/org/catalog.git"
+    uri = "git+https://example.test/¾.git"
     key = base64.urlsafe_b64encode(f"{uri}#v1.0.0".encode()).decode().rstrip("=")
+    standard_key = base64.b64encode(f"{uri}#v1.0.0".encode()).decode().rstrip("=")
+    assert "+" in standard_key and "-" in key
     assert "=" not in key and "+" not in key and "/" not in key
     (root / "settings.yml").write_text(yaml.safe_dump({"sources": [{"uri": uri, "ref": "v1.0.0"}]}))
     _provide(root / "cache" / "repos" / key, _package(title="From the uri checkout"))
@@ -136,12 +157,18 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(tmp_path: Path) -> N
 # 2119: 1.4
 def test_settings_local_sources_replace_the_settings_list_wholesale(tmp_path: Path) -> None:
     committed = _provide(tmp_path / "committed", _package(title="From settings.yml"))
+    _provide(committed, _package(id="committed-only", title="Committed only"))
     local = _provide(tmp_path / "local", _package(title="From settings.local.yml"))
     root = tmp_path / "root"
     root.mkdir()
     (root / "settings.yml").write_text(yaml.safe_dump({"sources": [{"path": str(committed)}]}))
     (root / "settings.local.yml").write_text(yaml.safe_dump({"sources": [{"path": str(local)}]}))
     assert load_catalog_workflow("sample", root=root).title == "From settings.local.yml"
+    with pytest.raises(CatalogUnavailable, match="committed-only"):
+        load_catalog_workflow("committed-only", root=root)
+    (root / "settings.local.yml").write_text("sources: []\n")
+    with pytest.raises(CatalogUnavailable, match="sample"):
+        load_catalog_workflow("sample", root=root)
     # a local settings file without a `sources` key does not mask the committed list
     (root / "settings.local.yml").write_text(yaml.safe_dump({"default_agent": "founder"}))
     assert load_catalog_workflow("sample", root=root).title == "From settings.yml"
@@ -152,18 +179,31 @@ def test_settings_local_sources_replace_the_settings_list_wholesale(tmp_path: Pa
 def test_enabled_workflows_are_an_ordered_union_and_nested_packages_stay_private(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = _provide(tmp_path / "root", _package(id="root", title="Root"))
+    root = _provide(
+        tmp_path / "root",
+        _package(
+            id="root",
+            title="Root",
+            nodes=[{"id": "delegate", "workflow": "nested", "description": "Delegate."}],
+        ),
+    )
     _provide(root, _package(id="nested", title="Nested"))
-    (root / "settings.yml").write_text("workflows: [root]\n")
-    (root / "settings.local.yml").write_text("workflows: [root, local]\n")
+    (root / "settings.yml").write_text("workflows: [root, shared]\n")
+    (root / "settings.local.yml").write_text("workflows: [shared, local]\n")
+    _provide(root, _package(id="shared", title="Shared"))
     _provide(root, _package(id="local", title="Local"))
-    assert enabled_workflows(root) == ("root", "local")
+    assert enabled_workflows(root) == ("root", "shared", "local")
 
     monkeypatch.setenv(AGENTS_ENV, str(root))
     registry = discover_workflows(_home_workflows=tmp_path / "none")
     assert "outfitter-root" in registry
+    assert "outfitter-shared" in registry
     assert "outfitter-local" in registry
     assert "outfitter-nested" not in registry
+
+    (root / "settings.local.yml").write_text("workflows: [local, nested]\n")
+    registry = discover_workflows(_home_workflows=tmp_path / "none")
+    assert "outfitter-nested" in registry
 
 
 # 2119: 1.5
@@ -193,6 +233,22 @@ def test_an_unresolvable_nested_workflow_is_rejected(tmp_path: Path) -> None:
     )
     with pytest.raises(InvalidCatalogWorkflow, match="cycle"):
         load_catalog_workflow("loop", root=root)
+    _provide(
+        root,
+        _package(
+            id="cycle-a",
+            nodes=[{"id": "next", "workflow": "cycle-b", "description": "Next."}],
+        ),
+    )
+    _provide(
+        root,
+        _package(
+            id="cycle-b",
+            nodes=[{"id": "back", "workflow": "cycle-a", "description": "Back."}],
+        ),
+    )
+    with pytest.raises(InvalidCatalogWorkflow, match="cycle-a -> cycle-b -> cycle-a"):
+        load_catalog_workflow("cycle-a", root=root)
 
 
 # -- 2: contract validation ----------------------------------------------------------
@@ -274,9 +330,19 @@ def test_states_follow_the_chain_with_upper_cased_labels() -> None:
         "COMPLETE",
     ]
     dotted = parse_catalog_workflow(
-        _package(nodes=[{"id": "wait-for.ci_run", "action": "a", "description": "Wait."}])
+        _package(
+            nodes=[
+                {
+                    "id": "ship",
+                    "action": "b",
+                    "description": "Ship.",
+                    "needs": ["wait-for.ci_run"],
+                },
+                {"id": "wait-for.ci_run", "action": "a", "description": "Wait."},
+            ]
+        )
     )
-    assert [state.label for state in project_states(dotted)] == ["WAIT_FOR_CI_RUN"]
+    assert [state.label for state in project_states(dotted)] == ["WAIT_FOR_CI_RUN", "SHIP"]
 
 
 # 2119: 3.2
@@ -403,7 +469,8 @@ def test_an_empty_agents_root_skips_the_workflows_without_failing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     empty = tmp_path / "empty-agents-root"
-    empty.mkdir()
+    _provide(empty, _package(id="disabled", title="Disabled"))
+    (empty / "settings.yml").write_text("workflows: []\n")
     monkeypatch.setenv(AGENTS_ENV, str(empty))
     registry = discover_workflows(_home_workflows=tmp_path / "none")
     assert not {name for name in registry if name.startswith("outfitter-")}
@@ -412,7 +479,7 @@ def test_an_empty_agents_root_skips_the_workflows_without_failing(
 
 # 2119: 4.4
 def test_a_broken_package_is_skipped_and_the_rest_register(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     root = _provide(tmp_path / "root", _package(id="good", title="Good"))
     fan_out = _package(
@@ -424,12 +491,23 @@ def test_a_broken_package_is_skipped_and_the_rest_register(
         ],
     )
     _provide(root, fan_out)
-    (root / "settings.yml").write_text("workflows: [good, broken]\n")
+    duplicate_labels = _package(
+        id="broken-projection",
+        nodes=[
+            {"id": "a-b", "action": "x", "description": "A."},
+            {"id": "a_b", "action": "x", "description": "B.", "needs": ["a-b"]},
+        ],
+    )
+    _provide(root, duplicate_labels)
+    (root / "settings.yml").write_text("workflows: [good, broken, broken-projection]\n")
     monkeypatch.setenv(AGENTS_ENV, str(root))
     registry = discover_workflows(_home_workflows=tmp_path / "none")
     assert "outfitter-good" in registry
     assert "outfitter-broken" not in registry
+    assert "outfitter-broken-projection" not in registry
     assert "spike" in registry
+    assert "skipping catalog package 'broken'" in caplog.text
+    assert "skipping catalog package 'broken-projection'" in caplog.text
 
 
 # -- 5: skills and tools -------------------------------------------------------------

@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.4--d1c427a6ed39",
+  "requirementId": "outfitter-workflows.4.4",
+  "hash": "d1c427a6ed39",
+  "verdict": "pass",
+  "summary": "Distinct validation and projection failures are both skipped with diagnostics while a good package and a built-in workflow remain registered.",
+  "timestamp": "2026-09-08T21:52:13.612Z"
+}

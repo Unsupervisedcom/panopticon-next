@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.6--6277abc13b8b",
+  "requirementId": "outfitter-workflows.1.6",
+  "hash": "6277abc13b8b",
+  "verdict": "pass",
+  "summary": "The real recursive loader rejects a missing nested package, with self-cycle and two-package cycle counterexamples also proving recursion cannot masquerade as resolution.",
+  "timestamp": "2026-09-08T21:48:58.058Z"
+}

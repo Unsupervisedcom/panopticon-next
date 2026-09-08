@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.5.3--9faed4b656fa",
+  "requirementId": "outfitter-workflows.5.3",
+  "hash": "9faed4b656fa",
+  "verdict": "pass",
+  "summary": "A push-as-human catalog must return push-branch, and substantive instruction checks prevent a name-only placeholder from passing.",
+  "timestamp": "2026-09-08T21:48:29.161Z"
+}

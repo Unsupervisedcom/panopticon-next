@@ -440,7 +440,19 @@ def load_catalog_workflow(workflow_id: str, *, root: Path | None = None) -> Cata
     catalog should be fixed, not silently ignored.
     """
     base = root if root is not None else agents_root()
-    path = _package_path(workflow_id, base)
+    return _load_catalog_workflow(workflow_id, root=base, stack=())
+
+
+def _load_catalog_workflow(
+    workflow_id: str, *, root: Path, stack: tuple[str, ...]
+) -> CatalogWorkflow:
+    """Load one package and validate its nested closure without resetting cycle state."""
+    if workflow_id in stack:
+        raise InvalidCatalogWorkflow(
+            f"catalog package {stack[-1]!r}: nested workflow {workflow_id!r} forms a cycle "
+            f"({' -> '.join((*stack, workflow_id))})"
+        )
+    path = _package_path(workflow_id, root)
     try:
         content = path.read_bytes()
     except OSError as error:
@@ -456,23 +468,11 @@ def load_catalog_workflow(workflow_id: str, *, root: Path | None = None) -> Cata
         raise InvalidCatalogWorkflow(
             f"{path}: package id {workflow.id!r} does not match its directory {workflow_id!r}"
         )
-    return _resolve_nested(workflow, root=base, stack=(workflow_id,))
-
-
-def _resolve_nested(
-    workflow: CatalogWorkflow, *, root: Path, stack: tuple[str, ...]
-) -> CatalogWorkflow:
-    """Every ``workflow:`` reference must resolve to a valid package, without cycles."""
+    next_stack = (*stack, workflow_id)
     for node in workflow.nodes:
         if node.workflow is None:
             continue
-        if node.workflow in stack:
-            raise InvalidCatalogWorkflow(
-                f"catalog package {workflow.id!r}: nested workflow {node.workflow!r} forms a cycle "
-                f"({' -> '.join((*stack, node.workflow))})"
-            )
-        nested = load_catalog_workflow(node.workflow, root=root)
-        _resolve_nested(nested, root=root, stack=(*stack, nested.id))
+        _load_catalog_workflow(node.workflow, root=root, stack=next_stack)
     return workflow
 
 
@@ -509,6 +509,14 @@ def project_states(workflow: CatalogWorkflow) -> tuple[type[BaseState], ...]:
     nodes are user gates; system-actor nodes are agent-observed. The last state advances to
     ``COMPLETE``; ``DROPPED`` is inherited by every state.
     """
+    labels = [state_label(node.id) for node in workflow.nodes]
+    duplicates = sorted(label for label in set(labels) if labels.count(label) > 1)
+    if duplicates:
+        raise InvalidCatalogWorkflow(
+            f"catalog package {workflow.id!r}: node ids collapse to duplicate Panopticon state "
+            f"labels {duplicates}"
+        )
+
     states: list[type[BaseState]] = []
     for index, node in enumerate(workflow.nodes):
         actor = workflow.actors.get(node.actor) if node.actor else None

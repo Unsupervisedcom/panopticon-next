@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.3.3--a48edfe3f26d",
+  "requirementId": "outfitter-workflows.3.3",
+  "hash": "a48edfe3f26d",
+  "verdict": "pass",
+  "summary": "A real parsed nested-workflow node is projected and directly asserted to be user-advanced, rejecting the nearest agent-advanced violation.",
+  "timestamp": "2026-09-08T21:48:13.657Z"
+}
