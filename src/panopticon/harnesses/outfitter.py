@@ -79,6 +79,7 @@ class OutfitterHarness(Harness):
         "Install Outfitter (`npm install --global @ai-outfitter/outfitter`)."
     )
     field_label: ClassVar[str] = "agent"
+    requires_starting_model: ClassVar[bool] = True
 
     def __init__(self, profile_sources_root: Path | None = None) -> None:
         self.profile_sources_root = profile_sources_root

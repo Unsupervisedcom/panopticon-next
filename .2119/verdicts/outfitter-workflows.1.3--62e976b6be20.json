@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.3--62e976b6be20",
+  "requirementId": "outfitter-workflows.1.3",
+  "hash": "62e976b6be20",
+  "verdict": "pass",
+  "summary": "Distinct fixtures prove default and overridden cache placement, GitHub normalization, credential-redacted keying, and unpadded URL-safe base64; invalid-source diagnostics also exclude the secret.",
+  "timestamp": "2026-09-08T22:49:48.464Z"
+}

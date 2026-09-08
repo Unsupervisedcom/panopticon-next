@@ -776,6 +776,40 @@ def test_create_task_records_an_explicit_starting_model(client: TestClient) -> N
     assert resp.json()["starting_model"] == "gpt-5.6-sol"
 
 
+def test_outfitter_task_requires_a_concrete_agent_before_creation(client: TestClient) -> None:
+    missing = client.post(
+        "/tasks", json={"repo_id": "r1", "workflow": "spike", "harness": "outfitter"}
+    )
+    assert missing.status_code == 400
+    assert "outfitter harness requires a selected agent" in missing.json()["detail"]
+
+    blank = client.post(
+        "/tasks",
+        json={
+            "repo_id": "r1",
+            "workflow": "spike",
+            "harness": "outfitter",
+            "starting_model": "   ",
+        },
+    )
+    assert blank.status_code == 400
+
+    created = client.post(
+        "/tasks",
+        json={
+            "repo_id": "r1",
+            "workflow": "spike",
+            "harness": "outfitter",
+            "starting_model": "vega",
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert (created.json()["harness"], created.json()["starting_model"]) == (
+        "outfitter",
+        "vega",
+    )
+
+
 def test_create_repo_with_a_missing_credential_dir_is_400(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

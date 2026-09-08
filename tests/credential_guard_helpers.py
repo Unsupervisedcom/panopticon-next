@@ -204,7 +204,16 @@ def render_authenticated_harness_surfaces(
             for path in sorted(root.rglob("*"))
             if path.is_file()
         )
-        argv = tuple(harness.argv(LaunchContext(home=home, cwd=cwd, initial_prompt="guard")))
+        argv = tuple(
+            harness.argv(
+                LaunchContext(
+                    home=home,
+                    cwd=cwd,
+                    initial_prompt="guard",
+                    starting_model="credential-guard-agent" if name == "outfitter" else None,
+                )
+            )
+        )
         surfaces[name] = HarnessSurface(files, argv)
     return surfaces
 

@@ -638,8 +638,16 @@ class TaskService:
         task.starting_model = starting_model
         if starting_model is None and (harness is None or harness == selected_harness):
             task.starting_model = pair_model
+        selected_runtime = get_harness(task.harness)
+        if selected_runtime.requires_starting_model and not (task.starting_model or "").strip():
+            raise ValueError(
+                f"{selected_runtime.name} harness requires a selected "
+                f"{selected_runtime.field_label}; "
+                f"select a concrete {selected_runtime.field_label} or set the repository's "
+                "default_model"
+            )
         if workflow_name == "review" and (
-            governor is None or get_harness(task.harness).name == get_harness(governor.harness).name
+            governor is None or selected_runtime.name == get_harness(governor.harness).name
         ):
             raise ValueError("review task harness must differ from its governor task's harness")
         task.governor_task_id = governor_task_id

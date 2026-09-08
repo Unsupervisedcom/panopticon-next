@@ -169,6 +169,14 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(tmp_path: Path) -> N
     assert load_catalog_workflow("sample", root=root).title == "From the private checkout"
 
     (root / "settings.yml").write_text(
+        yaml.safe_dump({"sources": [{"uri": credentialed, "ref": 1}]})
+    )
+    with pytest.raises(InvalidCatalogWorkflow, match=r"ref.*string") as invalid_source:
+        load_catalog_workflow("sample", root=root)
+    assert "secret" not in str(invalid_source.value)
+    assert "REDACTED" in str(invalid_source.value)
+
+    (root / "settings.yml").write_text(
         yaml.safe_dump({"sources": [{"uri": uri, "ref": "v1.0.0", "path": "../escape"}]})
     )
     with pytest.raises(InvalidCatalogWorkflow, match="must stay inside"):
@@ -533,8 +541,14 @@ def test_an_empty_agents_root_skips_the_workflows_without_failing(
 
 # 2119: 4.4
 def test_a_broken_package_is_skipped_and_the_rest_register(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    diagnostics: list[str] = []
+    monkeypatch.setattr(
+        outfitter_catalog._log,
+        "warning",
+        lambda message, *args: diagnostics.append(message % args),
+    )
     root = _provide(tmp_path / "root", _package(id="good", title="Good"))
     fan_out = _package(
         id="broken",
@@ -575,9 +589,15 @@ def test_a_broken_package_is_skipped_and_the_rest_register(
     assert "outfitter-reserved-terminal" not in registry
     assert registry["outfitter-method-name"].tools() == ()
     assert "spike" in registry
-    assert "skipping catalog package 'broken'" in caplog.text
-    assert "skipping catalog package 'broken-projection'" in caplog.text
-    assert "skipping catalog package 'reserved-terminal'" in caplog.text
+    assert any("skipping catalog package 'broken'" in message for message in diagnostics)
+    assert any("skipping catalog package 'broken-projection'" in message for message in diagnostics)
+    assert any("skipping catalog package 'reserved-terminal'" in message for message in diagnostics)
+
+    diagnostics.clear()
+    (root / "settings.yml").write_bytes(b"\xff\xfe")
+    registry = discover_workflows(_home_workflows=tmp_path / "none")
+    assert "spike" in registry
+    assert any("outfitter catalog disabled" in message for message in diagnostics)
 
 
 # -- 5: skills and tools -------------------------------------------------------------
@@ -626,6 +646,7 @@ def test_forge_skills_follow_the_package_actions() -> None:
         "babysit-ci",
         "babysit-merge",
     ]
+    assert "plan.md" not in _workflow_for(current_engineer).skills()[0].instructions
 
 
 # 2119: 5.3

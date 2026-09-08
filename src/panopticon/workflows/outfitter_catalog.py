@@ -102,6 +102,16 @@ _PUSH_BRANCH_SKILL = Skill(
     "(`gh browse --no-browser --branch <branch>` prints it), then advance.",
 )
 
+_CATALOG_OPEN_PR_SKILL = Skill(
+    "open-pr",
+    "Open a draft PR for this task's branch.",
+    "1. Push the task's branch.\n"
+    "2. Open a **draft** PR against the repo's base branch with `gh pr create --draft`. "
+    "Title it for the change and summarize the completed catalog work and verification.\n"
+    "3. Call the `set_url` MCP tool with the PR URL returned by `gh pr create`, so the "
+    "dashboard's `p` hotkey opens it and the `url-recorded` responsibility can be resolved.",
+)
+
 
 class InvalidCatalogWorkflow(InvalidWorkflow):
     """Raised when a catalog package is unreadable, off-contract, or not projectable."""
@@ -123,7 +133,7 @@ def _settings_document(path: Path) -> Mapping[str, Any] | None:
         return None
     try:
         document = yaml.safe_load(path.read_text())
-    except (OSError, yaml.YAMLError) as error:
+    except (OSError, UnicodeError, yaml.YAMLError) as error:
         raise InvalidCatalogWorkflow(f"{path}: unreadable settings: {error}") from error
     if document is None:
         return {}
@@ -191,6 +201,14 @@ def _redact_uri_credentials(uri: str) -> str:
     return re.sub(r"(//)[^/@\s]+@", r"\1REDACTED@", uri)
 
 
+def _source_display(source: Mapping[str, Any]) -> str:
+    """Render one source for diagnostics without exposing embedded URI credentials."""
+    safe = dict(source)
+    if isinstance(uri := safe.get("uri"), str):
+        safe["uri"] = _redact_uri_credentials(uri)
+    return repr(safe)
+
+
 def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
     """Where one ``sources`` entry's payload lives on disk (Outfitter's checkout-cache layout).
 
@@ -205,12 +223,14 @@ def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
     github = source.get("github")
     if uri is None and github is None:  # a local source: `path` is the payload
         if not isinstance(subpath, str) or not subpath:
-            raise InvalidCatalogWorkflow(f"agents source {source!r}: a local source needs a `path`")
+            raise InvalidCatalogWorkflow(
+                f"agents source {_source_display(source)}: a local source needs a `path`"
+            )
         local = Path(subpath)
         return local if local.is_absolute() else root / local
     if uri is not None and github is not None:
         raise InvalidCatalogWorkflow(
-            f"agents source {source!r}: declare exactly one of `uri` or `github`"
+            f"agents source {_source_display(source)}: declare exactly one of `uri` or `github`"
         )
     if uri is not None:
         target = _require_str(uri, where="agents source: uri")
@@ -219,7 +239,9 @@ def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
         target = f"git+https://github.com/{shorthand}.git"
     ref = source.get("ref") or ""
     if not isinstance(ref, str):
-        raise InvalidCatalogWorkflow(f"agents source {source!r}: `ref` must be a string")
+        raise InvalidCatalogWorkflow(
+            f"agents source {_source_display(source)}: `ref` must be a string"
+        )
     cache_target = _redact_uri_credentials(target)
     key = base64.urlsafe_b64encode(f"{cache_target}#{ref}".encode()).decode().rstrip("=")
     checkout = _cache_directory(root) / "repos" / key
@@ -227,12 +249,13 @@ def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
         return checkout
     if Path(subpath).is_absolute():
         raise InvalidCatalogWorkflow(
-            f"agents source {source!r}: remote `path` must be relative to its checkout"
+            f"agents source {_source_display(source)}: remote `path` must be relative to its "
+            "checkout"
         )
     selected = Path(os.path.abspath(checkout / subpath))
     if not selected.is_relative_to(Path(os.path.abspath(checkout))):
         raise InvalidCatalogWorkflow(
-            f"agents source {source!r}: remote `path` must stay inside its checkout"
+            f"agents source {_source_display(source)}: remote `path` must stay inside its checkout"
         )
     return selected
 
@@ -668,6 +691,7 @@ class OutfitterCatalogWorkflow(GithubForgeWorkflow):
     def skills(self) -> Sequence[Skill]:
         """The forge skills the package's actions call for, in the order the actions occur."""
         available = {skill.name: skill for skill in super().skills()}
+        available[_CATALOG_OPEN_PR_SKILL.name] = _CATALOG_OPEN_PR_SKILL
         available[_PUSH_BRANCH_SKILL.name] = _PUSH_BRANCH_SKILL
         chosen: list[Skill] = []
         for node in self.catalog.nodes:
