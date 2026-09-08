@@ -272,6 +272,10 @@ async def test_create_review_task_with_different_harness_is_accepted(
 async def test_create_non_review_tasks_are_unaffected_by_review_validation(tmp_path: Path) -> None:
     svc = await make_service(tmp_path)
     await svc.update_repo("r1", {"enabled_workflows": ["github-peer-reviewed", "setup-repo"]})
+
+    review_helper = Spike()
+    review_helper.name = "review-helper"
+    svc._workflows[review_helper.name] = review_helper
     ungoverned = await svc.create_task("r1", "spike", harness="codex")
     ungoverned_default = await svc.create_task("r1", "spike")
 
@@ -296,6 +300,9 @@ async def test_create_non_review_tasks_are_unaffected_by_review_validation(tmp_p
     governed_different_from_claude = await svc.create_task(
         "r1", "spike", governor_task_id=claude_governor.id, harness="codex"
     )
+    near_miss = await svc.create_task(
+        "r1", "review-helper", governor_task_id=ungoverned.id, harness="claude"
+    )
 
     assert ungoverned_default.harness == "claude"
     assert governed_different_harness.governor_task_id == ungoverned.id
@@ -310,17 +317,31 @@ async def test_create_non_review_tasks_are_unaffected_by_review_validation(tmp_p
     assert governed_setup_repo.governor_task_id == ungoverned.id
     assert governed_same_as_claude.harness == claude_governor.harness
     assert governed_different_from_claude.harness != claude_governor.harness
+    assert near_miss.workflow == "review-helper"
+    assert near_miss.governor_task_id == ungoverned.id
+    assert near_miss.harness != ungoverned.harness
 
     for governor_harness in HARNESSES:
-        ungoverned_harness_task = await svc.create_task("r1", "spike", harness=governor_harness)
+        governor_model = (
+            "concrete-agent" if HARNESSES[governor_harness].requires_starting_model else None
+        )
+        ungoverned_harness_task = await svc.create_task(
+            "r1", "spike", harness=governor_harness, starting_model=governor_model
+        )
         assert ungoverned_harness_task.harness == governor_harness
-        harness_governor = await svc.create_task("r1", "spike", harness=governor_harness)
+        harness_governor = await svc.create_task(
+            "r1", "spike", harness=governor_harness, starting_model=governor_model
+        )
         for child_harness in HARNESSES:
+            child_model = (
+                "concrete-agent" if HARNESSES[child_harness].requires_starting_model else None
+            )
             child = await svc.create_task(
                 "r1",
                 "spike",
                 governor_task_id=harness_governor.id,
                 harness=child_harness,
+                starting_model=child_model,
             )
             assert child.harness == child_harness
 

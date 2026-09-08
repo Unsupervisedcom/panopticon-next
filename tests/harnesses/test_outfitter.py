@@ -119,6 +119,26 @@ def test_suggested_models_discovers_agents(tmp_path: Path) -> None:
     )
 
 
+def test_suggested_models_honors_the_configured_agents_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog = tmp_path / "catalog"
+    agent = catalog / "agents" / "resident-engineer"
+    agent.mkdir(parents=True)
+    (agent / "agent.md").write_text("---\ndescription: Work without supervision.\n---\n")
+    source = tmp_path / "community"
+    sourced_agent = source / "agents" / "resident-reviewer"
+    sourced_agent.mkdir(parents=True)
+    (sourced_agent / "agent.md").write_text("---\ndescription: Review independently.\n---\n")
+    (catalog / "settings.yml").write_text(f"sources:\n  - path: {source}\n")
+    monkeypatch.setenv("PANOPTICON_AGENTS", str(catalog))
+
+    assert HARNESS.suggested_models() == (
+        ("resident-engineer", "resident-engineer — Work without supervision."),
+        ("resident-reviewer", "resident-reviewer — Review independently."),
+    )
+
+
 def test_suggested_models_block_description_degrades_to_id_only(tmp_path: Path) -> None:
     data = tmp_path / "data-analyst"
     data.mkdir()

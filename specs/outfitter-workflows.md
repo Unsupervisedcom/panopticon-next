@@ -26,7 +26,7 @@ nested workflow is the operator's user-advanced sign-off gate. Its label in all 
    defaulting to `~/.agents` — never from files shipped inside this repository.
 2. Resolution MUST take the first `workflows/<id>/workflow.yaml` provided by the root itself and
    then by each `settings.yml` source in listed order.
-3. A remote source MUST resolve under the effective cache directory (`<root>/cache` by default,
+3. A remote source MUST resolve under the effective cache directory (`~/.agents/cache` by default,
    overridden by `cache_directory`) at a checkout keyed by the unpadded URL-safe base64 of
    `<credential-redacted-uri>#<ref>`, a `github` shorthand normalizing to
    `git+https://github.com/<owner>/<repo>.git`.

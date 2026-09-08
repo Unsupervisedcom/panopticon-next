@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-003.4.1--47deb656326f",
+  "requirementId": "REQ-003.4.1",
+  "hash": "47deb656326f",
+  "verdict": "pass",
+  "summary": "The test accepts ungoverned and governed non-review tasks, covers every registered harness pairing, and rejects prefix-based validation with a governed review-helper near miss.",
+  "timestamp": "2026-09-08T23:24:12.991Z"
+}

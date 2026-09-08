@@ -126,7 +126,9 @@ def test_the_root_layer_wins_then_sources_in_listed_order(tmp_path: Path) -> Non
 
 
 # 2119: 1.3
-def test_a_remote_source_resolves_at_its_checkout_cache_key(tmp_path: Path) -> None:
+def test_a_remote_source_resolves_at_its_checkout_cache_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # the exact directory name Outfitter creates for this source on a real machine
     expected_key = (
         "Z2l0K2h0dHBzOi8vZ2l0aHViLmNvbS9haS1vdXRmaXR0ZXIvY29tbXVuaXR5LXByb2ZpbGVzLmdpdCNlOWVl"
@@ -138,10 +140,12 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(tmp_path: Path) -> N
 
     root = tmp_path / "root"
     root.mkdir()
+    native_cache = tmp_path / "home" / ".agents" / "cache"
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
     (root / "settings.yml").write_text(
         yaml.safe_dump({"sources": [{"github": "ai-outfitter/community-profiles", "ref": ref}]})
     )
-    _provide(root / "cache" / "repos" / expected_key, _package(title="From the checkout"))
+    _provide(native_cache / "repos" / expected_key, _package(title="From the checkout"))
     assert load_catalog_workflow("sample", root=root).title == "From the checkout"
     # a `uri` source resolves the same way, and the key is unpadded url-safe base64
     uri = "git+https://example.test/¾.git"
@@ -150,7 +154,7 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(tmp_path: Path) -> N
     assert "+" in standard_key and "-" in key
     assert "=" not in key and "+" not in key and "/" not in key
     (root / "settings.yml").write_text(yaml.safe_dump({"sources": [{"uri": uri, "ref": "v1.0.0"}]}))
-    _provide(root / "cache" / "repos" / key, _package(title="From the uri checkout"))
+    _provide(native_cache / "repos" / key, _package(title="From the uri checkout"))
     assert load_catalog_workflow("sample", root=root).title == "From the uri checkout"
 
     credentialed = "git+https://user:secret@example.test/private.git"
@@ -167,6 +171,21 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(tmp_path: Path) -> N
     )
     _provide(custom_cache / "repos" / private_key, _package(title="From the private checkout"))
     assert load_catalog_workflow("sample", root=root).title == "From the private checkout"
+
+    assert (
+        outfitter_catalog._redact_uri_credentials(
+            "git+https://x-access-token:TOKEN@GitHub.com/org/repo.git"
+        )
+        == "git+https://REDACTED@github.com/org/repo.git"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials("https://tok@example.com:443/org/repo.git")
+        == "https://REDACTED@example.com/org/repo.git"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials("https://user:pass@example.com")
+        == "https://REDACTED@example.com/"
+    )
 
     (root / "settings.yml").write_text(
         yaml.safe_dump({"sources": [{"uri": credentialed, "ref": 1}]})
@@ -246,6 +265,10 @@ def test_a_package_no_layer_provides_is_unavailable(tmp_path: Path) -> None:
 
 # 2119: 1.6
 def test_an_unresolvable_nested_workflow_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(InvalidCatalogWorkflow, match=r"workflow.*valid Outfitter id"):
+        parse_catalog_workflow(
+            _package(nodes=[{"id": "review", "workflow": "../outside", "description": "Escape."}])
+        )
     root = _provide(
         tmp_path / "root",
         _package(nodes=[{"id": "review", "workflow": "adversarial-review", "description": "R."}]),
@@ -599,6 +622,19 @@ def test_a_broken_package_is_skipped_and_the_rest_register(
     assert "spike" in registry
     assert any("outfitter catalog disabled" in message for message in diagnostics)
 
+    diagnostics.clear()
+    original_is_file = Path.is_file
+
+    def inaccessible_settings(path: Path) -> bool:
+        if path == root / "settings.yml":
+            raise PermissionError("denied")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", inaccessible_settings)
+    registry = discover_workflows(_home_workflows=tmp_path / "none")
+    assert "spike" in registry
+    assert any("outfitter catalog disabled" in message for message in diagnostics)
+
 
 # -- 5: skills and tools -------------------------------------------------------------
 
@@ -668,6 +704,13 @@ def test_gh_tool_only_with_a_github_integration() -> None:
         )
     )
     assert [t.name for t in _workflow_for(mcp).tools()] == ["gh"]
+    named_github = parse_catalog_workflow(
+        _package(
+            integrations={"github": {"kind": "cli"}},
+            nodes=[{"id": "x", "action": "a", "description": "X.", "uses": ["github"]}],
+        )
+    )
+    assert [t.name for t in _workflow_for(named_github).tools()] == ["gh"]
     local_only = parse_catalog_workflow(
         _package(
             integrations={"git": {"kind": "transport"}},

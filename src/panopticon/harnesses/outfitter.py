@@ -25,6 +25,7 @@ Resume uses Outfitter's documented Pi state fallback at ``~/.pi/agent/sessions``
 
 from __future__ import annotations
 
+import os
 import re
 import textwrap
 from collections.abc import Mapping
@@ -88,32 +89,49 @@ class OutfitterHarness(Harness):
         """Discover profiles to suggest, from the operator's native Outfitter install.
 
         The dashboard calls this host-side, so the default root is where a real
-        Outfitter setup keeps agents (``~/.agents/agents``) — not the
+        Outfitter setup resolves its layered agent catalog — not the
         container's ``profile_sources`` mount, which the operator's host doesn't have.
         """
-        root = self.profile_sources_root or Path.home() / ".agents" / "agents"
-        try:
-            paths = sorted(path / "agent.md" for path in root.iterdir() if path.is_dir())
-        except OSError:
-            return ()
+        roots: tuple[Path, ...]
+        if self.profile_sources_root is not None:
+            roots = (self.profile_sources_root,)
+        else:
+            configured_root = os.environ.get("PANOPTICON_AGENTS")
+            catalog_root = Path(configured_root) if configured_root else Path.home() / ".agents"
+            try:
+                # Import lazily: the workflow catalog imports the harness registry while modules
+                # are discovered, but picker rendering happens only after discovery completes.
+                from panopticon.workflows.outfitter_catalog import (
+                    InvalidCatalogWorkflow,
+                    catalog_layers,
+                )
+
+                roots = tuple(layer / "agents" for layer in catalog_layers(catalog_root))
+            except (InvalidCatalogWorkflow, OSError):
+                return ()
 
         agents: dict[str, str] = {}
-        for path in paths:
+        for root in roots:
             try:
-                text = path.read_text()
-            except (OSError, UnicodeError):
+                paths = sorted(path / "agent.md" for path in root.iterdir() if path.is_dir())
+            except OSError:
                 continue
-            agent_slug = path.parent.name
-            if _top_level_scalar(text, "abstract") is True:
-                continue
-            description = _top_level_scalar(text, "description")
-            label = agent_slug
-            if isinstance(description, str):
-                summary = " ".join(description.split())
-                label = textwrap.shorten(
-                    f"{agent_slug} — {summary}", width=PROFILE_LABEL_WIDTH, placeholder="…"
-                )
-            agents[agent_slug] = label
+            for path in paths:
+                try:
+                    text = path.read_text()
+                except (OSError, UnicodeError):
+                    continue
+                agent_slug = path.parent.name
+                if agent_slug in agents or _top_level_scalar(text, "abstract") is True:
+                    continue
+                description = _top_level_scalar(text, "description")
+                label = agent_slug
+                if isinstance(description, str):
+                    summary = " ".join(description.split())
+                    label = textwrap.shorten(
+                        f"{agent_slug} — {summary}", width=PROFILE_LABEL_WIDTH, placeholder="…"
+                    )
+                agents[agent_slug] = label
         return tuple(sorted(agents.items()))
 
     def image_layer(self) -> str:

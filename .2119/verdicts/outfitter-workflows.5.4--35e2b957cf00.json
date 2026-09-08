@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.5.4--35e2b957cf00",
+  "requirementId": "outfitter-workflows.5.4",
+  "hash": "35e2b957cf00",
+  "verdict": "pass",
+  "summary": "A package using only a non-GitHub transport yields no tools, while CLI-, MCP-, and explicitly named GitHub integrations each yield exactly gh.",
+  "timestamp": "2026-09-08T23:19:19.719Z"
+}

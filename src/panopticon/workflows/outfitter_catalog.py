@@ -13,8 +13,8 @@ The packages are **resolved through the operator's Outfitter ``.agents`` root**
 (``$PANOPTICON_AGENTS``, default ``~/.agents``) at workflow instantiation: the root's own
 ``workflows/<id>/workflow.yaml`` first, then each direct
 ``sources`` entry of ``settings.yml`` (``settings.local.yml`` replaces the list wholesale) in
-listed order, a remote source living under Outfitter's effective cache directory (the root's
-``cache/`` by default) at ``repos/<base64url(redacted-uri#ref)>``. The pin is therefore the
+listed order, a remote source living under Outfitter's effective cache directory
+(``~/.agents/cache`` by default) at ``repos/<base64url(redacted-uri#ref)>``. The pin is therefore the
 source ref in the ``.agents``
 settings, and upgrading or enabling a workflow is an ``.agents`` change, not a Panopticon release.
 Nothing is vendored into this repository, and a host whose root enables no workflows registers no
@@ -61,6 +61,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, cast
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import yaml
 
@@ -129,8 +130,11 @@ def agents_root() -> Path:
 
 def _settings_document(path: Path) -> Mapping[str, Any] | None:
     """Read one optional Outfitter settings layer as a mapping."""
-    if not path.is_file():
-        return None
+    try:
+        if not path.is_file():
+            return None
+    except OSError as error:
+        raise InvalidCatalogWorkflow(f"{path}: cannot inspect settings: {error}") from error
     try:
         document = yaml.safe_load(path.read_text())
     except (OSError, UnicodeError, yaml.YAMLError) as error:
@@ -193,12 +197,32 @@ def _cache_directory(root: Path) -> Path:
         )
         path = Path(configured)
         return path if path.is_absolute() else root / path
-    return root / "cache"
+    return Path.home() / ".agents" / "cache"
 
 
 def _redact_uri_credentials(uri: str) -> str:
     """Mirror Outfitter's persisted cache-key redaction for credentialed URIs."""
-    return re.sub(r"(//)[^/@\s]+@", r"\1REDACTED@", uri)
+    prefix = "git+" if uri.startswith("git+") else ""
+    normalized = uri[len(prefix) :]
+    try:
+        parsed = urlsplit(normalized)
+        if parsed.username is None and parsed.password is None:
+            return uri
+        hostname = parsed.hostname
+        if hostname is None:
+            raise ValueError("credentialed URI has no hostname")
+        hostname = hostname.encode("idna").decode().lower()
+        if ":" in hostname:
+            hostname = f"[{hostname}]"
+        port = parsed.port
+        if port is not None and port != {"http": 80, "https": 443}.get(parsed.scheme):
+            hostname = f"{hostname}:{port}"
+        path = quote(parsed.path or "/", safe="/:@-._~!$&'()*+,;=%")
+        query = quote(parsed.query, safe="!$&'()*+,-./:;=?@_%~")
+        fragment = quote(parsed.fragment, safe="!$&'()*+,-./:;=?@_%~")
+        return prefix + urlunsplit((parsed.scheme, f"REDACTED@{hostname}", path, query, fragment))
+    except (UnicodeError, ValueError):
+        return re.sub(r"(//)[^/@\s]+@", r"\1REDACTED@", uri)
 
 
 def _source_display(source: Mapping[str, Any]) -> str:
@@ -213,7 +237,8 @@ def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
     """Where one ``sources`` entry's payload lives on disk (Outfitter's checkout-cache layout).
 
     A remote source (``github``/``uri`` + optional ``ref``) is cached by Outfitter under
-    ``<root>/cache/repos/`` keyed by the unpadded URL-safe base64 of ``<uri>#<ref>``, a
+    ``~/.agents/cache/repos/`` by default, keyed by the unpadded URL-safe base64 of
+    ``<uri>#<ref>``, a
     ``github`` shorthand normalizing to ``git+https://github.com/<owner>/<repo>.git``. A local
     source's ``path`` (absolute, or relative to the root) is the payload itself. An optional
     ``path`` on a remote source selects a subdirectory of the checkout.
@@ -403,7 +428,10 @@ def parse_catalog_workflow(
         if node_id in nodes:
             raise InvalidCatalogWorkflow(f"{where}: duplicate node id {node_id!r}")
         action = _optional_str(spec.get("action"), where=f"{where}.action")
-        nested = _optional_str(spec.get("workflow"), where=f"{where}.workflow")
+        nested_raw = _optional_str(spec.get("workflow"), where=f"{where}.workflow")
+        nested = (
+            _require_slug(nested_raw, where=f"{where}.workflow") if nested_raw is not None else None
+        )
         if (action is None) == (nested is None):
             raise InvalidCatalogWorkflow(
                 f"{where}: node {node_id!r} must have exactly one of action / workflow"
@@ -703,7 +731,7 @@ class OutfitterCatalogWorkflow(GithubForgeWorkflow):
     def tools(self) -> Sequence[Tool]:
         """``gh`` whenever the package reaches GitHub — as a CLI or through the GitHub MCP server."""
         github = any(
-            integration.id == "gh"
+            integration.id in {"gh", "github"}
             or (integration.server is not None and "github" in integration.server)
             for integration in self.catalog.integrations.values()
         )

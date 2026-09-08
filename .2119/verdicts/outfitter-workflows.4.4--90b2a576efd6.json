@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.4--90b2a576efd6",
+  "requirementId": "outfitter-workflows.4.4",
+  "hash": "90b2a576efd6",
+  "verdict": "pass",
+  "summary": "Enabled validation and projection failures are omitted with per-package diagnostics while two valid catalog packages and spike survive; malformed and inaccessible settings also preserve built-ins with diagnostics.",
+  "timestamp": "2026-09-08T23:19:18.278Z"
+}

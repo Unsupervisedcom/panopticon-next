@@ -21,7 +21,7 @@ The packages are resolved through the operator's Outfitter **`.agents` root**
 (`$PANOPTICON_AGENTS`, default `~/.agents`) when the service builds its workflow registry — the
 effective direct graph used by these catalogs: the root's own `workflows/` directory first, then each
 `sources` entry of `settings.yml` (`settings.local.yml` replaces the list wholesale) in listed
-order, a remote source under the effective cache directory (`<root>/cache` by default, or
+order, a remote source under the effective cache directory (`~/.agents/cache` by default, or
 `cache_directory`) keyed exactly as Outfitter keys it. Nothing is vendored:
 the pin and `workflows` enablement live in `.agents` settings, so upgrading or enabling the catalog
 is an `.agents` change, not a Panopticon release. On a host whose settings enable no roots,

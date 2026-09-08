@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.3--2ef4a88f8709",
+  "requirementId": "outfitter-workflows.1.3",
+  "hash": "2ef4a88f8709",
+  "verdict": "pass",
+  "summary": "The only default checkouts live under patched ~/.agents/cache rather than the package root; custom override, GitHub normalization, URL-safe unpadded keys, and normalized credential redaction are independently exercised.",
+  "timestamp": "2026-09-08T23:06:03.903Z"
+}

@@ -106,7 +106,7 @@ def discover_workflows(
                     unavailable,
                 )
         provider = getattr(module, "workflow_provider", None)
-        if callable(provider):
+        if callable(provider) and getattr(provider, "__module__", None) == module.__name__:
             for workflow in provider():  # the provider skips/raises per its own contract
                 yield workflow, f"{module.__name__}.workflow_provider"
 
