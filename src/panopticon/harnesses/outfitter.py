@@ -1,8 +1,8 @@
 """The Outfitter harness — ``@ai-outfitter/outfitter`` wrapping pi.
 
 Verified from Outfitter's published docs and TypeScript source: it requires Node
-``>=22.19.0``, agent CLIs are installed separately, and ``outfitter run --profile <id>
---agent pi -- <args>`` passes the remaining arguments to pi. Outfitter profiles own provider,
+``>=22.19.0``, agent CLIs are installed separately, and ``outfitter run <id>
+--harness pi -- <args>`` passes the remaining arguments to pi. Outfitter agents own provider,
 model, thinking, skills, extensions, and prompts, so Panopticon deliberately interprets a task's
 ``starting_model`` as the Outfitter **profile id**, not as a model name.
 
@@ -11,18 +11,16 @@ via pi's ``--append-system-prompt``, :data:`panopticon.harnesses.pi.TURN_EXTENSI
 ``--extension``, and rendered workflow skills via repeated ``--skill``. Core operations retain
 pi's REST instructions because neither pi nor Outfitter provides an MCP client.
 
-Bootstrap keeps ``~/.outfitter/profile_sources`` as the first local source. An operator can also
-point the repo's ``credential_dir/outfitter/profiles`` at their profiles; the shared read-write
-credential mount makes them available to every task container, propagates edits between tasks,
-and persists profiles created in-container.
+Bootstrap keeps ``~/.outfitter/profile_sources`` as the first local catalog source and writes the
+modern settings file at ``~/.agents/settings.yml``. An operator can also point the repo's
+``credential_dir/outfitter/.agents`` at a catalog payload; the shared read-write credential mount
+makes it available to every task container.
 
 Auth is pi auth, not Outfitter auth. Presence checking uses pi's provider environment variables,
 while credential-dir linking targets Outfitter's native pi-state fallback; provider validity
 remains pi's concern.
 
-Outfitter 0.11.0 fixed the width-unsafe startup header that blocked 0.10.0 in detached tmux. The
-registered adapter passed the original narrow-pane live smoke with inherited stdio. Resume uses
-Outfitter's documented default state symlink to ``~/.pi/agent/sessions``.
+Resume uses Outfitter's documented Pi state fallback at ``~/.pi/agent/sessions``.
 """
 
 from __future__ import annotations
@@ -45,13 +43,13 @@ from panopticon.harnesses.pi import (
     operation_instructions,
 )
 
-OUTFITTER_VERSION = "0.11.0"
+OUTFITTER_VERSION = "1.16.0"
 SETTINGS_FILE = "settings.yml"
 PROFILE_SOURCES_DIR = "profile_sources"
 WORKFLOW_OVERVIEW_FILE = "workflow-overview.md"
 EXTENSION_FILE = "turn.ts"
 
-SETTINGS = "profile_sources:\n  - path: ./profile_sources\n"
+SETTINGS = "default_harness: pi\nsources:\n  - path: ../.outfitter/profile_sources\n"
 PI_NATIVE_CONFIG_DIR = Path(".pi") / "agent"
 PROFILE_LABEL_WIDTH: Final = 80
 
@@ -89,13 +87,12 @@ class OutfitterHarness(Harness):
         """Discover profiles to suggest, from the operator's native Outfitter install.
 
         The dashboard calls this host-side, so the default root is where a real
-        Outfitter setup keeps profiles (``~/.outfitter/profiles``) — not the
+        Outfitter setup keeps agents (``~/.agents/agents``) — not the
         container's ``profile_sources`` mount, which the operator's host doesn't have.
         """
-        root = self.profile_sources_root or self.config_dir(Path.home()) / "profiles"
+        root = self.profile_sources_root or Path.home() / ".agents" / "agents"
         try:
-            paths = sorted(root.glob("*.yml")) + sorted(root.glob("*.yaml"))
-            paths += sorted(path / "profile.yml" for path in root.iterdir() if path.is_dir())
+            paths = sorted(path / "agent.md" for path in root.iterdir() if path.is_dir())
         except OSError:
             return ()
 
@@ -106,9 +103,9 @@ class OutfitterHarness(Harness):
             except (OSError, UnicodeError):
                 continue
             profile_id = _top_level_scalar(text, "id")
-            if profile_id is None and path.parent == root:
-                profile_id = path.stem
-            if not isinstance(profile_id, str) or _top_level_scalar(text, "template") is True:
+            if profile_id is None:
+                profile_id = path.parent.name
+            if not isinstance(profile_id, str) or _top_level_scalar(text, "abstract") is True:
                 continue
             description = _top_level_scalar(text, "description")
             label = profile_id
@@ -171,11 +168,13 @@ class OutfitterHarness(Harness):
         settings = SETTINGS
         credentials = ctx.environ.get("PANOPTICON_CREDENTIALS")
         credential_profiles = (
-            Path(credentials).resolve() / "outfitter" / "profiles" if credentials else None
+            Path(credentials).resolve() / "outfitter" / ".agents" if credentials else None
         )
         if credential_profiles is not None and credential_profiles.is_dir():
             settings += f"  - path: {credential_profiles}\n"
-        (config_dir / SETTINGS_FILE).write_text(settings)
+        agents_dir = ctx.home / ".agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        (agents_dir / SETTINGS_FILE).write_text(settings)
         (config_dir / WORKFLOW_OVERVIEW_FILE).write_text(ctx.overview)
         (config_dir / EXTENSION_FILE).write_text(TURN_EXTENSION)
 
@@ -212,15 +211,16 @@ class OutfitterHarness(Harness):
         config_dir = self.config_dir(ctx.home)
         argv = ["outfitter", "run"]
         if ctx.starting_model:
-            argv += ["--profile", ctx.starting_model]
-        argv += ["--agent", "pi", "--"]
+            argv.append(ctx.starting_model)
+        argv += ["--harness", "pi", "--strict"]
 
         extension = config_dir / EXTENSION_FILE
+        overview = config_dir / WORKFLOW_OVERVIEW_FILE
+        if overview.exists() and overview.read_text().strip():
+            argv += ["--append-prompt", str(overview)]
+        argv.append("--")
         if extension.exists():
             argv += ["--extension", str(extension)]
-        overview = config_dir / WORKFLOW_OVERVIEW_FILE
-        if overview.exists() and (content := overview.read_text()).strip():
-            argv += ["--append-system-prompt", content]
         skills = ctx.home / ".agents" / "skills"
         if skills.exists():
             for skill in sorted(path for path in skills.iterdir() if path.is_dir()):

@@ -1,9 +1,7 @@
-"""Golden rendering tests for the Outfitter adapter (pinned 0.11.0).
+"""Golden rendering tests for the Outfitter adapter (pinned 1.16.0).
 
-The install requirements, ``run --profile --agent pi --`` pass-through surface, profile-source
-settings shape, and pi state fallback come from Outfitter's published docs/source. Live npm/tmux
-smoke reached pi; 0.10.0's width-unsafe header (fixed upstream in 0.11.0) blocked registration; registry tests keep
-this staged adapter unavailable until upstream fixes it.
+The install requirements, ``run <agent> --harness pi --`` pass-through surface, catalog-source
+settings shape, and Pi state fallback come from Outfitter's published docs/source.
 """
 
 from __future__ import annotations
@@ -51,8 +49,8 @@ def _bootstrap_ctx(home: Path, **kwargs: object) -> BootstrapContext:
 def test_bootstrap_pins_every_outfitter_artifact(tmp_path: Path) -> None:
     HARNESS.bootstrap(_bootstrap_ctx(tmp_path))
     config = tmp_path / ".outfitter"
-    assert (config / SETTINGS_FILE).read_text() == SETTINGS
-    assert SETTINGS == "profile_sources:\n  - path: ./profile_sources\n"
+    assert (tmp_path / ".agents" / SETTINGS_FILE).read_text() == SETTINGS
+    assert SETTINGS == "default_harness: pi\nsources:\n  - path: ../.outfitter/profile_sources\n"
     assert (config / PROFILE_SOURCES_DIR).is_dir()
     assert (config / WORKFLOW_OVERVIEW_FILE).read_text() == "# the workflow map"
     assert (config / EXTENSION_FILE).read_text() == TURN_EXTENSION
@@ -80,29 +78,33 @@ def test_bootstrap_adds_existing_credential_profile_source(tmp_path: Path) -> No
     env = {"PANOPTICON_CREDENTIALS": str(credentials)}
 
     HARNESS.bootstrap(_bootstrap_ctx(tmp_path, environ=env))
-    assert (tmp_path / ".outfitter" / SETTINGS_FILE).read_text() == SETTINGS
+    assert (tmp_path / ".agents" / SETTINGS_FILE).read_text() == SETTINGS
 
-    profiles = credentials / "outfitter" / "profiles"
+    profiles = credentials / "outfitter" / ".agents"
     profiles.mkdir(parents=True)
     HARNESS.bootstrap(_bootstrap_ctx(tmp_path, environ=env))
-    assert (tmp_path / ".outfitter" / SETTINGS_FILE).read_text() == (
+    assert (tmp_path / ".agents" / SETTINGS_FILE).read_text() == (
         SETTINGS + f"  - path: {profiles}\n"
     )
 
 
 def test_suggested_models_discovers_flat_and_directory_profiles(tmp_path: Path) -> None:
-    (tmp_path / "founder.yml").write_text(
-        "label: Founder\ndescription: Founder-operator defaults for product and engineering.\n"
+    founder = tmp_path / "founder"
+    founder.mkdir()
+    (founder / "agent.md").write_text(
+        "---\nlabel: Founder\ndescription: Founder-operator defaults for product and engineering.\n---\n"
     )
-    (tmp_path / "data.yaml").write_text(
-        'id: "data-analyst"\nlabel: Data Analyst\n'
-        'description: "Analyze product data with concise evidence."\n'
+    data = tmp_path / "data-analyst"
+    data.mkdir()
+    (data / "agent.md").write_text(
+        '---\nname: "data-analyst"\nlabel: Data Analyst\n'
+        'description: "Analyze product data with concise evidence."\n---\n'
     )
     directory = tmp_path / "engineering"
     directory.mkdir()
-    (directory / "profile.yml").write_text(
-        "id: 'engineering-default'\nlabel: Engineering Default\n"
-        "description: 'Review, build, and ship.'\n"
+    (directory / "agent.md").write_text(
+        "---\nname: 'engineering-default'\nlabel: Engineering Default\n"
+        "description: 'Review, build, and ship.'\n---\n"
     )
 
     harness = OutfitterHarness(profile_sources_root=tmp_path)
@@ -116,8 +118,10 @@ def test_suggested_models_discovers_flat_and_directory_profiles(tmp_path: Path) 
 
 
 def test_suggested_models_block_description_degrades_to_id_only(tmp_path: Path) -> None:
-    (tmp_path / "data.yml").write_text(
-        "id: data-analyst\ndescription: >-\n  Analyze product data with\n  concise evidence.\n"
+    data = tmp_path / "data-analyst"
+    data.mkdir()
+    (data / "agent.md").write_text(
+        "---\nname: data-analyst\ndescription: >-\n  Analyze product data with\n  concise evidence.\n---\n"
     )
 
     assert OutfitterHarness(profile_sources_root=tmp_path).suggested_models() == (
@@ -126,14 +130,20 @@ def test_suggested_models_block_description_degrades_to_id_only(tmp_path: Path) 
 
 
 def test_suggested_models_skips_bad_and_template_profiles_and_truncates(tmp_path: Path) -> None:
-    (tmp_path / "template.yml").write_text(
-        "id: base\ntemplate: TrUe\ndescription: Not directly launchable.\n"
+    template = tmp_path / "base"
+    template.mkdir()
+    (template / "agent.md").write_text(
+        "---\nname: base\nabstract: TrUe\ndescription: Not directly launchable.\n---\n"
     )
     missing_id = tmp_path / "missing-id"
     missing_id.mkdir()
-    (missing_id / "profile.yml").write_text("description: Cannot infer a directory id.\n")
-    (tmp_path / "long.yml").write_text("description: " + "word " * 30)
-    (tmp_path / "unreadable.yml").write_bytes(b"\xff")
+    (missing_id / "agent.md").write_text("---\ndescription: Infer the directory id.\n---\n")
+    long = tmp_path / "long"
+    long.mkdir()
+    (long / "agent.md").write_text("---\ndescription: " + "word " * 30 + "\n---\n")
+    unreadable = tmp_path / "unreadable"
+    unreadable.mkdir()
+    (unreadable / "agent.md").write_bytes(b"\xff")
 
     suggestions = OutfitterHarness(profile_sources_root=tmp_path).suggested_models()
 
@@ -155,15 +165,15 @@ def test_argv_passes_profile_and_panopticon_controls_through_to_pi(tmp_path: Pat
     ) == [
         "outfitter",
         "run",
-        "--profile",
         "engineering-default",
-        "--agent",
+        "--harness",
         "pi",
+        "--strict",
+        "--append-prompt",
+        str(tmp_path / ".outfitter" / WORKFLOW_OVERVIEW_FILE),
         "--",
         "--extension",
         str(tmp_path / ".outfitter" / EXTENSION_FILE),
-        "--append-system-prompt",
-        "# the workflow map",
         "--skill",
         str(tmp_path / ".agents" / "skills" / "advance"),
         "--skill",
@@ -177,10 +187,10 @@ def test_starting_model_is_a_profile_id_not_a_pi_model(tmp_path: Path) -> None:
     assert argv == [
         "outfitter",
         "run",
-        "--profile",
         "local-qwen-high",
-        "--agent",
+        "--harness",
         "pi",
+        "--strict",
         "--",
     ]
     assert "--model" not in argv
@@ -194,8 +204,9 @@ def test_blank_overview_and_absent_skills_still_render_required_turn_extension(
     assert HARNESS.argv(_ctx(tmp_path)) == [
         "outfitter",
         "run",
-        "--agent",
+        "--harness",
         "pi",
+        "--strict",
         "--",
         "--extension",
         str(tmp_path / ".outfitter" / EXTENSION_FILE),
@@ -216,10 +227,10 @@ def test_resume_uses_pi_native_state_fallback_and_interrupt_prompt(tmp_path: Pat
     ) == [
         "outfitter",
         "run",
-        "--profile",
         "ignored-on-resume",
-        "--agent",
+        "--harness",
         "pi",
+        "--strict",
         "--",
         "--continue",
         INTERRUPT_PROMPT,
@@ -263,7 +274,7 @@ def test_image_layer_installs_all_runtime_components_at_pinned_versions() -> Non
     layer = HARNESS.image_layer()
     assert NODE_VERSION == "22.19.0"
     assert PI_VERSION == "0.80.3"
-    assert OUTFITTER_VERSION == "0.11.0"
+    assert OUTFITTER_VERSION == "1.16.0"
     assert layer == (
         "RUN set -eux; \\\n"
         '    arch="$(uname -m)"; \\\n'
