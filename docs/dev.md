@@ -77,13 +77,14 @@ Two interactive launchers mirror a clean user's first run without touching the c
 Panopticon configuration:
 
 ```sh
-bin/dev-tmp-home /path/to/repo                 # build and install this checkout
+bin/dev-tmp-home                               # build and exercise this worktree
 bin/prod-tmp-home latest /path/to/repo         # install the latest PyPI release
 bin/prod-tmp-home 0.2.8 /path/to/repo          # install one published version
 ```
 
 Both commands create isolated `HOME`, XDG, and pipx directories, install a wheel, and run
-`panopticon quickstart` interactively from the target repository. They unset inherited
+`panopticon quickstart` interactively. The development launcher always builds and runs from the
+worktree containing the script; the production launcher runs from its target repository. They unset inherited
 Panopticon and harness-auth variables so the setup prompts prove what the temporary home contains;
 `GH_TOKEN` remains available for GitHub repository setup.
 

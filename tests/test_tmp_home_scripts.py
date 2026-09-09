@@ -99,9 +99,9 @@ def test_launchers_are_executable_bash_scripts() -> None:
 
 
 def test_dev_tmp_home_builds_the_checkout_and_copies_codex_auth(tmp_path: Path) -> None:
-    env, target, trace = _fake_environment(tmp_path)
+    env, _, trace = _fake_environment(tmp_path)
     completed = subprocess.run(
-        [str(DEV), str(target)],
+        [str(DEV)],
         env=env,
         cwd=ROOT,
         capture_output=True,
@@ -118,10 +118,25 @@ def test_dev_tmp_home_builds_the_checkout_and_copies_codex_auth(tmp_path: Path) 
     assert "uv:build --wheel --out-dir" in observed
     assert "pipx:install --force" in observed
     assert (
-        f"panopticon:quickstart|home={home}|config=unset|codex_key=unset|cwd={target}|auth=yes"
+        f"panopticon:quickstart|home={home}|config=unset|codex_key=unset|cwd={ROOT}|auth=yes"
         in observed
     )
     assert "panopticon:stop" in observed
+
+
+def test_dev_tmp_home_rejects_a_target_repository_argument(tmp_path: Path) -> None:
+    env, target, trace = _fake_environment(tmp_path)
+    completed = subprocess.run(
+        [str(DEV), str(target)],
+        env=env,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "usage: bin/dev-tmp-home" in completed.stderr
+    assert not trace.exists()
 
 
 def test_prod_tmp_home_installs_latest_without_copying_codex_auth(tmp_path: Path) -> None:
@@ -147,10 +162,10 @@ def test_prod_tmp_home_installs_latest_without_copying_codex_auth(tmp_path: Path
 
 
 def test_tmp_home_refuses_an_existing_panopticon_tmux_server(tmp_path: Path) -> None:
-    env, target, trace = _fake_environment(tmp_path)
+    env, _, trace = _fake_environment(tmp_path)
     env["FAKE_TMUX_STATUS"] = "0"
     completed = subprocess.run(
-        [str(DEV), str(target)],
+        [str(DEV)],
         env=env,
         cwd=ROOT,
         capture_output=True,

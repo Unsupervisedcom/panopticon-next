@@ -7,9 +7,11 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=_tmp-home-common
 source "$SCRIPT_DIR/_tmp-home-common"
 
+[ "$#" -eq 0 ] || tmp_home_die "usage: bin/dev-tmp-home"
+
 tmp_home_require uv
 tmp_home_preflight
-tmp_home_init dev "${1:-$PWD}"
+tmp_home_init dev "$REPO_ROOT"
 trap tmp_home_cleanup EXIT
 
 tmp_home_copy_codex_auth "${PANOPTICON_DEV_TMP_HOME_AUTH:-1}"
@@ -27,7 +29,7 @@ export PANOPTICON_BIN
 [ -x "$PANOPTICON_BIN" ] || tmp_home_die "pipx did not install the panopticon executable"
 
 printf 'Panopticon dev HOME: %s\n' "$TMP_HOME"
-printf 'Target repository: %s\n' "$TARGET_REPO"
+printf 'Worktree under test: %s\n' "$TARGET_REPO"
 tmp_home_run "$PANOPTICON_BIN" --version
 cd -- "$TARGET_REPO"
 tmp_home_run "$PANOPTICON_BIN" quickstart
