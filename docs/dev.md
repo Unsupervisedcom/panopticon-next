@@ -97,7 +97,9 @@ The development launcher can run beside an existing Panopticon installation. It 
 tmux socket directory, an automatically allocated task-service port, and a Docker runtime label
 that scopes cleanup to its own task containers. It also carries the active Docker context's daemon
 endpoint into the clean home (needed by context-based runtimes such as OrbStack) without copying
-the user's Docker configuration. The production launcher retains the collision
+the user's Docker configuration. Temporary paths are canonicalized so macOS's `/var` →
+`/private/var` symlink does not conflict with Panopticon's symlink-safe state/log traversal. The
+production launcher retains the collision
 guard because an older installed release does not yet understand that label. Quit the temporary
 dashboard normally; the launcher then runs the temporary installation's `panopticon stop` and
 deletes its home. Set `PANOPTICON_TMP_HOME_KEEP=1` to retain the files for inspection after

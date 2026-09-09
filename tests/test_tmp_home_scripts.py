@@ -119,6 +119,7 @@ def test_dev_tmp_home_builds_the_checkout_and_copies_codex_auth(tmp_path: Path) 
     output = completed.stdout
     home = Path(output.partition("Panopticon dev HOME: ")[2].splitlines()[0])
     assert home.is_dir()
+    assert home == home.resolve()
     assert (home / ".codex" / "auth.json").read_text() == '{"auth_mode":"chatgpt"}'
     assert stat.S_IMODE((home / ".codex" / "auth.json").stat().st_mode) == 0o600
     observed = trace.read_text()

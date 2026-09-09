@@ -47,6 +47,10 @@ tmp_home_init() {
   TARGET_REPO=$(cd -- "$_pth_target" && pwd)
   ORIGINAL_HOME=${HOME:-}
   TMP_HOME=$(mktemp -d -t "panopticon-${_pth_kind}-home.XXXXXX")
+  # macOS commonly returns /var/folders/... even though /var is a symlink to /private/var.
+  # Panopticon's hardened private-directory traversal intentionally rejects symlink components,
+  # so expose the physical path as HOME and every XDG root from the outset.
+  TMP_HOME=$(cd -- "$TMP_HOME" && pwd -P)
   PIPX_HOME="$TMP_HOME/pipx"
   PIPX_BIN_DIR="$TMP_HOME/bin"
   TMP_TMUX_DIR="$TMP_HOME/tmux"
