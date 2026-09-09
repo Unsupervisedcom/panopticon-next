@@ -6,6 +6,8 @@ settings shape, and Pi state fallback come from Outfitter's published docs/sourc
 
 from __future__ import annotations
 
+import base64
+import json
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,7 @@ from panopticon.core.models import Skill
 from panopticon.harnesses import INTERRUPT_PROMPT, BootstrapContext, LaunchContext
 from panopticon.harnesses.outfitter import (
     EXTENSION_FILE,
+    INJECTED_SKILLS_ROOT,
     NODE_VERSION,
     OUTFITTER_VERSION,
     PI_NATIVE_CONFIG_DIR,
@@ -27,6 +30,10 @@ from panopticon.harnesses.outfitter import (
 )
 
 HARNESS = OutfitterHarness()
+
+
+def _injected_skill(home: Path, name: str) -> Path:
+    return home / ".outfitter" / INJECTED_SKILLS_ROOT / name
 
 
 def _ctx(home: Path, **kwargs: str | None) -> LaunchContext:
@@ -57,13 +64,13 @@ def test_bootstrap_pins_every_outfitter_artifact(tmp_path: Path) -> None:
     assert (config / WORKFLOW_OVERVIEW_FILE).read_text() == "# the workflow map"
     assert (config / EXTENSION_FILE).read_text() == TURN_EXTENSION
 
-    skill = (tmp_path / ".agents" / "skills" / "open-pr" / "SKILL.md").read_text()
+    skill = (_injected_skill(tmp_path, "open-pr") / "SKILL.md").read_text()
     assert skill == (
         "---\nname: open-pr\ndescription: Open the PR.\n---\n"
         'gh pr create\n\nThis is task `t1` — pass `task_id="t1"` to every panopticon MCP '
         "tool you call here.\n"
     )
-    operation = (tmp_path / ".agents" / "skills" / "advance" / "SKILL.md").read_text()
+    operation = (_injected_skill(tmp_path, "advance") / "SKILL.md").read_text()
     assert operation == (
         "---\nname: advance\ndescription: Apply the workflow's 'advance' operation.\n---\n"
         "Apply this workflow's `advance` operation — it moves the task to **COMPLETE**. "
@@ -73,9 +80,16 @@ def test_bootstrap_pins_every_outfitter_artifact(tmp_path: Path) -> None:
         "directly. It's gated on the current state's responsibilities and starts a new turn.\n\n"
         'This is task `t1` — pass `task_id="t1"` to every panopticon MCP tool you call here.\n'
     )
+    responsibility = (_injected_skill(tmp_path, "resolve-responsibility") / "SKILL.md").read_text()
+    assert "POST" in responsibility
+    assert "/tasks/t1/responsibilities" in responsibility
+    assert '"status": sys.argv[2]' in responsibility
+    assert "Do not call `advance`" in responsibility
 
 
-def test_bootstrap_adds_existing_credential_profile_source(tmp_path: Path) -> None:
+def test_bootstrap_materializes_existing_credential_catalog_as_global_resources(
+    tmp_path: Path,
+) -> None:
     credentials = tmp_path / "credentials"
     env = {"PANOPTICON_CREDENTIALS": str(credentials)}
 
@@ -83,11 +97,72 @@ def test_bootstrap_adds_existing_credential_profile_source(tmp_path: Path) -> No
     assert (tmp_path / ".agents" / SETTINGS_FILE).read_text() == SETTINGS
 
     profiles = credentials / "outfitter" / ".agents"
-    profiles.mkdir(parents=True)
-    HARNESS.bootstrap(_bootstrap_ctx(tmp_path, environ=env))
-    assert (tmp_path / ".agents" / SETTINGS_FILE).read_text() == (
-        SETTINGS + f"  - path: {profiles}\n"
+    agent = profiles / "agents" / "vega"
+    agent.mkdir(parents=True)
+    (agent / "agent.md").write_text("---\nname: vega\n---\n")
+    source_uri = "git+https://github.com/ai-outfitter/community-profiles.git"
+    source_ref = "v1.9.0"
+    cache_key = base64.urlsafe_b64encode(f"{source_uri}#{source_ref}".encode()).decode().rstrip("=")
+    source_agent = profiles / "cache" / "repos" / cache_key / "agents" / "engineer"
+    source_agent.mkdir(parents=True)
+    (source_agent / "agent.md").write_text("---\nname: engineer\n---\n")
+    source_skill = profiles / "cache" / "repos" / cache_key / "skills" / "review" / "SKILL.md"
+    source_skill.parent.mkdir(parents=True)
+    source_skill.write_text("---\nname: review\n---\nSource review.\n")
+    source_root = profiles / "cache" / "repos" / cache_key
+    (source_root / "mcp.json").write_text(
+        '{"mcpServers": {"github-hosted": {"url": "https://example.test/mcp"}}}\n'
     )
+    (source_root / "models.json").write_text(
+        '{"providers": {"openai": {"api": "openai-responses", "baseUrl": '
+        '"https://example.test/v1", "models": [{"id": "test"}]}}}\n'
+    )
+    skill = profiles / "skills" / "review" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("---\nname: review\n---\nReview.\n")
+    (profiles / "mcp.json").write_text('{"mcpServers": {"github": {}}}\n')
+    (profiles / "models.json").write_text('{"providers": {"spark": {}}}\n')
+    prompt = profiles / "prompts" / "resident.md"
+    prompt.parent.mkdir()
+    prompt.write_text("Resident context.\n")
+    (profiles / "settings.yml").write_text(
+        f"sources: [{{github: ai-outfitter/community-profiles, ref: {source_ref}}}]\n"
+    )
+    (profiles / "settings.local.yml").write_text("telemetry: {enabled: false}\n")
+    (profiles / "cache" / "large").write_text("not copied")
+    git_metadata = profiles / ".git"
+    git_metadata.mkdir()
+    (git_metadata / "config").write_text("not copied")
+    HARNESS.bootstrap(_bootstrap_ctx(tmp_path, environ=env))
+    global_root = tmp_path / ".agents"
+    assert (global_root / SETTINGS_FILE).read_text() == SETTINGS
+    assert (global_root / "agents" / "vega" / "agent.md").read_text() == ("---\nname: vega\n---\n")
+    assert (global_root / "agents" / "engineer" / "agent.md").is_file()
+    assert (global_root / "skills" / "review" / "SKILL.md").read_text().endswith("Review.\n")
+    assert (global_root / "prompts" / "resident.md").read_text() == "Resident context.\n"
+    assert not (global_root / "cache").exists()
+    assert not (global_root / ".git").exists()
+    assert not (global_root / "settings.local.yml").exists()
+    mcp = json.loads((global_root / "mcp.json").read_text())
+    assert set(mcp["mcpServers"]) == {"github", "github-hosted"}
+    models = json.loads((global_root / "models.json").read_text())
+    assert set(models["providers"]) == {"openai", "spark"}
+    argv = HARNESS.argv(_ctx(tmp_path, starting_model="vega"))
+    assert str(global_root / "skills" / "review") not in argv
+    assert str(_injected_skill(tmp_path, "open-pr")) in argv
+
+
+def test_bootstrap_requires_configured_catalog_sources_to_be_synced(tmp_path: Path) -> None:
+    credentials = tmp_path / "credentials"
+    catalog = credentials / "outfitter" / ".agents"
+    catalog.mkdir(parents=True)
+    (catalog / "settings.yml").write_text(
+        "sources: [{github: ai-outfitter/community-profiles, ref: v1.9.0}]\n"
+    )
+    with pytest.raises(ValueError, match=r"not materialized.*outfitter sync --strict"):
+        HARNESS.bootstrap(
+            _bootstrap_ctx(tmp_path / "home", environ={"PANOPTICON_CREDENTIALS": str(credentials)})
+        )
 
 
 def test_suggested_models_discovers_agents(tmp_path: Path) -> None:
@@ -195,9 +270,11 @@ def test_argv_passes_agent_and_panopticon_controls_through_to_pi(tmp_path: Path)
         "--extension",
         str(tmp_path / ".outfitter" / EXTENSION_FILE),
         "--skill",
-        str(tmp_path / ".agents" / "skills" / "advance"),
+        str(_injected_skill(tmp_path, "advance")),
         "--skill",
-        str(tmp_path / ".agents" / "skills" / "open-pr"),
+        str(_injected_skill(tmp_path, "open-pr")),
+        "--skill",
+        str(_injected_skill(tmp_path, "resolve-responsibility")),
         "start now",
     ]
 
@@ -220,8 +297,17 @@ def test_blank_overview_and_absent_skills_still_render_required_turn_extension(
     tmp_path: Path,
 ) -> None:
     HARNESS.bootstrap(_bootstrap_ctx(tmp_path, overview=" ", skills=[], operations={}))
-    with pytest.raises(ValueError, match="requires an agent slug"):
-        HARNESS.argv(_ctx(tmp_path))
+    assert HARNESS.argv(_ctx(tmp_path)) == [
+        "outfitter",
+        "run",
+        "--harness",
+        "pi",
+        "--",
+        "--extension",
+        str(tmp_path / ".outfitter" / EXTENSION_FILE),
+        "--skill",
+        str(_injected_skill(tmp_path, "resolve-responsibility")),
+    ]
     assert HARNESS.argv(_ctx(tmp_path, starting_model="vega")) == [
         "outfitter",
         "run",
@@ -231,6 +317,8 @@ def test_blank_overview_and_absent_skills_still_render_required_turn_extension(
         "--",
         "--extension",
         str(tmp_path / ".outfitter" / EXTENSION_FILE),
+        "--skill",
+        str(_injected_skill(tmp_path, "resolve-responsibility")),
     ]
 
 

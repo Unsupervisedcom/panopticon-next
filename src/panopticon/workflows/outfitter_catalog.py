@@ -57,6 +57,7 @@ import base64
 import logging
 import os
 import re
+import socket
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -163,7 +164,10 @@ def _configured_sources(root: Path) -> tuple[Mapping[str, Any], ...]:
         sources = document["sources"] or []
         if not isinstance(sources, list) or not all(isinstance(item, Mapping) for item in sources):
             raise InvalidCatalogWorkflow("Outfitter settings: `sources` must be a list of mappings")
-        return tuple(cast("Mapping[str, Any]", item) for item in sources)
+        validated = tuple(cast("Mapping[str, Any]", item) for item in sources)
+        for index, source in enumerate(validated):
+            _validate_source(source, where=f"Outfitter settings: sources[{index}]")
+        return validated
     return ()
 
 
@@ -187,7 +191,7 @@ def enabled_workflows(root: Path) -> tuple[str, ...]:
     return tuple(enabled)
 
 
-def _cache_directory(root: Path) -> Path:
+def _cache_directory(root: Path, *, default: Path | None = None) -> Path:
     """The effective Outfitter cache root, including a local settings override."""
     for document in reversed(_settings_layers(root)):
         if "cache_directory" not in document:
@@ -197,13 +201,22 @@ def _cache_directory(root: Path) -> Path:
         )
         path = Path(configured)
         return path if path.is_absolute() else root / path
-    return Path.home() / ".agents" / "cache"
+    return default if default is not None else Path.home() / ".agents" / "cache"
 
 
 def _redact_uri_credentials(uri: str) -> str:
     """Mirror Outfitter's persisted cache-key redaction for credentialed URIs."""
     prefix = "git+" if uri.startswith("git+") else ""
     normalized = uri[len(prefix) :]
+    special_scheme = re.match(r"(?i)^(ftp|file|http|https|ws|wss):", normalized)
+    had_query = "?" in normalized.partition("#")[0]
+    had_fragment = "#" in normalized
+    if special_scheme:
+        delimiters = [
+            position for marker in ("?", "#") if (position := normalized.find(marker)) >= 0
+        ]
+        boundary = min(delimiters, default=len(normalized))
+        normalized = normalized[:boundary].replace("\\", "/") + normalized[boundary:]
     try:
         parsed = urlsplit(normalized)
         if parsed.username is None and parsed.password is None:
@@ -212,17 +225,90 @@ def _redact_uri_credentials(uri: str) -> str:
         if hostname is None:
             raise ValueError("credentialed URI has no hostname")
         hostname = hostname.encode("idna").decode().lower()
+        if (
+            special_scheme
+            and ":" not in hostname
+            and re.search(r"(?i)(?:^|\.)(?:0x[0-9a-f]+|0[0-9]*|[0-9]+)$", hostname)
+        ):
+            hostname = socket.inet_ntoa(socket.inet_aton(hostname))
         if ":" in hostname:
             hostname = f"[{hostname}]"
         port = parsed.port
-        if port is not None and port != {"http": 80, "https": 443}.get(parsed.scheme):
+        default_ports = {"ftp": 21, "http": 80, "https": 443, "ws": 80, "wss": 443}
+        if port is not None and port != default_ports.get(parsed.scheme):
             hostname = f"{hostname}:{port}"
-        path = quote(parsed.path or "/", safe="/:@-._~!$&'()*+,;=%")
-        query = quote(parsed.query, safe="!$&'()*+,-./:;=?@_%~")
-        fragment = quote(parsed.fragment, safe="!$&'()*+,-./:;=?@_%~")
-        return prefix + urlunsplit((parsed.scheme, f"REDACTED@{hostname}", path, query, fragment))
-    except (UnicodeError, ValueError):
+        raw_path = parsed.path or ("/" if special_scheme else "")
+        path = quote(_remove_url_dot_segments(raw_path), safe="!$&'()*+,-./:;=@_~%[]|\\")
+        query_safe = (
+            "!$&()*+,-./:;=?@_~%[]|^`{}\\" if special_scheme else "!$&'()*+,-./:;=?@_~%[]|^`{}\\"
+        )
+        query = quote(parsed.query, safe=query_safe)
+        fragment = quote(parsed.fragment, safe="!#$&'()*+,-./:;=?@_~%[]|^{}\\")
+        serialized = urlunsplit((parsed.scheme, f"REDACTED@{hostname}", path, query, fragment))
+        if had_query and not parsed.query:
+            if "#" in serialized:
+                serialized = serialized.replace("#", "?#", 1)
+            else:
+                serialized += "?"
+        if had_fragment and not parsed.fragment:
+            serialized += "#"
+        return prefix + serialized
+    except (OSError, UnicodeError, ValueError):
         return re.sub(r"(//)[^/@\s]+@", r"\1REDACTED@", uri)
+
+
+def _remove_url_dot_segments(path: str) -> str:
+    """Apply WHATWG's dot-segment normalization without decoding the rest of the path."""
+    if not path:
+        return ""
+    absolute = path.startswith("/")
+    trailing = path.endswith("/")
+    output: list[str] = []
+    for segment in path.split("/"):
+        dot = re.sub(r"(?i)%2e", ".", segment)
+        if dot == ".":
+            trailing = True
+            continue
+        if dot == "..":
+            if output:
+                output.pop()
+            trailing = True
+            continue
+        output.append(segment)
+        trailing = segment == "" and bool(output)
+    normalized = "/".join(output)
+    if absolute and not normalized.startswith("/"):
+        normalized = "/" + normalized
+    if trailing and not normalized.endswith("/"):
+        normalized += "/"
+    return normalized or ("/" if absolute else "")
+
+
+_GITHUB_SOURCE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+def _validate_source(source: Mapping[str, Any], *, where: str) -> None:
+    """Validate one source against Outfitter 1.16's exact one-of settings contract."""
+    allowed = {"path", "uri", "github", "ref"}
+    unexpected = sorted(set(source) - allowed)
+    if unexpected:
+        raise InvalidCatalogWorkflow(f"{where}: unsupported fields {unexpected}")
+    remote_keys = [key for key in ("uri", "github") if key in source]
+    if not remote_keys:
+        if set(source) != {"path"}:
+            raise InvalidCatalogWorkflow(f"{where}: a local source must contain only `path`")
+        _require_str(source["path"], where=f"{where}.path")
+        return
+    if len(remote_keys) != 1:
+        raise InvalidCatalogWorkflow(f"{where}: declare exactly one of `uri` or `github`")
+    remote_key = remote_keys[0]
+    remote = _require_str(source[remote_key], where=f"{where}.{remote_key}")
+    if remote_key == "github" and not _GITHUB_SOURCE.fullmatch(remote):
+        raise InvalidCatalogWorkflow(f"{where}.github: expected an owner/repository shorthand")
+    if "path" in source:
+        _require_str(source["path"], where=f"{where}.path")
+    if "ref" in source:
+        _require_str(source["ref"], where=f"{where}.ref")
 
 
 def _source_display(source: Mapping[str, Any]) -> str:
@@ -233,7 +319,9 @@ def _source_display(source: Mapping[str, Any]) -> str:
     return repr(safe)
 
 
-def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
+def _source_checkout(
+    root: Path, source: Mapping[str, Any], *, default_cache_directory: Path | None = None
+) -> Path:
     """Where one ``sources`` entry's payload lives on disk (Outfitter's checkout-cache layout).
 
     A remote source (``github``/``uri`` + optional ``ref``) is cached by Outfitter under
@@ -269,7 +357,7 @@ def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
         )
     cache_target = _redact_uri_credentials(target)
     key = base64.urlsafe_b64encode(f"{cache_target}#{ref}".encode()).decode().rstrip("=")
-    checkout = _cache_directory(root) / "repos" / key
+    checkout = _cache_directory(root, default=default_cache_directory) / "repos" / key
     if not isinstance(subpath, str) or not subpath:
         return checkout
     if Path(subpath).is_absolute():
@@ -285,9 +373,15 @@ def _source_checkout(root: Path, source: Mapping[str, Any]) -> Path:
     return selected
 
 
-def catalog_layers(root: Path) -> tuple[Path, ...]:
+def catalog_layers(root: Path, *, default_cache_directory: Path | None = None) -> tuple[Path, ...]:
     """Every directory that may provide ``workflows/<id>/``, highest precedence first."""
-    return (root, *(_source_checkout(root, source) for source in _configured_sources(root)))
+    return (
+        root,
+        *(
+            _source_checkout(root, source, default_cache_directory=default_cache_directory)
+            for source in _configured_sources(root)
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -330,14 +424,16 @@ class CatalogWorkflow:
     title: str
     description: str
     actors: Mapping[str, CatalogActor]
-    environments: Mapping[str, str]
+    environments: Mapping[str, Any]
     integrations: Mapping[str, CatalogIntegration]
     nodes: tuple[CatalogNode, ...]  # in dependency order: each node needs only its predecessor
 
 
 def _require_str(value: object, *, where: str) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise InvalidCatalogWorkflow(f"{where}: expected a non-empty string, got {value!r}")
+        raise InvalidCatalogWorkflow(
+            f"{where}: expected a non-empty string, got {type(value).__name__}"
+        )
     return value
 
 
@@ -400,11 +496,10 @@ def parse_catalog_workflow(
             raise InvalidCatalogWorkflow(f"{source}: actors.{actor_id}: an agent needs a profile")
         actors[actor_id] = CatalogActor(actor_id, kind, profile)
 
-    environments: dict[str, str] = {}
+    environments: dict[str, Any] = {}
     if doc.get("environments") is not None:
         env_map = _require_mapping(doc["environments"], where=f"{source}: environments")
-        for env_id, runtime in env_map.items():
-            environments[env_id] = _require_str(runtime, where=f"{source}: environments.{env_id}")
+        environments.update(env_map)
 
     integrations: dict[str, CatalogIntegration] = {}
     if doc.get("integrations") is not None:
@@ -609,9 +704,10 @@ def _describe(workflow: CatalogWorkflow, node: CatalogNode) -> str:
             who += f", Outfitter profile `{actor.profile}`"
         parts.append(who + ").")
     if node.environment:
-        parts.append(
-            f"Environment: `{node.environment}` ({workflow.environments[node.environment]})."
-        )
+        rendered_environment = yaml.safe_dump(
+            workflow.environments[node.environment], default_flow_style=True
+        ).strip()
+        parts.append(f"Environment: `{node.environment}` ({rendered_environment}).")
     if node.workflow:
         parts.append(f"Delegates to the `{node.workflow}` workflow.")
     if node.uses:

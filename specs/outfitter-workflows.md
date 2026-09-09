@@ -28,8 +28,12 @@ nested workflow is the operator's user-advanced sign-off gate. Its label in all 
    then by each `settings.yml` source in listed order.
 3. A remote source MUST resolve under the effective cache directory (`~/.agents/cache` by default,
    overridden by `cache_directory`) at a checkout keyed by the unpadded URL-safe base64 of
-   `<credential-redacted-uri>#<ref>`, a `github` shorthand normalizing to
-   `git+https://github.com/<owner>/<repo>.git`.
+   `<credential-redacted-uri>#<ref>`, including the trailing `#` when `ref` is absent, with a
+   `github` shorthand normalized to `git+https://github.com/<owner>/<repo>.git`. Here, credential
+   redaction matches Outfitter 1.16: preserve a URI without userinfo byte-for-byte; otherwise
+   remove an optional `git+` prefix for WHATWG URL parsing, replace the username with `REDACTED`,
+   clear the password, serialize the URL, and restore the prefix, falling back to replacing the
+   userinfo between `//` and `@` when the URL cannot be parsed.
 4. A `sources` list in `settings.local.yml` MUST replace the `settings.yml` list wholesale.
 5. Loading a package that no layer provides MUST fail with an error naming the package and the
    root.

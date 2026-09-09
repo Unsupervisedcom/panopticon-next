@@ -47,6 +47,11 @@ For a live task, start Panopticon from this worktree with the same `PANOPTICON_A
 concrete resident slug such as `vega`. The repo's `credential_dir` must contain a materialized copy
 of that catalog at `outfitter/.agents` and Pi authentication at `auth.json`. The host-side setting
 controls workflow discovery; the mounted credential copy supplies the isolated task container.
+The harness copies that catalog payload, including its root MCP/model registries and referenced
+files, into the container's global Outfitter layer. It flattens already-synced direct sources in
+native precedence order, so run `HOME=<credential_dir>/outfitter outfitter sync --strict` first
+when the catalog declares remote sources. The harness also supplies a task-specific REST skill for
+resolving each responsibility before `advance`.
 
 ## How a package becomes a lifecycle
 

@@ -117,11 +117,17 @@ Outfitter 1.16.0 is registered and selectable. Because quickstart detection iter
 an installed Outfitter CLI appears in onboarding. `setup-repo` routes authentication through Pi
 and prepares `<credential_dir>/outfitter/.agents` as the catalog source mounted into tasks.
 
-The harness writes `~/.agents/settings.yml` with its generated local source first and adds the
-credential catalog when present. Populate `<credential_dir>/outfitter/.agents/agents/<slug>/agent.md`
-and its referenced resources, then set the task's `starting_model` to a concrete selected agent
-slug (or set that slug as the repository's `default_model`). Outfitter tasks reject an empty agent
-selection instead of entering Outfitter's interactive setup wizard.
+The harness writes `~/.agents/settings.yml` with its generated local source first. When the
+credential catalog is present, its payload (including root MCP/model registries and referenced
+prompt files) is copied into that global `.agents` layer, excluding its settings, cache, and Git
+metadata; project settings can replace the effective `sources` list without making the selected
+resident disappear. Direct configured sources are flattened first from the catalog's existing
+`cache/`; run `HOME=<credential_dir>/outfitter outfitter sync --strict` before launch when it uses
+remote parents. Populate `<credential_dir>/outfitter/.agents/agents/<slug>/agent.md` and its
+referenced resources, then set the task's `starting_model` to a concrete selected agent slug (or
+set that slug as the repository's `default_model`). New Outfitter tasks reject an empty agent
+selection instead of entering the interactive setup wizard; a legacy row without one may still
+use Outfitter's configured `default_agent`.
 Panopticon does not fetch catalog sources inside a task; synchronize or populate that mounted
 catalog before launch.
 
@@ -129,8 +135,8 @@ Outfitter launches pi underneath, so authentication is pi authentication: provid
 variables work as they do for pi, and a repo `credential_dir` may supply pi's `auth.json`.
 Outfitter builds a temporary composite Pi config and seeds it from `~/.pi/agent/auth.json`.
 Bootstrap links the credential-dir file at that native fallback without overwriting existing
-state. Panopticon operations are rendered as authenticated REST skills because Pi does not expose
-an MCP client.
+state. Panopticon operations and responsibility resolution are rendered as authenticated REST
+skills because Pi does not expose an MCP client.
 
 Panopticon launches Outfitter interactively in tmux. The normal launch inherits the tmux TTY and
 passes the workflow turn extension and rendered skills through to Pi.

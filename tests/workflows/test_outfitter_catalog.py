@@ -157,6 +157,25 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(
     _provide(native_cache / "repos" / key, _package(title="From the uri checkout"))
     assert load_catalog_workflow("sample", root=root).title == "From the uri checkout"
 
+    # Exercise the other URL-safe substitution independently: a partial encoder that only
+    # replaces `+` with `-` must not satisfy the requirement.
+    slash_uri = "git+https://example.test/¿.git"
+    slash_key = base64.urlsafe_b64encode(f"{slash_uri}#v1.0.0".encode()).decode().rstrip("=")
+    slash_standard_key = base64.b64encode(f"{slash_uri}#v1.0.0".encode()).decode().rstrip("=")
+    assert "/" in slash_standard_key and "_" in slash_key
+    assert "=" not in slash_key and "+" not in slash_key and "/" not in slash_key
+    (root / "settings.yml").write_text(
+        yaml.safe_dump({"sources": [{"uri": slash_uri, "ref": "v1.0.0"}]})
+    )
+    _provide(native_cache / "repos" / slash_key, _package(title="From the slash uri checkout"))
+    assert load_catalog_workflow("sample", root=root).title == "From the slash uri checkout"
+
+    no_ref_uri = "git+https://example.test/no-ref.git"
+    no_ref_key = base64.urlsafe_b64encode(f"{no_ref_uri}#".encode()).decode().rstrip("=")
+    (root / "settings.yml").write_text(yaml.safe_dump({"sources": [{"uri": no_ref_uri}]}))
+    _provide(native_cache / "repos" / no_ref_key, _package(title="From the unpinned checkout"))
+    assert load_catalog_workflow("sample", root=root).title == "From the unpinned checkout"
+
     credentialed = "git+https://user:secret@example.test/private.git"
     redacted = "git+https://REDACTED@example.test/private.git"
     private_key = base64.urlsafe_b64encode(f"{redacted}#v1.0.0".encode()).decode().rstrip("=")
@@ -172,6 +191,22 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(
     _provide(custom_cache / "repos" / private_key, _package(title="From the private checkout"))
     assert load_catalog_workflow("sample", root=root).title == "From the private checkout"
 
+    complex_uri = "git+https://user:secret@GitHub.com:443/org/a/../repo.git"
+    complex_redacted = "git+https://REDACTED@github.com/org/repo.git"
+    complex_key = (
+        base64.urlsafe_b64encode(f"{complex_redacted}#v1.0.0".encode()).decode().rstrip("=")
+    )
+    (root / "settings.yml").write_text(
+        yaml.safe_dump(
+            {
+                "cache_directory": str(custom_cache),
+                "sources": [{"uri": complex_uri, "ref": "v1.0.0"}],
+            }
+        )
+    )
+    _provide(custom_cache / "repos" / complex_key, _package(title="From the normalized checkout"))
+    assert load_catalog_workflow("sample", root=root).title == "From the normalized checkout"
+
     assert (
         outfitter_catalog._redact_uri_credentials(
             "git+https://x-access-token:TOKEN@GitHub.com/org/repo.git"
@@ -183,8 +218,66 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(
         == "https://REDACTED@example.com/org/repo.git"
     )
     assert (
+        outfitter_catalog._redact_uri_credentials("https://tok@example.com:444/org/repo.git")
+        == "https://REDACTED@example.com:444/org/repo.git"
+    )
+    assert (
         outfitter_catalog._redact_uri_credentials("https://user:pass@example.com")
         == "https://REDACTED@example.com/"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials(
+            "https://user:pass@example.com/a/../private/%2e%2e/repo.git"
+        )
+        == "https://REDACTED@example.com/repo.git"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials("https://user:pass@example.com/a//../repo.git")
+        == "https://REDACTED@example.com/a/repo.git"
+    )
+    uncredentialed = "git+https://GitHub.com/org/../repo.git"
+    assert outfitter_catalog._redact_uri_credentials(uncredentialed) == uncredentialed
+    plain_uncredentialed = "https://GitHub.com/org/../repo.git"
+    assert outfitter_catalog._redact_uri_credentials(plain_uncredentialed) == plain_uncredentialed
+    assert (
+        outfitter_catalog._redact_uri_credentials("git+ssh://user@example.test:a.git")
+        == "git+ssh://REDACTED@example.test:a.git"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials("git+ssh://user:secret@example.test:a.git")
+        == "git+ssh://REDACTED@example.test:a.git"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials(
+            "git+https://user:pass@example.com:443/a/../repo.git"
+        )
+        == "git+https://REDACTED@example.com/repo.git"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials(r"https://user:pass@example.com\repo.git")
+        == "https://REDACTED@example.com/repo.git"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials("https://user:pass@example.com/repo.git?#")
+        == "https://REDACTED@example.com/repo.git?#"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials(r"https://user:pass@example.com/repo.git?q\x#f\x")
+        == r"https://REDACTED@example.com/repo.git?q\x#f\x"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials("http://user:pass@127.1/repo.git")
+        == "http://REDACTED@127.0.0.1/repo.git"
+    )
+    assert (
+        outfitter_catalog._redact_uri_credentials("ssh://user:pass@example.com")
+        == "ssh://REDACTED@example.com"
+    )
+    query_at = "https://example.test/repo.git?contact=a@b"
+    assert outfitter_catalog._redact_uri_credentials(query_at) == query_at
+    assert (
+        outfitter_catalog._redact_uri_credentials("https://:secret@example.test/repo.git")
+        == "https://REDACTED@example.test/repo.git"
     )
 
     (root / "settings.yml").write_text(
@@ -193,12 +286,32 @@ def test_a_remote_source_resolves_at_its_checkout_cache_key(
     with pytest.raises(InvalidCatalogWorkflow, match=r"ref.*string") as invalid_source:
         load_catalog_workflow("sample", root=root)
     assert "secret" not in str(invalid_source.value)
-    assert "REDACTED" in str(invalid_source.value)
+    assert credentialed not in str(invalid_source.value)
 
     (root / "settings.yml").write_text(
         yaml.safe_dump({"sources": [{"uri": uri, "ref": "v1.0.0", "path": "../escape"}]})
     )
     with pytest.raises(InvalidCatalogWorkflow, match="must stay inside"):
+        load_catalog_workflow("sample", root=root)
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        ({"path": "./catalog", "ref": "main"}, "only `path`"),
+        ({"path": "./catalog", "extra": True}, "unsupported fields"),
+        ({"uri": "https://example.test/repo", "github": "owner/repo"}, "exactly one"),
+        ({"github": "not-a-shorthand"}, "owner/repository"),
+        ({"github": "owner/repo", "ref": ""}, "non-empty string"),
+    ],
+)
+def test_sources_match_outfitters_exact_settings_contract(
+    tmp_path: Path, source: dict[str, object], message: str
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "settings.yml").write_text(yaml.safe_dump({"sources": [source]}))
+    with pytest.raises(InvalidCatalogWorkflow, match=message):
         load_catalog_workflow("sample", root=root)
 
 
@@ -376,6 +489,26 @@ def test_an_agent_actor_needs_a_profile() -> None:
     with pytest.raises(InvalidCatalogWorkflow, match="an agent needs a profile"):
         parse_catalog_workflow(_package(actors={"dev": {"kind": "agent"}}))
     parse_catalog_workflow(_package(actors={"dev": {"kind": "human"}}))  # humans need none
+
+
+def test_structured_environment_values_are_preserved_and_rendered() -> None:
+    workflow = parse_catalog_workflow(
+        _package(
+            environments={"build": {"image": "python:3.13", "network": False}},
+            nodes=[
+                {
+                    "id": "build",
+                    "action": "build-it",
+                    "description": "Build it.",
+                    "actor": "dev",
+                    "environment": "build",
+                }
+            ],
+        )
+    )
+    assert workflow.environments["build"] == {"image": "python:3.13", "network": False}
+    description = project_states(workflow)[0].description
+    assert "python:3.13" in description and "network: false" in description
 
 
 # 2119: 2.5

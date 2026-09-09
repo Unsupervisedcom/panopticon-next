@@ -13,8 +13,9 @@ pi's REST instructions because neither pi nor Outfitter provides an MCP client.
 
 Bootstrap keeps ``~/.outfitter/profile_sources`` as the first local catalog source and writes the
 modern settings file at ``~/.agents/settings.yml``. An operator can also point the repo's
-``credential_dir/outfitter/.agents`` at a catalog payload; the shared read-write credential mount
-makes it available to every task container.
+``credential_dir/outfitter/.agents`` at a catalog payload. Its resource tree is materialized into
+the container's global ``~/.agents`` layer, so project-level source settings cannot remove it;
+normal Outfitter workspace-over-global overrides still apply.
 
 Auth is pi auth, not Outfitter auth. Presence checking uses pi's provider environment variables,
 while credential-dir linking targets Outfitter's native pi-state fallback; provider validity
@@ -25,8 +26,10 @@ Resume uses Outfitter's documented Pi state fallback at ``~/.pi/agent/sessions``
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import shutil
 import textwrap
 from collections.abc import Mapping
 from pathlib import Path
@@ -42,6 +45,7 @@ from panopticon.harnesses.pi import (
     PI_VERSION,
     TURN_EXTENSION,
     operation_instructions,
+    responsibility_instructions,
 )
 
 OUTFITTER_VERSION = "1.16.0"
@@ -49,6 +53,7 @@ SETTINGS_FILE = "settings.yml"
 PROFILE_SOURCES_DIR = "profile_sources"
 WORKFLOW_OVERVIEW_FILE = "workflow-overview.md"
 EXTENSION_FILE = "turn.ts"
+INJECTED_SKILLS_ROOT = Path(".agents") / "skills"
 
 SETTINGS = "default_harness: pi\nsources:\n  - path: ../.outfitter/profile_sources\n"
 PI_NATIVE_CONFIG_DIR = Path(".pi") / "agent"
@@ -182,16 +187,15 @@ class OutfitterHarness(Harness):
         config_dir = self.config_dir(ctx.home)
         config_dir.mkdir(parents=True, exist_ok=True)
         (config_dir / PROFILE_SOURCES_DIR).mkdir(exist_ok=True)
-        settings = SETTINGS
         credentials = ctx.environ.get("PANOPTICON_CREDENTIALS")
         credential_profiles = (
             Path(credentials).resolve() / "outfitter" / ".agents" if credentials else None
         )
-        if credential_profiles is not None and credential_profiles.is_dir():
-            settings += f"  - path: {credential_profiles}\n"
         agents_dir = ctx.home / ".agents"
         agents_dir.mkdir(parents=True, exist_ok=True)
-        (agents_dir / SETTINGS_FILE).write_text(settings)
+        if credential_profiles is not None and credential_profiles.is_dir():
+            self._materialize_catalog(credential_profiles, agents_dir)
+        (agents_dir / SETTINGS_FILE).write_text(SETTINGS)
         (config_dir / WORKFLOW_OVERVIEW_FILE).write_text(ctx.overview)
         (config_dir / EXTENSION_FILE).write_text(TURN_EXTENSION)
 
@@ -209,8 +213,104 @@ class OutfitterHarness(Harness):
             )
             for name, target_state in ctx.operations.items()
         ]
-        write_skills(entries, ctx.home, ctx.task_id)
+        entries.append(
+            Skill(
+                name="resolve-responsibility",
+                description="Record one current workflow responsibility as met or failed.",
+                instructions=responsibility_instructions(
+                    ctx.task_id,
+                    ctx.service_url,
+                    authenticated=bool(ctx.environ.get("PANOPTICON_SERVICE_AUTH_TOKEN")),
+                ),
+            )
+        )
+        write_skills(entries, config_dir, ctx.task_id)
         self._ensure_auth(ctx.home, ctx.environ)
+
+    @staticmethod
+    def _materialize_catalog(source: Path, destination: Path) -> None:
+        """Flatten a trusted, already-synced catalog into one global resource layer."""
+        from panopticon.workflows.outfitter_catalog import catalog_layers
+
+        layers = catalog_layers(source, default_cache_directory=source / "cache")
+        for layer in reversed(layers):
+            if not layer.is_dir():
+                raise ValueError(
+                    "Outfitter credential catalog source is not materialized; run `outfitter "
+                    "sync --strict` with its parent as HOME before starting the task"
+                )
+            OutfitterHarness._copy_catalog_layer(layer, destination)
+
+    @staticmethod
+    def _copy_catalog_layer(source: Path, destination: Path) -> None:
+        for entry in source.iterdir():
+            if entry.name in {".git", "cache", SETTINGS_FILE, "settings.local.yml"}:
+                continue
+            target = destination / entry.name
+            if entry.is_dir():
+                shutil.copytree(entry, target, dirs_exist_ok=True)
+            elif entry.is_file():
+                if entry.name == "mcp.json" and target.is_file():
+                    OutfitterHarness._merge_mcp_registry(target, entry)
+                elif entry.name == "models.json" and target.is_file():
+                    OutfitterHarness._merge_model_registry(target, entry)
+                else:
+                    shutil.copy2(entry, target)
+
+    @staticmethod
+    def _json_mapping(path: Path) -> dict[str, object]:
+        value = json.loads(path.read_text())
+        if not isinstance(value, dict):
+            raise ValueError(f"Outfitter catalog registry {path.name!r} must be a JSON object")
+        return value
+
+    @staticmethod
+    def _merge_mcp_registry(target: Path, higher: Path) -> None:
+        """Flatten Outfitter's per-server MCP precedence into one root registry."""
+        lower_doc = OutfitterHarness._json_mapping(target)
+        higher_doc = OutfitterHarness._json_mapping(higher)
+        merged = {**lower_doc, **higher_doc}
+        for key in ("settings", "mcpServers"):
+            lower = lower_doc.get(key)
+            upper = higher_doc.get(key)
+            if isinstance(lower, dict) and isinstance(upper, dict):
+                merged[key] = {**lower, **upper}
+        target.write_text(json.dumps(merged, indent=2) + "\n")
+
+    @staticmethod
+    def _merge_model_registry(target: Path, higher: Path) -> None:
+        """Flatten Outfitter's provider/model-id merge semantics into one registry."""
+        lower_doc = OutfitterHarness._json_mapping(target)
+        higher_doc = OutfitterHarness._json_mapping(higher)
+        lower_providers = lower_doc.get("providers")
+        higher_providers = higher_doc.get("providers")
+        if not isinstance(lower_providers, dict) or not isinstance(higher_providers, dict):
+            raise ValueError("Outfitter models.json must contain an object-valued `providers` map")
+        providers: dict[str, object] = dict(lower_providers)
+        for provider_id, higher_provider in higher_providers.items():
+            lower_provider = providers.get(provider_id)
+            if not isinstance(lower_provider, dict) or not isinstance(higher_provider, dict):
+                providers[provider_id] = higher_provider
+                continue
+            merged_provider = {**lower_provider, **higher_provider}
+            lower_models = lower_provider.get("models")
+            higher_models = higher_provider.get("models")
+            models: dict[str, object] = {
+                model["id"]: model
+                for model in (lower_models if isinstance(lower_models, list) else [])
+                if isinstance(model, dict) and isinstance(model.get("id"), str)
+            }
+            for model in higher_models if isinstance(higher_models, list) else []:
+                if isinstance(model, dict) and isinstance(model.get("id"), str):
+                    previous = models.get(model["id"])
+                    models[model["id"]] = (
+                        {**previous, **model} if isinstance(previous, dict) else model
+                    )
+            if models:
+                merged_provider["models"] = list(models.values())
+            providers[provider_id] = merged_provider
+        merged_doc = {**lower_doc, **higher_doc, "providers": providers}
+        target.write_text(json.dumps(merged_doc, indent=2) + "\n")
 
     def _ensure_auth(self, home: Path, environ: Mapping[str, str]) -> None:
         """Link credential-dir ``auth.json`` at pi's native Outfitter fallback location."""
@@ -225,13 +325,11 @@ class OutfitterHarness(Harness):
 
     def argv(self, ctx: LaunchContext) -> list[str]:
         """Launch the selected Outfitter agent through pi with Panopticon pass-through args."""
-        if not ctx.starting_model:
-            raise ValueError(
-                "the Outfitter harness requires an agent slug; select a concrete agent or set "
-                "the repository's default_model"
-            )
         config_dir = self.config_dir(ctx.home)
-        argv = ["outfitter", "run", ctx.starting_model, "--harness", "pi"]
+        argv = ["outfitter", "run"]
+        if ctx.starting_model:
+            argv.append(ctx.starting_model)
+        argv += ["--harness", "pi"]
 
         extension = config_dir / EXTENSION_FILE
         overview = config_dir / WORKFLOW_OVERVIEW_FILE
@@ -240,7 +338,7 @@ class OutfitterHarness(Harness):
         argv.append("--")
         if extension.exists():
             argv += ["--extension", str(extension)]
-        skills = ctx.home / ".agents" / "skills"
+        skills = config_dir / INJECTED_SKILLS_ROOT
         if skills.exists():
             for skill in sorted(path for path in skills.iterdir() if path.is_dir()):
                 argv += ["--skill", str(skill)]
