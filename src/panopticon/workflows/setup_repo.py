@@ -44,6 +44,7 @@ class SetupRepo(Workflow):
     runner_type: ClassVar[str] = "shell"
     opt_in: ClassVar[bool] = False
     hidden: ClassVar[bool] = True
+    configures_repo_credentials: ClassVar[bool] = True
     when_to_use: ClassVar[str] = (
         "Run a repo's harness-aware auth setup in a host shell (no container); attach to complete "
         "the selected CLI's interactive flow and store its repo credentials privately."

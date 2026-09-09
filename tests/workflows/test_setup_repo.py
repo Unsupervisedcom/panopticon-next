@@ -433,6 +433,38 @@ printf 'CODEX_ACCESS_TOKEN\npasted-access-token\n' | setup_codex_auth
     assert env_file.read_text() == "CODEX_ACCESS_TOKEN=pasted-access-token\n"
 
 
+def test_codex_login_does_not_treat_an_unreferenced_auth_copy_as_configured(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    native = home / ".codex"
+    native.mkdir(parents=True)
+    (native / "auth.json").write_text('{"auth_mode":"chatgpt"}')
+    secrets = tmp_path / "secrets"
+    body = f"""
+unset CODEX_API_KEY OPENAI_API_KEY CODEX_ACCESS_TOKEN
+HOME={shlex.quote(str(home))}
+PANOPTICON_SECRETS_DIR={shlex.quote(str(secrets))}
+harness_configured=0
+env_file=repo.env
+PANOPTICON_ENV_FILE=''
+credential_dir=''
+credential_path=''
+add_summary() {{ :; }}
+read_secret() {{ :; }}
+codex() {{ :; }}
+set_repo_credential_dir() {{ return 1; }}
+{_SETUP_CODEX_AUTH}
+printf '\n' | setup_codex_auth
+printf 'credential_dir=%s\ncredential_path=%s\n' "$credential_dir" "$credential_path"
+"""
+    output = _sh(body)
+
+    assert "Couldn't store Codex auth in the repo credential directory" in output
+    assert "credential_dir=\ncredential_path=\n" in output
+    assert (secrets / "openai.d" / "auth.json").is_file()
+
+
 def test_read_secret_disables_echo_before_showing_its_prompt() -> None:
     command = (
         f"{_LIB}\n"
@@ -511,8 +543,8 @@ def test_shell_script_codex_flow_logs_in_copies_private_auth_and_updates_repo() 
     assert 'store_token "$_sca_var" "$_sca_val"' in script
     assert 'store_token "$codex_var" "$codex_key"' in script
     assert "codex login" in script
-    assert 'cp "$HOME/.codex/auth.json" "$credential_path/auth.json"' in script
-    assert 'chmod 600 "$credential_path/auth.json"' in script
+    assert 'cp "$HOME/.codex/auth.json" "$_sca_credential_path/auth.json"' in script
+    assert 'chmod 600 "$_sca_credential_path/auth.json"' in script
     assert "set_repo_credential_dir" in script
     assert "Token contents were not printed" in script
 

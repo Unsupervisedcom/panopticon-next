@@ -291,15 +291,19 @@ setup_codex_auth() {
         add_summary "Codex auth: login finished but auth.json was not found; nothing copied."
         return
     fi
-    if [ -z "$credential_dir" ]; then
-        credential_dir=openai.d
-        credential_path="$PANOPTICON_SECRETS_DIR/$credential_dir"
-    fi
+    _sca_credential_dir=$credential_dir
+    [ -n "$_sca_credential_dir" ] || _sca_credential_dir=openai.d
+    _sca_credential_path="$PANOPTICON_SECRETS_DIR/$_sca_credential_dir"
+    _sca_needs_repo_update=0
+    [ -n "$credential_dir" ] || _sca_needs_repo_update=1
     umask 077
-    if mkdir -p "$credential_path" \
-        && cp "$HOME/.codex/auth.json" "$credential_path/auth.json" \
-        && chmod 600 "$credential_path/auth.json" \
-        && set_repo_credential_dir "$credential_dir"; then
+    if mkdir -p "$_sca_credential_path" \
+        && cp "$HOME/.codex/auth.json" "$_sca_credential_path/auth.json" \
+        && chmod 600 "$_sca_credential_path/auth.json" \
+        && { [ "$_sca_needs_repo_update" -eq 0 ] \
+            || set_repo_credential_dir "$_sca_credential_dir"; }; then
+        credential_dir=$_sca_credential_dir
+        credential_path=$_sca_credential_path
         echo "Stored Codex auth in the repo's private credential directory ($credential_dir)."
         add_summary "Codex auth: logged in and stored auth.json in $credential_dir."
     else

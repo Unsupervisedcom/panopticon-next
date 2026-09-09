@@ -566,6 +566,18 @@ class TaskService:
         workflow = self._workflows.get(task.workflow)
         return bool(workflow is not None and workflow.orchestrates)
 
+    def task_configures_repo_credentials(self, task: Task | None, repo_id: str) -> bool:
+        """Whether an active task may set its own repo's credential-directory reference.
+
+        Repo PATCH is otherwise fleet administration. This deliberately exposes only the
+        workflow capability decision; the API additionally restricts the request body to the
+        single field needed by the setup utility.
+        """
+        if task is None or task.repo_id != repo_id or self._task_is_terminal(task):
+            return False
+        workflow = self._workflows.get(task.workflow)
+        return bool(workflow is not None and workflow.configures_repo_credentials)
+
     def _task_is_terminal(self, task: Task) -> bool:
         """Classify a task through its workflow, with built-in labels as a legacy fallback."""
         workflow = self._workflows.get(task.workflow)

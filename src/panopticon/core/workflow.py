@@ -107,6 +107,11 @@ class Workflow(ABC):
     #: gate. Use it for operator utilities that shouldn't clutter the pickers but are launched
     #: some other way. Default ``False`` (shown in the menus).
     hidden: ClassVar[bool] = False
+    #: Whether this workflow may use its task-scoped capability to set the credential-directory
+    #: reference on its own repo. This is a narrow control-plane privilege for trusted operator
+    #: utilities such as ``setup-repo``: the API still limits the PATCH body to one non-empty
+    #: ``credential_dir`` field, and ordinary task workflows retain no repo-write authority.
+    configures_repo_credentials: ClassVar[bool] = False
     #: Optional tuned launch pair. Workflows must declare both values or neither; discovery also
     #: checks that the harness exists. Built-ins deliberately leave the pair unset.
     default_harness: ClassVar[str | None] = None

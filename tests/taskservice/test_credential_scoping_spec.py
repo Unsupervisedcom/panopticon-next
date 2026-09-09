@@ -31,7 +31,7 @@ from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
 from panopticon.taskservice.auth import derive_task_capability, load_client_token
 from panopticon.taskservice.service import TaskService
 from panopticon.taskservice.store_sqlalchemy import SqlAlchemyStore
-from panopticon.workflows import Orchestrator, Spike
+from panopticon.workflows import Orchestrator, SetupRepo, Spike
 
 WRITE_TOKEN = "fleet-writer-token"
 ROTATED_WRITE_TOKEN = "rotated-fleet-writer-token"
@@ -112,6 +112,7 @@ def _service(tmp_path: Path) -> TaskService:
             "alternate-orchestrator": _AlternateOrchestrator(),
             "planned-scoped": _PlannedScopedWorkflow(),
             "scoped": _ScopedWorkflow(),
+            "setup-repo": SetupRepo(),
         },
         FilesystemArtifactStore(tmp_path / "artifacts"),
     )
@@ -130,6 +131,7 @@ def _reloaded_service(tmp_path: Path) -> TaskService:
             "alternate-orchestrator": _AlternateOrchestrator(),
             "planned-scoped": _PlannedScopedWorkflow(),
             "scoped": _ScopedWorkflow(),
+            "setup-repo": SetupRepo(),
         },
         FilesystemArtifactStore(tmp_path / "artifacts"),
     )
@@ -3335,6 +3337,52 @@ def test_fleet_write_retains_host_duties_while_task_token_cannot_claim(tmp_path:
             ).status_code
             == 403
         )
+
+
+def test_active_setup_repo_task_can_only_set_its_own_repo_credential_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression for #12: setup-repo has a task capability, while generic repo PATCH remains
+    # fleet administration. Give precisely this active utility the one repo mutation it needs.
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(tmp_path))
+    secrets = tmp_path / "secrets"
+    (secrets / "openai.d").mkdir(parents=True)
+    (secrets / "other.d").mkdir()
+
+    with _client(tmp_path) as client:
+        setup = _create_task(client, workflow="setup-repo")
+        regular = _create_task(client)
+        setup_headers = _bearer(_task_token(setup["id"]))
+        regular_headers = _bearer(_task_token(regular["id"]))
+
+        configured = client.patch(
+            "/repos/r1", headers=setup_headers, json={"credential_dir": "openai.d"}
+        )
+        assert configured.status_code == 200, configured.text
+        assert configured.json()["credential_dir"] == "openai.d"
+
+        for path, headers, body in (
+            ("/repos/r2", setup_headers, {"credential_dir": "other.d"}),
+            ("/repos/r1", setup_headers, {"name": "stolen"}),
+            ("/repos/r1", setup_headers, {"credential_dir": None}),
+            ("/repos/r1", regular_headers, {"credential_dir": "other.d"}),
+        ):
+            denied = client.patch(path, headers=headers, json=body)
+            assert (denied.status_code, denied.json()) == (403, SCOPE_FAILURE)
+
+        completed = client.post(f"/tasks/{setup['id']}/operations/advance", headers=setup_headers)
+        assert completed.status_code == 200
+        denied_after_completion = client.patch(
+            "/repos/r1", headers=setup_headers, json={"credential_dir": "other.d"}
+        )
+        assert (denied_after_completion.status_code, denied_after_completion.json()) == (
+            403,
+            SCOPE_FAILURE,
+        )
+
+        repo = client.get("/repos/r1", headers=_bearer(WRITE_TOKEN)).json()
+        assert repo["name"] == "acme/one"
+        assert repo["credential_dir"] == "openai.d"
 
 
 def test_runner_injects_only_the_subject_task_capability(
