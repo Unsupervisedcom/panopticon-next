@@ -53,7 +53,10 @@ tmp_home_init() {
   TMP_HOME=$(cd -- "$TMP_HOME" && pwd -P)
   PIPX_HOME="$TMP_HOME/pipx"
   PIPX_BIN_DIR="$TMP_HOME/bin"
-  TMP_TMUX_DIR="$TMP_HOME/tmux"
+  # tmux appends /tmux-<uid>/<socket>; macOS limits the resulting Unix socket path to 104 bytes.
+  # Keep it out of the much longer per-user temporary-home path.
+  TMP_TMUX_DIR=$(mktemp -d /tmp/pan-tmux.XXXXXX)
+  TMP_TMUX_DIR=$(cd -- "$TMP_TMUX_DIR" && pwd -P)
   TMP_PANOPTICON_PORT=$(python3 -c \
     'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()') \
     || tmp_home_die "could not allocate a temporary task-service port"
@@ -64,7 +67,7 @@ tmp_home_init() {
   TMP_PANOPTICON_CONTAINER_SERVICE_URL="http://host.docker.internal:$TMP_PANOPTICON_PORT"
   TMP_PANOPTICON_RUNTIME_ID="tmp-${_pth_kind}-$$-$RANDOM"
   mkdir -p "$PIPX_HOME" "$PIPX_BIN_DIR" "$TMP_HOME/.config" "$TMP_HOME/.cache" \
-    "$TMP_HOME/.local/share" "$TMP_TMUX_DIR"
+    "$TMP_HOME/.local/share"
   chmod 700 "$TMP_TMUX_DIR"
   PANOPTICON_BIN=
   export ORIGINAL_HOME TMP_HOME PIPX_HOME PIPX_BIN_DIR TARGET_REPO PANOPTICON_BIN \
@@ -129,6 +132,9 @@ tmp_home_cleanup() {
     printf 'Kept temporary HOME: %s\n' "$TMP_HOME"
   elif [ -n "${TMP_HOME:-}" ] && [ -d "$TMP_HOME" ]; then
     rm -rf -- "$TMP_HOME"
+  fi
+  if [ -n "${TMP_TMUX_DIR:-}" ] && [ -d "$TMP_TMUX_DIR" ]; then
+    rm -rf -- "$TMP_TMUX_DIR"
   fi
   exit "$_pth_status"
 }

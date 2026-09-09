@@ -132,7 +132,10 @@ def test_dev_tmp_home_builds_the_checkout_and_copies_codex_auth(tmp_path: Path) 
     assert "runtime:tmp-dev-" in observed
     assert "|port=41873|service=http://127.0.0.1:41873" in observed
     assert "|container_service=http://host.docker.internal:41873" in observed
-    assert f"|tmux={home}/tmux" in observed
+    tmux_dir = Path(observed.partition("|tmux=")[2].partition("|")[0])
+    assert tmux_dir.parent == Path("/tmp").resolve()
+    assert len(str(tmux_dir / "tmux-501" / "panopticon")) < 104
+    assert not tmux_dir.exists()
     assert "|docker_host=unix:///tmp/fake-docker.sock|docker_context=unset" in observed
     assert "panopticon:stop" in observed
 

@@ -94,7 +94,7 @@ path. Set `PANOPTICON_DEV_TMP_HOME_AUTH=0` to start without it. The production l
 without native Codex auth; set `PANOPTICON_PROD_TMP_HOME_AUTH=1` to copy it.
 
 The development launcher can run beside an existing Panopticon installation. It uses a private
-tmux socket directory, an automatically allocated task-service port, and a Docker runtime label
+short-path tmux socket directory, an automatically allocated task-service port, and a Docker runtime label
 that scopes cleanup to its own task containers. It also carries the active Docker context's daemon
 endpoint into the clean home (needed by context-based runtimes such as OrbStack) without copying
 the user's Docker configuration. Temporary paths are canonicalized so macOS's `/var` →
