@@ -44,6 +44,31 @@ def test_all_present_passes() -> None:
     assert {"claude", "codex", "pi", "outfitter"} <= names
 
 
+def test_render_groups_each_harness_beneath_the_aggregate_check() -> None:
+    results = doctor.run_checks(which=_which_missing("pi"), run=_run_ok, version_info=(3, 11, 0))
+
+    lines = doctor.render(results).splitlines()
+    tmux_line = next(line for line in lines if "tmux:" in line)
+    harness_cli_line = next(line for line in lines if "harness CLI:" in line)
+    claude_line = next(line for line in lines if "claude:" in line)
+    codex_line = next(line for line in lines if "codex:" in line)
+    pi_line = next(line for line in lines if "pi:" in line)
+    outfitter_line = next(line for line in lines if "outfitter:" in line)
+    docker_daemon_line = next(line for line in lines if "docker daemon:" in line)
+
+    assert lines.index(tmux_line) < lines.index(harness_cli_line)
+    assert lines.index(harness_cli_line) < lines.index(claude_line)
+    assert lines.index(claude_line) < lines.index(codex_line)
+    assert lines.index(codex_line) < lines.index(pi_line)
+    assert lines.index(pi_line) < lines.index(outfitter_line)
+    assert lines.index(outfitter_line) < lines.index(docker_daemon_line)
+    assert harness_cli_line.startswith("  ✓ harness CLI:")
+    assert claude_line.startswith("      ✓ claude:")
+    assert codex_line.startswith("      ✓ codex:")
+    assert pi_line.startswith("      – pi:")
+    assert outfitter_line.startswith("      ✓ outfitter:")
+
+
 def test_missing_git_fails_with_hint() -> None:
     results = doctor.run_checks(which=_which_missing("git"), run=_run_ok, version_info=(3, 12, 1))
     git = _by_name(results)["git"]
