@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Build this checkout as a wheel and run quickstart interactively in a temporary HOME.
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=_tmp-home-common
+source "$SCRIPT_DIR/_tmp-home-common"
+
+tmp_home_require uv
+tmp_home_preflight
+tmp_home_init dev "${1:-$PWD}"
+trap tmp_home_cleanup EXIT
+
+tmp_home_copy_codex_auth "${PANOPTICON_DEV_TMP_HOME_AUTH:-1}"
+
+mkdir -p "$TMP_HOME/dist"
+uv build --wheel --out-dir "$TMP_HOME/dist" "$REPO_ROOT"
+_pth_wheels=("$TMP_HOME"/dist/panopticon_next-*.whl)
+[ "${#_pth_wheels[@]}" -eq 1 ] \
+  || tmp_home_die "expected exactly one locally built panopticon-next wheel"
+
+printf 'Installing local wheel into temporary pipx home: %s\n' "${_pth_wheels[0]}"
+tmp_home_run pipx install --force "${_pth_wheels[0]}"
+PANOPTICON_BIN="$PIPX_BIN_DIR/panopticon"
+export PANOPTICON_BIN
+[ -x "$PANOPTICON_BIN" ] || tmp_home_die "pipx did not install the panopticon executable"
+
+printf 'Panopticon dev HOME: %s\n' "$TMP_HOME"
+printf 'Target repository: %s\n' "$TARGET_REPO"
+tmp_home_run "$PANOPTICON_BIN" --version
+cd -- "$TARGET_REPO"
+tmp_home_run "$PANOPTICON_BIN" quickstart

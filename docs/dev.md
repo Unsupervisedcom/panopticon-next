@@ -71,6 +71,32 @@ Individual pieces, when you want just one:
 See [`docs/overview.md`](overview.md) for the mental model behind these pieces, and the
 [README quickstart](../README.md#quickstart) for the end-to-end first run.
 
+## Human smoke tests in a temporary home
+
+Two interactive launchers mirror a clean user's first run without touching the current user's
+Panopticon configuration:
+
+```sh
+bin/dev-tmp-home /path/to/repo                 # build and install this checkout
+bin/prod-tmp-home latest /path/to/repo         # install the latest PyPI release
+bin/prod-tmp-home 0.2.8 /path/to/repo          # install one published version
+```
+
+Both commands create isolated `HOME`, XDG, and pipx directories, install a wheel, and run
+`panopticon quickstart` interactively from the target repository. They unset inherited
+Panopticon and harness-auth variables so the setup prompts prove what the temporary home contains;
+`GH_TOKEN` remains available for GitHub repository setup.
+
+`bin/dev-tmp-home` copies `~/.codex/auth.json` into the temporary home by default so a maintainer
+can exercise the ChatGPT-subscription `auth.json` → repo `credential_dir` → task-container mount
+path. Set `PANOPTICON_DEV_TMP_HOME_AUTH=0` to start without it. The production launcher starts
+without native Codex auth; set `PANOPTICON_PROD_TMP_HOME_AUTH=1` to copy it.
+
+The launchers refuse to run while the shared `tmux -L panopticon` server, port 8000, or any
+Panopticon task container is already in use. Quit the temporary dashboard normally; the launcher
+then runs the temporary installation's `panopticon stop` and deletes its home. Set
+`PANOPTICON_TMP_HOME_KEEP=1` to retain the files for inspection after stopping the runtime.
+
 ## Database migrations
 
 Schema is managed by **Alembic**. After changing the ORM rows, generate and apply a migration:
