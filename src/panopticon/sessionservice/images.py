@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import importlib.resources
 import logging
+import os
 import shutil
 import tempfile
 from collections.abc import Iterator, Sequence
@@ -29,9 +30,12 @@ _SEPARATELY_FINGERPRINTED_DOCKER_FILES = frozenset({"docker/Dockerfile", "docker
 _COMPILED_SOURCE_SUFFIXES = frozenset({".pyc", ".pyo"})
 
 
-def image_tag(harness: str, workflow: str, repo_id: str) -> str:
+def image_tag(harness: str, workflow: str, repo_id: str, *, runtime_id: str | None = None) -> str:
     """The composed image's tag for a (harness, workflow, repo) triple (ADR 0005 naming)."""
-    return f"panopticon-{harness}-{workflow}-{repo_id}"
+    tag = f"panopticon-{harness}-{workflow}-{repo_id}"
+    if runtime_id:
+        tag += f"-{hashlib.sha256(runtime_id.encode()).hexdigest()[:12]}"
+    return tag
 
 
 def compose_dockerfile(base: str, layers: Sequence[str]) -> str:
@@ -123,10 +127,14 @@ class ImageBuilder:
         *,
         base: str = DEFAULT_IMAGE,
         wheel: Path | None = None,
+        runtime_id: str | None = None,
         run: CommandRunner = _subprocess_run,
     ) -> None:
         self._base = base
         self._wheel = wheel
+        self._runtime_id = (
+            runtime_id if runtime_id is not None else os.environ.get("PANOPTICON_RUNTIME_ID")
+        )
         self._run = run
 
     def build(
@@ -142,7 +150,7 @@ class ImageBuilder:
 
         ``verbose`` streams docker build output to the caller's stdout/stderr (visible in the
         runner's tmux session) instead of capturing it."""
-        tag = image_tag(harness, workflow, repo_id)
+        tag = image_tag(harness, workflow, repo_id, runtime_id=self._runtime_id)
         dockerfile = compose_dockerfile(self._base, layers)
         with tempfile.TemporaryDirectory() as context:
             (Path(context) / "Dockerfile").write_text(dockerfile)

@@ -88,16 +88,20 @@ worktree containing the script; the production launcher runs from its target rep
 Panopticon and harness-auth variables so the setup prompts prove what the temporary home contains;
 `GH_TOKEN` remains available for GitHub repository setup.
 
-`bin/dev-tmp-home` copies `~/.codex/auth.json` into the temporary home by default so a maintainer
-can exercise the ChatGPT-subscription `auth.json` → repo `credential_dir` → task-container mount
-path. Set `PANOPTICON_DEV_TMP_HOME_AUTH=0` to start without it. The production launcher starts
-without native Codex auth; set `PANOPTICON_PROD_TMP_HOME_AUTH=1` to copy it.
+`bin/dev-tmp-home` reports the host and temporary Codex auth state using non-secret SHA-256
+fingerprints, but does not copy `~/.codex/auth.json` by default. Log in through the isolated
+setup-repo flow to exercise the ChatGPT-subscription `auth.json` → repo `credential_dir` →
+task-container mount path without forking the host's rotating credential chain. To deliberately
+copy the host credential, set `PANOPTICON_DEV_TMP_HOME_AUTH=1`; the launcher warns that either copy
+can become invalid after the other refreshes. The production launcher also starts without native
+Codex auth; set `PANOPTICON_PROD_TMP_HOME_AUTH=1` to copy it.
 
 The development launcher can run beside an existing Panopticon installation. It uses a private
 short-path tmux socket directory, an automatically allocated task-service port, and a Docker runtime label
 that scopes cleanup to its own task containers. It also carries the active Docker context's daemon
 endpoint into the clean home (needed by context-based runtimes such as OrbStack) without copying
-the user's Docker configuration. Temporary paths are canonicalized so macOS's `/var` →
+the user's general application configuration. It retains the host Docker client directory so CLI
+plugins such as Buildx remain available. Temporary paths are canonicalized so macOS's `/var` →
 `/private/var` symlink does not conflict with Panopticon's symlink-safe state/log traversal. The
 production launcher retains the collision
 guard because an older installed release does not yet understand that label. Quit the temporary

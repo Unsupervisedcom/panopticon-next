@@ -21,7 +21,9 @@ tmp_home_preflight
 tmp_home_init prod "$TARGET"
 trap tmp_home_cleanup EXIT
 
+tmp_home_print_codex_auth "Host Codex auth" "$ORIGINAL_HOME/.codex/auth.json"
 tmp_home_copy_codex_auth "${PANOPTICON_PROD_TMP_HOME_AUTH:-0}"
+tmp_home_print_codex_auth "Temporary Codex auth" "$TMP_HOME/.codex/auth.json"
 
 printf 'Installing %s into temporary pipx home.\n' "$PACKAGE"
 tmp_home_run pipx install "$PACKAGE"

@@ -14,7 +14,9 @@ tmp_home_preflight isolated
 tmp_home_init dev "$REPO_ROOT"
 trap tmp_home_cleanup EXIT
 
-tmp_home_copy_codex_auth "${PANOPTICON_DEV_TMP_HOME_AUTH:-1}"
+tmp_home_print_codex_auth "Host Codex auth" "$ORIGINAL_HOME/.codex/auth.json"
+tmp_home_copy_codex_auth "${PANOPTICON_DEV_TMP_HOME_AUTH:-0}"
+tmp_home_print_codex_auth "Temporary Codex auth" "$TMP_HOME/.codex/auth.json"
 
 mkdir -p "$TMP_HOME/dist"
 uv build --wheel --out-dir "$TMP_HOME/dist" "$REPO_ROOT"

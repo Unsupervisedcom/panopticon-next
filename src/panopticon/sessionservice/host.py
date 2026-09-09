@@ -289,7 +289,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=os.environ.get("PANOPTICON_RUNNER_HOST", ""),
         help="hostname or alias reported to the task service",
     )
-    parser.add_argument("--image", default=DEFAULT_IMAGE)
+    parser.add_argument(
+        "--image",
+        default=os.environ.get("PANOPTICON_BASE_IMAGE", DEFAULT_IMAGE),
+        help="base task-container image tag",
+    )
     parser.add_argument(
         "--interval",
         type=float,

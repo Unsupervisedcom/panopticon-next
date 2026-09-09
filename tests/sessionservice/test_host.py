@@ -544,6 +544,14 @@ def test_build_arg_parser_host_flag_overrides_env(monkeypatch: pytest.MonkeyPatc
     assert args.host == "other.example.com"
 
 
+def test_build_arg_parser_base_image_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PANOPTICON_BASE_IMAGE", "panopticon-base-tmp-dev")
+
+    args = build_arg_parser().parse_args([])
+
+    assert args.image == "panopticon-base-tmp-dev"
+
+
 def test_preflight_or_exit_raises_with_the_actionable_message_when_docker_is_down(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

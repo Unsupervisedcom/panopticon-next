@@ -28,6 +28,7 @@ tmp_home_preflight() {
   fi
   [ -n "$TMP_DOCKER_HOST" ] \
     || tmp_home_die "the active Docker context has no daemon endpoint"
+  TMP_DOCKER_CONFIG=${DOCKER_CONFIG:-${HOME:-}/.docker}
   [ "$_pth_isolation" = isolated ] && return 0
 
   if tmux -L panopticon has-session >/dev/null 2>&1; then
@@ -66,13 +67,49 @@ tmp_home_init() {
   TMP_PANOPTICON_SERVICE_URL="http://127.0.0.1:$TMP_PANOPTICON_PORT"
   TMP_PANOPTICON_CONTAINER_SERVICE_URL="http://host.docker.internal:$TMP_PANOPTICON_PORT"
   TMP_PANOPTICON_RUNTIME_ID="tmp-${_pth_kind}-$$-$RANDOM"
+  TMP_PANOPTICON_BASE_IMAGE="panopticon-base-$TMP_PANOPTICON_RUNTIME_ID"
   mkdir -p "$PIPX_HOME" "$PIPX_BIN_DIR" "$TMP_HOME/.config" "$TMP_HOME/.cache" \
     "$TMP_HOME/.local/share"
   chmod 700 "$TMP_TMUX_DIR"
   PANOPTICON_BIN=
   export ORIGINAL_HOME TMP_HOME PIPX_HOME PIPX_BIN_DIR TARGET_REPO PANOPTICON_BIN \
     TMP_TMUX_DIR TMP_PANOPTICON_PORT TMP_PANOPTICON_SERVICE_URL \
-    TMP_PANOPTICON_CONTAINER_SERVICE_URL TMP_PANOPTICON_RUNTIME_ID TMP_DOCKER_HOST
+    TMP_PANOPTICON_CONTAINER_SERVICE_URL TMP_PANOPTICON_RUNTIME_ID \
+    TMP_PANOPTICON_BASE_IMAGE TMP_DOCKER_HOST TMP_DOCKER_CONFIG
+}
+
+tmp_home_print_codex_auth() {
+  _pth_auth_label=$1
+  _pth_auth_path=$2
+  if [ ! -f "$_pth_auth_path" ]; then
+    printf '%s: not configured (%s)\n' "$_pth_auth_label" "$_pth_auth_path"
+    return 0
+  fi
+  python3 -c '
+import hashlib
+import json
+import pathlib
+import sys
+
+label, raw_path = sys.argv[1:]
+path = pathlib.Path(raw_path)
+try:
+    auth = json.loads(path.read_text())
+except (OSError, ValueError) as exc:
+    print(f"{label}: unreadable auth.json ({exc})")
+    raise SystemExit(0)
+tokens = auth.get("tokens") if isinstance(auth.get("tokens"), dict) else {}
+token = tokens.get("access_token") or auth.get("OPENAI_API_KEY") or ""
+fingerprint = hashlib.sha256(token.encode()).hexdigest()[:12] if token else "none"
+account = str(tokens.get("account_id") or "")
+account_fingerprint = hashlib.sha256(account.encode()).hexdigest()[:12] if account else "unknown"
+mode = auth.get("auth_mode") or "unknown"
+refreshed = auth.get("last_refresh") or "unknown"
+print(
+    f"{label}: mode={mode!r} account_sha256={account_fingerprint} "
+    f"token_sha256={fingerprint} refreshed={refreshed!r}"
+)
+' "$_pth_auth_label" "$_pth_auth_path"
 }
 
 tmp_home_copy_codex_auth() {
@@ -81,6 +118,8 @@ tmp_home_copy_codex_auth() {
   [ -n "$ORIGINAL_HOME" ] || return 0
   _pth_source="$ORIGINAL_HOME/.codex/auth.json"
   [ -f "$_pth_source" ] || return 0
+  printf '%s\n' \
+    'WARNING: copying a rotating Codex login can invalidate the host copy after either copy refreshes.'
   mkdir -p "$TMP_HOME/.codex"
   install -m 600 "$_pth_source" "$TMP_HOME/.codex/auth.json"
   printf 'Copied Codex auth into the temporary HOME.\n'
@@ -113,11 +152,13 @@ tmp_home_run() {
     PIPX_HOME="$PIPX_HOME" \
     PIPX_BIN_DIR="$PIPX_BIN_DIR" \
     DOCKER_HOST="$TMP_DOCKER_HOST" \
+    DOCKER_CONFIG="$TMP_DOCKER_CONFIG" \
     TMUX_TMPDIR="$TMP_TMUX_DIR" \
     PANOPTICON_PORT="$TMP_PANOPTICON_PORT" \
     PANOPTICON_SERVICE_URL="$TMP_PANOPTICON_SERVICE_URL" \
     PANOPTICON_CONTAINER_SERVICE_URL="$TMP_PANOPTICON_CONTAINER_SERVICE_URL" \
     PANOPTICON_RUNTIME_ID="$TMP_PANOPTICON_RUNTIME_ID" \
+    PANOPTICON_BASE_IMAGE="$TMP_PANOPTICON_BASE_IMAGE" \
     PATH="$PIPX_BIN_DIR:$PATH" \
     "$@"
 }
