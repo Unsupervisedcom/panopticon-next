@@ -38,10 +38,11 @@ auth=no
 printf 'panopticon:%s|home=%s|config=%s|codex_key=%s|cwd=%s|auth=%s\\n' \\
   "$*" "$HOME" "${PANOPTICON_CONFIG-unset}" "${CODEX_API_KEY-unset}" "$PWD" "$auth" \\
   >> "$PANOPTICON_TMP_HOME_TRACE"
-printf 'runtime:%s|port=%s|service=%s|container_service=%s|tmux=%s\\n' \\
+printf 'runtime:%s|port=%s|service=%s|container_service=%s|tmux=%s|docker_host=%s|docker_context=%s\\n' \\
   "${PANOPTICON_RUNTIME_ID-unset}" "${PANOPTICON_PORT-unset}" \\
   "${PANOPTICON_SERVICE_URL-unset}" "${PANOPTICON_CONTAINER_SERVICE_URL-unset}" \\
-  "${TMUX_TMPDIR-unset}" >> "$PANOPTICON_TMP_HOME_TRACE"
+  "${TMUX_TMPDIR-unset}" "${DOCKER_HOST-unset}" "${DOCKER_CONTEXT-unset}" \\
+  >> "$PANOPTICON_TMP_HOME_TRACE"
 [ "${1-}" != --version ] || printf 'panopticon test\\n'
 """,
     )
@@ -50,6 +51,7 @@ printf 'runtime:%s|port=%s|service=%s|container_service=%s|tmux=%s\\n' \\
         """
 printf 'docker:%s\\n' "$*" >> "$PANOPTICON_TMP_HOME_TRACE"
 [ "${FAKE_DOCKER_FAIL-0}" != 1 ]
+if [ "${1-}" = context ]; then printf 'unix:///tmp/fake-docker.sock\\n'; exit 0; fi
 [ "${FAKE_DOCKER_CONTAINERS-0}" != 1 ] || printf 'container-id\\n'
 """,
     )
@@ -91,6 +93,7 @@ chmod 755 "$PIPX_BIN_DIR/panopticon"
         "FAKE_PANOPTICON_SOURCE": str(fake_panopticon),
         "PANOPTICON_CONFIG": "/should/not/leak",
         "CODEX_API_KEY": "should-not-leak",
+        "DOCKER_CONTEXT": "orbstack-should-not-leak",
     }
     return env, target, trace
 
@@ -129,6 +132,7 @@ def test_dev_tmp_home_builds_the_checkout_and_copies_codex_auth(tmp_path: Path) 
     assert "|port=41873|service=http://127.0.0.1:41873" in observed
     assert "|container_service=http://host.docker.internal:41873" in observed
     assert f"|tmux={home}/tmux" in observed
+    assert "|docker_host=unix:///tmp/fake-docker.sock|docker_context=unset" in observed
     assert "panopticon:stop" in observed
 
 

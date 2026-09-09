@@ -20,6 +20,14 @@ tmp_home_preflight() {
   tmp_home_require tmux
 
   docker info >/dev/null 2>&1 || tmp_home_die "the Docker daemon is unreachable"
+  if [ -n "${DOCKER_HOST:-}" ]; then
+    TMP_DOCKER_HOST=$DOCKER_HOST
+  else
+    TMP_DOCKER_HOST=$(docker context inspect --format '{{ (index .Endpoints "docker").Host }}') \
+      || tmp_home_die "could not resolve the active Docker context endpoint"
+  fi
+  [ -n "$TMP_DOCKER_HOST" ] \
+    || tmp_home_die "the active Docker context has no daemon endpoint"
   [ "$_pth_isolation" = isolated ] && return 0
 
   if tmux -L panopticon has-session >/dev/null 2>&1; then
@@ -57,7 +65,7 @@ tmp_home_init() {
   PANOPTICON_BIN=
   export ORIGINAL_HOME TMP_HOME PIPX_HOME PIPX_BIN_DIR TARGET_REPO PANOPTICON_BIN \
     TMP_TMUX_DIR TMP_PANOPTICON_PORT TMP_PANOPTICON_SERVICE_URL \
-    TMP_PANOPTICON_CONTAINER_SERVICE_URL TMP_PANOPTICON_RUNTIME_ID
+    TMP_PANOPTICON_CONTAINER_SERVICE_URL TMP_PANOPTICON_RUNTIME_ID TMP_DOCKER_HOST
 }
 
 tmp_home_copy_codex_auth() {
@@ -73,6 +81,7 @@ tmp_home_copy_codex_auth() {
 
 tmp_home_run() {
   env \
+    -u DOCKER_CONTEXT \
     -u ANTHROPIC_API_KEY \
     -u CLAUDE_CODE_OAUTH_TOKEN \
     -u CODEX_ACCESS_TOKEN \
@@ -96,6 +105,7 @@ tmp_home_run() {
     XDG_DATA_HOME="$TMP_HOME/.local/share" \
     PIPX_HOME="$PIPX_HOME" \
     PIPX_BIN_DIR="$PIPX_BIN_DIR" \
+    DOCKER_HOST="$TMP_DOCKER_HOST" \
     TMUX_TMPDIR="$TMP_TMUX_DIR" \
     PANOPTICON_PORT="$TMP_PANOPTICON_PORT" \
     PANOPTICON_SERVICE_URL="$TMP_PANOPTICON_SERVICE_URL" \
