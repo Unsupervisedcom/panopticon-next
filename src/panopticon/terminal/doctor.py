@@ -6,8 +6,9 @@ auth flow — plus that the docker daemon is actually reachable (a present clien
 daemon fails every spawn). It prints a ``✓``/``✗`` line per check and returns a non-zero exit
 code when a required prerequisite is missing, so a fresh install can self-diagnose.
 
-Deliberately scoped to binaries — exactly one registered harness CLI is required, while every
-harness gets its own status line. It does not inspect credential/config readiness
+Deliberately scoped to binaries — exactly one registered harness CLI is required. The aggregate
+harness check is reported first, with every registered harness nested beneath it. It does not
+inspect credential/config readiness
 (the secrets env-file, ``CLAUDE_CODE_OAUTH_TOKEN``, ``GH_TOKEN``), the task-service port, or the
 ``panopticon-base`` image (the spawn path auto-builds it). Dev tooling (``uv``/``make``) is not a
 prerequisite for a pip install.
@@ -49,6 +50,7 @@ class CheckResult:
     detail: str
     hint: str = ""
     required: bool = True
+    indent: int = 0
 
 
 #: Required host binaries and how to install each, in the order they're reported. Each is
@@ -142,10 +144,10 @@ def run_checks(
             f"found at {path}" if path else "not found on PATH",
             hint=harness.install_hint,
             required=False,
+            indent=1,
         )
         for harness in HARNESSES.values()
     ]
-    results.extend(harness_results)
     installed = [result.name for result in harness_results if result.ok]
     results.append(
         CheckResult(
@@ -155,6 +157,7 @@ def run_checks(
             hint="Install at least one of the agent harness CLIs listed above.",
         )
     )
+    results.extend(harness_results)
     if docker_present:
         results.append(check_docker_daemon(run))
     return results
@@ -165,9 +168,10 @@ def render(results: Sequence[CheckResult]) -> str:
     lines = ["Checking host prerequisites for panopticon quickstart / start / setup-repo:", ""]
     for result in results:
         mark = "✓" if result.ok else ("✗" if result.required else "–")
-        lines.append(f"  {mark} {result.name}: {result.detail}")
+        padding = "  " + "    " * result.indent
+        lines.append(f"{padding}{mark} {result.name}: {result.detail}")
         if not result.ok and result.hint:
-            lines.append(f"      → {result.hint}")
+            lines.append(f"{padding}    → {result.hint}")
     failures = [result for result in results if result.required and not result.ok]
     lines.append("")
     if failures:
