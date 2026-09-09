@@ -455,7 +455,7 @@ read_secret() {{ :; }}
 codex() {{ :; }}
 set_repo_credential_dir() {{ return 1; }}
 {_SETUP_CODEX_AUTH}
-printf '\n' | setup_codex_auth
+setup_codex_auth </dev/null
 printf 'credential_dir=%s\ncredential_path=%s\n' "$credential_dir" "$credential_path"
 """
     output = _sh(body)
@@ -463,6 +463,68 @@ printf 'credential_dir=%s\ncredential_path=%s\n' "$credential_dir" "$credential_
     assert "Couldn't store Codex auth in the repo credential directory" in output
     assert "credential_dir=\ncredential_path=\n" in output
     assert (secrets / "openai.d" / "auth.json").is_file()
+
+
+def test_codex_login_persists_and_adopts_the_default_credential_dir(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    native = home / ".codex"
+    native.mkdir(parents=True)
+    (native / "auth.json").write_text('{"auth_mode":"chatgpt"}')
+    secrets = tmp_path / "secrets"
+    body = f"""
+unset CODEX_API_KEY OPENAI_API_KEY CODEX_ACCESS_TOKEN
+HOME={shlex.quote(str(home))}
+PANOPTICON_SECRETS_DIR={shlex.quote(str(secrets))}
+harness_configured=0
+env_file=repo.env
+PANOPTICON_ENV_FILE=''
+credential_dir=''
+credential_path=''
+add_summary() {{ :; }}
+read_secret() {{ :; }}
+codex() {{ :; }}
+set_repo_credential_dir() {{ printf 'set=%s\n' "$1"; }}
+{_SETUP_CODEX_AUTH}
+setup_codex_auth </dev/null
+printf 'credential_dir=%s\ncredential_path=%s\n' "$credential_dir" "$credential_path"
+"""
+    output = _sh(body)
+
+    assert "set=openai.d" in output
+    assert f"credential_dir=openai.d\ncredential_path={secrets / 'openai.d'}\n" in output
+    assert (secrets / "openai.d" / "auth.json").is_file()
+
+
+def test_codex_login_reuses_an_existing_credential_dir_without_repo_patch(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    native = home / ".codex"
+    native.mkdir(parents=True)
+    (native / "auth.json").write_text('{"auth_mode":"chatgpt"}')
+    secrets = tmp_path / "secrets"
+    existing = secrets / "existing.d"
+    existing.mkdir(parents=True)
+    body = f"""
+unset CODEX_API_KEY OPENAI_API_KEY CODEX_ACCESS_TOKEN
+HOME={shlex.quote(str(home))}
+PANOPTICON_SECRETS_DIR={shlex.quote(str(secrets))}
+harness_configured=0
+env_file=repo.env
+PANOPTICON_ENV_FILE=''
+credential_dir=existing.d
+credential_path={shlex.quote(str(existing))}
+add_summary() {{ :; }}
+read_secret() {{ :; }}
+codex() {{ :; }}
+set_repo_credential_dir() {{ printf 'unexpected-patch\n'; return 1; }}
+{_SETUP_CODEX_AUTH}
+setup_codex_auth </dev/null
+printf 'credential_dir=%s\ncredential_path=%s\n' "$credential_dir" "$credential_path"
+"""
+    output = _sh(body)
+
+    assert "unexpected-patch" not in output
+    assert f"credential_dir=existing.d\ncredential_path={existing}\n" in output
+    assert (existing / "auth.json").is_file()
 
 
 def test_read_secret_disables_echo_before_showing_its_prompt() -> None:
@@ -650,6 +712,7 @@ def test_final_readiness_gate_waits_for_each_required_credential_before_advancin
         shell = f"""
 {_LIB}
 {_shell_function("refresh_readiness")}
+load_repo_auth_context() {{ return 1; }}
 PANOPTICON_ENV_FILE={shlex.quote(str(env_file))}
 default_harness=claude
 credential_path=''
@@ -690,6 +753,42 @@ panopticon_advance() {{ printf '%s\n' advance >> {shlex.quote(str(events))}; }}
             assert observed_events == ["finish", "advance"]
             assert "Setup is incomplete" not in completed.stdout
         assert "All required task-container credentials are configured." in completed.stdout
+
+
+def test_refresh_readiness_observes_a_repo_credential_dir_added_after_failure(
+    tmp_path: Path,
+) -> None:
+    secrets = tmp_path / "secrets"
+    credential_path = secrets / "openai.d"
+    credential_path.mkdir(parents=True)
+    (credential_path / "auth.json").write_text('{"auth_mode":"chatgpt"}')
+    body = f"""
+{_shell_function("refresh_readiness")}
+PANOPTICON_SECRETS_DIR={shlex.quote(str(secrets))}
+PANOPTICON_ENV_FILE=''
+repo_url=''
+default_harness=codex
+credential_dir=''
+credential_path=''
+load_count=0
+load_repo_auth_context() {{
+    load_count=$((load_count + 1))
+    default_harness=codex
+    if [ "$load_count" -eq 1 ]; then
+        credential_dir=''
+    else
+        credential_dir=openai.d
+    fi
+}}
+refresh_readiness
+printf 'first=%s path=%s\n' "$harness_configured" "$credential_path"
+refresh_readiness
+printf 'second=%s path=%s\n' "$harness_configured" "$credential_path"
+"""
+    output = _sh(body)
+
+    assert "first=0 path=" in output
+    assert f"second=1 path={credential_path}" in output
 
 
 def test_extract_oauth_token_pulls_the_token_out_of_a_noisy_capture() -> None:

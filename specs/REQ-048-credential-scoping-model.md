@@ -69,8 +69,9 @@ reasonable.
 ### REQ-048.6: Fleet boundary
 
 1. A task capability MUST reject every action classified as task-targeted when its target is an unrelated task, including an attempt to drop that task.
-2. A task capability MUST reject repo administration, task claiming, provisioning, migration, lifecycle reporting, runner administration, workflow-file administration, and operator migration operations.
+2. A task capability MUST reject repo administration except for the narrow setup-repo mutation in REQ-048.6.4, plus task claiming, provisioning, migration, lifecycle reporting, runner administration, workflow-file administration, and operator migration operations.
 3. An out-of-scope task target that exists and one that does not exist MUST produce the same generic scope-denial status and body.
+4. An active task whose stored workflow declares `configures_repo_credentials=True` MUST be allowed to set only its own repository's `credential_dir` to a non-empty directory name below the secrets root, while rejecting sibling repositories, every other repo field, malformed or root/path-shaped values, non-opted-in workflows, and terminal setup tasks.
 
 ### REQ-048.7: Orchestrator delegation
 

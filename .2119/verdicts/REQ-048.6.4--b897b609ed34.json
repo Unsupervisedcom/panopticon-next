@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.6.4--b897b609ed34",
+  "requirementId": "REQ-048.6.4",
+  "hash": "b897b609ed34",
+  "verdict": "pass",
+  "summary": "Focused enforced-auth tests and adversarial review verify that only an active opted-in setup task can set its own repo credential_dir, while sibling, terminal, malformed, blank, path-shaped, and unrelated writes are denied.",
+  "timestamp": "2026-09-09T19:23:24.717Z"
+}

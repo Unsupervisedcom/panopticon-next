@@ -350,6 +350,8 @@ class TaskService:
         path = secrets_file_path(credential_dir)  # None for no reference; raises on escape
         if path is None:
             return
+        if path == secrets_file_path("."):
+            raise ValueError("credential_dir must name a directory below the secrets dir")
         if not await asyncio.to_thread(os.path.isdir, path):
             raise ValueError(
                 f"credential_dir {credential_dir!r} does not exist under the secrets dir"

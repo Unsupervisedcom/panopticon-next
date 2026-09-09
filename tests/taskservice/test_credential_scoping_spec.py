@@ -29,6 +29,7 @@ from panopticon.core.workflow import Workflow
 from panopticon.taskservice.api import create_app
 from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
 from panopticon.taskservice.auth import derive_task_capability, load_client_token
+from panopticon.taskservice.auth_scope import AuthorizationClass
 from panopticon.taskservice.service import TaskService
 from panopticon.taskservice.store_sqlalchemy import SqlAlchemyStore
 from panopticon.workflows import Orchestrator, SetupRepo, Spike
@@ -1228,7 +1229,6 @@ def test_fleet_administration_route_inventory_is_complete_and_task_denied(tmp_pa
     # 2119: REQ-048.6.2
     expected = {
         ("POST", "/repos"),
-        ("PATCH", "/repos/{repo_id}"),
         ("DELETE", "/repos/{repo_id}"),
         ("GET", "/workflow-files"),
         ("PUT", "/tasks/{task_id}/claim"),
@@ -1260,7 +1260,11 @@ def test_fleet_administration_route_inventory_is_complete_and_task_denied(tmp_pa
             entry
             for entry in registered
             if (
-                (entry[1].startswith("/repos") and entry[0] not in {"GET", "HEAD"})
+                (
+                    entry[1].startswith("/repos")
+                    and entry[0] not in {"GET", "HEAD"}
+                    and entry != ("PATCH", "/repos/{repo_id}")
+                )
                 or entry[1] == "/workflow-files"
                 or entry[1].endswith(
                     ("/claim", "/provisioning", "/migration", "/lifecycle", "/governor", "/snooze")
@@ -2199,8 +2203,6 @@ def test_every_task_targeted_mcp_surface_uses_capability_subject_and_decoded_tar
 
 def test_every_rest_and_mcp_surface_has_a_scope_classification(tmp_path: Path) -> None:
     # 2119: REQ-048.8.3
-    from panopticon.taskservice.auth_scope import AuthorizationClass
-
     with _client(tmp_path) as client:
         policy = client.app.state.credential_scope_policy
         classified = policy.classified_surfaces()
@@ -3342,8 +3344,8 @@ def test_fleet_write_retains_host_duties_while_task_token_cannot_claim(tmp_path:
 def test_active_setup_repo_task_can_only_set_its_own_repo_credential_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Regression for #12: setup-repo has a task capability, while generic repo PATCH remains
-    # fleet administration. Give precisely this active utility the one repo mutation it needs.
+    # 2119: REQ-048.6.4
+    # Regression for #12: give precisely this active utility the one repo mutation it needs.
     monkeypatch.setenv("PANOPTICON_CONFIG", str(tmp_path))
     secrets = tmp_path / "secrets"
     (secrets / "openai.d").mkdir(parents=True)
@@ -3365,6 +3367,10 @@ def test_active_setup_repo_task_can_only_set_its_own_repo_credential_dir(
             ("/repos/r2", setup_headers, {"credential_dir": "other.d"}),
             ("/repos/r1", setup_headers, {"name": "stolen"}),
             ("/repos/r1", setup_headers, {"credential_dir": None}),
+            ("/repos/r1", setup_headers, {"credential_dir": ""}),
+            ("/repos/r1", setup_headers, {"credential_dir": "   "}),
+            ("/repos/r1", setup_headers, {"credential_dir": "."}),
+            ("/repos/r1", setup_headers, {"credential_dir": "nested/dir"}),
             ("/repos/r1", regular_headers, {"credential_dir": "other.d"}),
         ):
             denied = client.patch(path, headers=headers, json=body)
@@ -3383,6 +3389,26 @@ def test_active_setup_repo_task_can_only_set_its_own_repo_credential_dir(
         repo = client.get("/repos/r1", headers=_bearer(WRITE_TOKEN)).json()
         assert repo["name"] == "acme/one"
         assert repo["credential_dir"] == "openai.d"
+
+        policy = client.app.state.credential_scope_policy
+        assert policy.classification_for_rest("PATCH", "/repos/{repo_id}") == (
+            AuthorizationClass.TASK_SCOPED
+        )
+
+
+def test_task_scoped_repo_patch_with_non_utf8_body_is_scope_denied(tmp_path: Path) -> None:
+    # 2119: REQ-048.6.4
+    with _client(tmp_path) as client:
+        setup = _create_task(client, workflow="setup-repo")
+        response = client.patch(
+            "/repos/r1",
+            headers={
+                **_bearer(_task_token(setup["id"])),
+                "Content-Type": "application/octet-stream",
+            },
+            content=b"\xff",
+        )
+        assert (response.status_code, response.json()) == (403, SCOPE_FAILURE)
 
 
 def test_runner_injects_only_the_subject_task_capability(

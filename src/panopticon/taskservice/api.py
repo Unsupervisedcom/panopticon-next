@@ -1012,7 +1012,7 @@ def create_app(
                     parsed_body = json.loads(await request.body())
                     body = parsed_body if isinstance(parsed_body, dict) else {}
                     subject_task = await service.get_task(task_subject)
-                except (json.JSONDecodeError, NotFound):
+                except (json.JSONDecodeError, UnicodeDecodeError, NotFound):
                     body = {}
                     subject_task = None
                 credential_dir = body.get("credential_dir")
@@ -1021,6 +1021,8 @@ def create_app(
                     and set(body) == {"credential_dir"}
                     and isinstance(credential_dir, str)
                     and credential_dir.strip()
+                    and Path(credential_dir).name == credential_dir
+                    and credential_dir not in {".", ".."}
                     and service.task_configures_repo_credentials(subject_task, repo_id)
                 )
                 if allowed:

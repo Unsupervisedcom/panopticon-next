@@ -48,6 +48,11 @@ echo
 # visible to task containers. This is a function because the final gate re-checks after the operator
 # edits the env-file from another terminal.
 refresh_readiness() {
+    if load_repo_auth_context; then
+        credential_path=""
+        [ -n "$credential_dir" ] \
+            && credential_path="$PANOPTICON_SECRETS_DIR/$credential_dir"
+    fi
     harness_configured=0
     case "$default_harness" in
         claude)
