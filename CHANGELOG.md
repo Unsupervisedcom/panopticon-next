@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.10](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.9...v0.2.10) (2026-09-09)
+
+
+### Bug Fixes
+
+* group doctor harness checks ([#10](https://github.com/Unsupervisedcom/panopticon-next/issues/10)) ([5896b3b](https://github.com/Unsupervisedcom/panopticon-next/commit/5896b3b7e9ace468c903f0cd0813023c5d6e6a0f))
+
 ## [0.2.9](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.8...v0.2.9) (2026-09-06)
 
 
