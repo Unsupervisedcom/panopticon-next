@@ -35,4 +35,9 @@ printf 'Worktree under test: %s\n' "$TARGET_REPO"
 printf 'Isolated service URL: %s\n' "$TMP_PANOPTICON_SERVICE_URL"
 tmp_home_run "$PANOPTICON_BIN" --version
 cd -- "$TARGET_REPO"
-tmp_home_run "$PANOPTICON_BIN" quickstart
+_dev_status=0
+tmp_home_run "$PANOPTICON_BIN" quickstart || _dev_status=$?
+tmp_home_print_codex_auth "Final temporary Codex auth" "$TMP_HOME/.codex/auth.json"
+tmp_home_print_codex_auth \
+  "Final repo Codex auth" "$TMP_HOME/.config/panopticon/secrets/openai.d/auth.json"
+exit "$_dev_status"

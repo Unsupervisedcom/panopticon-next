@@ -130,6 +130,8 @@ def test_dev_tmp_home_reports_host_auth_without_copying_it(tmp_path: Path) -> No
     assert home == home.resolve()
     assert "Host Codex auth: mode='chatgpt'" in output
     assert "Temporary Codex auth: not configured" in output
+    assert "Final temporary Codex auth: not configured" in output
+    assert "Final repo Codex auth: not configured" in output
     assert not (home / ".codex" / "auth.json").exists()
     observed = trace.read_text()
     assert "uv:build --wheel --out-dir" in observed
