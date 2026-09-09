@@ -13,25 +13,22 @@ tmp_home_require() {
 }
 
 tmp_home_preflight() {
+  _pth_isolation=${1:-strict}
   tmp_home_require docker
   tmp_home_require pipx
   tmp_home_require python3
   tmp_home_require tmux
 
+  docker info >/dev/null 2>&1 || tmp_home_die "the Docker daemon is unreachable"
+  [ "$_pth_isolation" = isolated ] && return 0
+
   if tmux -L panopticon has-session >/dev/null 2>&1; then
     tmp_home_die "the shared tmux -L panopticon server is already active; run 'panopticon stop' first"
   fi
-
   _pth_containers=$(docker ps --all --quiet --filter label=panopticon.task) \
     || tmp_home_die "the Docker daemon is unreachable"
   if [ -n "$_pth_containers" ]; then
     tmp_home_die "Panopticon task containers already exist; stop the active fleet first"
-  fi
-
-  if python3 -c \
-    'import socket; s = socket.socket(); s.settimeout(0.2); raise SystemExit(s.connect_ex(("127.0.0.1", 8000)) != 0)' \
-    >/dev/null 2>&1; then
-    tmp_home_die "TCP port 8000 is already in use; Panopticon's temporary stack cannot bind it"
   fi
 }
 
@@ -44,10 +41,23 @@ tmp_home_init() {
   TMP_HOME=$(mktemp -d -t "panopticon-${_pth_kind}-home.XXXXXX")
   PIPX_HOME="$TMP_HOME/pipx"
   PIPX_BIN_DIR="$TMP_HOME/bin"
+  TMP_TMUX_DIR="$TMP_HOME/tmux"
+  TMP_PANOPTICON_PORT=$(python3 -c \
+    'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()') \
+    || tmp_home_die "could not allocate a temporary task-service port"
+  case "$TMP_PANOPTICON_PORT" in
+    *[!0-9]*|'') tmp_home_die "temporary task-service port was not numeric" ;;
+  esac
+  TMP_PANOPTICON_SERVICE_URL="http://127.0.0.1:$TMP_PANOPTICON_PORT"
+  TMP_PANOPTICON_CONTAINER_SERVICE_URL="http://host.docker.internal:$TMP_PANOPTICON_PORT"
+  TMP_PANOPTICON_RUNTIME_ID="tmp-${_pth_kind}-$$-$RANDOM"
   mkdir -p "$PIPX_HOME" "$PIPX_BIN_DIR" "$TMP_HOME/.config" "$TMP_HOME/.cache" \
-    "$TMP_HOME/.local/share"
+    "$TMP_HOME/.local/share" "$TMP_TMUX_DIR"
+  chmod 700 "$TMP_TMUX_DIR"
   PANOPTICON_BIN=
-  export ORIGINAL_HOME TMP_HOME PIPX_HOME PIPX_BIN_DIR TARGET_REPO PANOPTICON_BIN
+  export ORIGINAL_HOME TMP_HOME PIPX_HOME PIPX_BIN_DIR TARGET_REPO PANOPTICON_BIN \
+    TMP_TMUX_DIR TMP_PANOPTICON_PORT TMP_PANOPTICON_SERVICE_URL \
+    TMP_PANOPTICON_CONTAINER_SERVICE_URL TMP_PANOPTICON_RUNTIME_ID
 }
 
 tmp_home_copy_codex_auth() {
@@ -86,6 +96,11 @@ tmp_home_run() {
     XDG_DATA_HOME="$TMP_HOME/.local/share" \
     PIPX_HOME="$PIPX_HOME" \
     PIPX_BIN_DIR="$PIPX_BIN_DIR" \
+    TMUX_TMPDIR="$TMP_TMUX_DIR" \
+    PANOPTICON_PORT="$TMP_PANOPTICON_PORT" \
+    PANOPTICON_SERVICE_URL="$TMP_PANOPTICON_SERVICE_URL" \
+    PANOPTICON_CONTAINER_SERVICE_URL="$TMP_PANOPTICON_CONTAINER_SERVICE_URL" \
+    PANOPTICON_RUNTIME_ID="$TMP_PANOPTICON_RUNTIME_ID" \
     PATH="$PIPX_BIN_DIR:$PATH" \
     "$@"
 }

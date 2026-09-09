@@ -31,6 +31,7 @@ export PANOPTICON_BIN
 
 printf 'Panopticon prod HOME: %s\n' "$TMP_HOME"
 printf 'Target repository: %s\n' "$TARGET_REPO"
+printf 'Isolated service URL: %s\n' "$TMP_PANOPTICON_SERVICE_URL"
 tmp_home_run "$PANOPTICON_BIN" --version
 cd -- "$TARGET_REPO"
 tmp_home_run "$PANOPTICON_BIN" quickstart

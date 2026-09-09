@@ -38,6 +38,10 @@ auth=no
 printf 'panopticon:%s|home=%s|config=%s|codex_key=%s|cwd=%s|auth=%s\\n' \\
   "$*" "$HOME" "${PANOPTICON_CONFIG-unset}" "${CODEX_API_KEY-unset}" "$PWD" "$auth" \\
   >> "$PANOPTICON_TMP_HOME_TRACE"
+printf 'runtime:%s|port=%s|service=%s|container_service=%s|tmux=%s\\n' \\
+  "${PANOPTICON_RUNTIME_ID-unset}" "${PANOPTICON_PORT-unset}" \\
+  "${PANOPTICON_SERVICE_URL-unset}" "${PANOPTICON_CONTAINER_SERVICE_URL-unset}" \\
+  "${TMUX_TMPDIR-unset}" >> "$PANOPTICON_TMP_HOME_TRACE"
 [ "${1-}" != --version ] || printf 'panopticon test\\n'
 """,
     )
@@ -54,7 +58,7 @@ printf 'docker:%s\\n' "$*" >> "$PANOPTICON_TMP_HOME_TRACE"
         'printf \'tmux:%s\\n\' "$*" >> "$PANOPTICON_TMP_HOME_TRACE"\n'
         'exit "${FAKE_TMUX_STATUS-1}"\n',
     )
-    _executable(fake_bin / "python3", 'exit "${FAKE_PORT_STATUS-1}"\n')
+    _executable(fake_bin / "python3", "printf '41873\\n'\n")
     _executable(
         fake_bin / "uv",
         """
@@ -121,6 +125,10 @@ def test_dev_tmp_home_builds_the_checkout_and_copies_codex_auth(tmp_path: Path) 
         f"panopticon:quickstart|home={home}|config=unset|codex_key=unset|cwd={ROOT}|auth=yes"
         in observed
     )
+    assert "runtime:tmp-dev-" in observed
+    assert "|port=41873|service=http://127.0.0.1:41873" in observed
+    assert "|container_service=http://host.docker.internal:41873" in observed
+    assert f"|tmux={home}/tmux" in observed
     assert "panopticon:stop" in observed
 
 
@@ -161,11 +169,28 @@ def test_prod_tmp_home_installs_latest_without_copying_codex_auth(tmp_path: Path
     )
 
 
-def test_tmp_home_refuses_an_existing_panopticon_tmux_server(tmp_path: Path) -> None:
+def test_tmp_home_coexists_with_existing_panopticon_runtime(tmp_path: Path) -> None:
     env, _, trace = _fake_environment(tmp_path)
     env["FAKE_TMUX_STATUS"] = "0"
+    env["FAKE_DOCKER_CONTAINERS"] = "1"
     completed = subprocess.run(
         [str(DEV)],
+        env=env,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert "Isolated service URL: http://127.0.0.1:41873" in completed.stdout
+    assert "panopticon:quickstart" in trace.read_text()
+
+
+def test_prod_tmp_home_retains_guard_for_an_older_release(tmp_path: Path) -> None:
+    env, target, trace = _fake_environment(tmp_path)
+    env["FAKE_TMUX_STATUS"] = "0"
+    completed = subprocess.run(
+        [str(PROD), "latest", str(target)],
         env=env,
         cwd=ROOT,
         capture_output=True,

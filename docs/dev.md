@@ -93,10 +93,13 @@ can exercise the ChatGPT-subscription `auth.json` → repo `credential_dir` → 
 path. Set `PANOPTICON_DEV_TMP_HOME_AUTH=0` to start without it. The production launcher starts
 without native Codex auth; set `PANOPTICON_PROD_TMP_HOME_AUTH=1` to copy it.
 
-The launchers refuse to run while the shared `tmux -L panopticon` server, port 8000, or any
-Panopticon task container is already in use. Quit the temporary dashboard normally; the launcher
-then runs the temporary installation's `panopticon stop` and deletes its home. Set
-`PANOPTICON_TMP_HOME_KEEP=1` to retain the files for inspection after stopping the runtime.
+The development launcher can run beside an existing Panopticon installation. It uses a private
+tmux socket directory, an automatically allocated task-service port, and a Docker runtime label
+that scopes cleanup to its own task containers. The production launcher retains the collision
+guard because an older installed release does not yet understand that label. Quit the temporary
+dashboard normally; the launcher then runs the temporary installation's `panopticon stop` and
+deletes its home. Set `PANOPTICON_TMP_HOME_KEEP=1` to retain the files for inspection after
+stopping the runtime.
 
 ## Database migrations
 

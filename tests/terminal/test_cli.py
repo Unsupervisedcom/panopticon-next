@@ -38,6 +38,27 @@ def test_stop_skips_docker_rm_when_no_containers() -> None:
     assert not any(c[0] == "docker" and "rm" in c for c in calls)
 
 
+def test_stop_scopes_containers_to_configured_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PANOPTICON_RUNTIME_ID", "tmp-dev-123")
+    ps_result = MagicMock()
+    ps_result.stdout = "temporary123\n"
+    with patch("subprocess.run", side_effect=[ps_result, MagicMock(), MagicMock()]) as mock_run:
+        assert main(["stop"]) == 0
+
+    calls = [c.args[0] for c in mock_run.call_args_list]
+    assert calls[0] == [
+        "docker",
+        "ps",
+        "--all",
+        "--quiet",
+        "--filter",
+        "label=panopticon.task",
+        "--filter",
+        "label=panopticon.runtime=tmp-dev-123",
+    ]
+    assert calls[1] == ["docker", "rm", "--force", "temporary123"]
+
+
 def test_stop_tolerates_missing_docker_or_tmux() -> None:
     with patch("subprocess.run", side_effect=FileNotFoundError):
         assert main(["stop"]) == 0

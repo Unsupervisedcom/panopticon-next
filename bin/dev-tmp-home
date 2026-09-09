@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/_tmp-home-common"
 [ "$#" -eq 0 ] || tmp_home_die "usage: bin/dev-tmp-home"
 
 tmp_home_require uv
-tmp_home_preflight
+tmp_home_preflight isolated
 tmp_home_init dev "$REPO_ROOT"
 trap tmp_home_cleanup EXIT
 
@@ -30,6 +30,7 @@ export PANOPTICON_BIN
 
 printf 'Panopticon dev HOME: %s\n' "$TMP_HOME"
 printf 'Worktree under test: %s\n' "$TARGET_REPO"
+printf 'Isolated service URL: %s\n' "$TMP_PANOPTICON_SERVICE_URL"
 tmp_home_run "$PANOPTICON_BIN" --version
 cd -- "$TARGET_REPO"
 tmp_home_run "$PANOPTICON_BIN" quickstart

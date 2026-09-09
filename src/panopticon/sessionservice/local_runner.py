@@ -206,6 +206,7 @@ class LocalRunner(Runner):
         # bootstraps the CLI then runs `claude`). `tmux attach` therefore reaches the live agent.
         self._agent_command = list(agent_command)
         self._tmux_socket = tmux_socket  # isolate panopticon's tmux server when set (-L)
+        self._runtime_id = os.environ.get("PANOPTICON_RUNTIME_ID")
         self._extra_env = dict(extra_env or {})
         self._run = run
         self._snapshot_dir = Path(tempfile.gettempdir())
@@ -389,6 +390,8 @@ class LocalRunner(Runner):
             "--add-host",
             HOST_GATEWAY,
         ]
+        if self._runtime_id:
+            docker_run += ["--label", f"panopticon.runtime={self._runtime_id}"]
         if (
             docker_in_docker
         ):  # privileged nested Docker daemon (repo capability); entrypoint starts it
