@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.11](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.10...v0.2.11) (2026-09-10)
+
+
+### Features
+
+* add temporary-home smoke launchers ([#14](https://github.com/Unsupervisedcom/panopticon-next/issues/14)) ([d2ab665](https://github.com/Unsupervisedcom/panopticon-next/commit/d2ab66548b9f323e0b341d2cb8f23478e0a0b7be))
+
+
+### Bug Fixes
+
+* persist setup-repo Codex credentials ([#13](https://github.com/Unsupervisedcom/panopticon-next/issues/13)) ([4458e27](https://github.com/Unsupervisedcom/panopticon-next/commit/4458e27bde0c14289c50d5729c258697402ccd12))
+
 ## [0.2.10](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.9...v0.2.10) (2026-09-09)
 
 

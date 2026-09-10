@@ -110,7 +110,7 @@ pipx install panopticon-next && panopticon quickstart
 ```
 
 [//]: # (x-release-please-start-version)
-You can verify the installed release with `panopticon --version`; it should print `panopticon 0.2.10`
+You can verify the installed release with `panopticon --version`; it should print `panopticon 0.2.11`
 without requiring a checkout or `uv`.
 [//]: # (x-release-please-end)
 
