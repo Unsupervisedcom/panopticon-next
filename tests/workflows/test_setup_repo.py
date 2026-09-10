@@ -10,11 +10,14 @@ import os
 import pty
 import select
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+import pytest
 
 from panopticon.core import Actor
 from panopticon.core.workflow import Workflow
@@ -652,6 +655,8 @@ def test_shell_script_captures_and_writes_the_minted_token() -> None:
     # misfiles BusyBox's `-c`-capable script as BSD-shaped, so the gate is a capability probe)
     assert "script -q -e -c 'claude setup-token'" in script
     assert 'script -q -e "$_cst_log" claude setup-token' in script
+    assert "'claude setup-token' \"$_cst_log\" >&2" in script
+    assert '"$_cst_log" claude setup-token >&2' in script
     assert "if script_supports_dash_c; then" in script
     assert "mint_claude_token" in script and "capture_claude_setup_token" in script
     # extracts the minted token and stores it via the shared, var-parameterized helper (the DRY
@@ -896,11 +901,16 @@ def test_capture_claude_setup_token_dispatches_the_bsd_form_when_unsupported(
 def test_capture_claude_setup_token_returns_the_token_on_a_successful_capture(
     tmp_path: Path,
 ) -> None:
+    # Real `script` mirrors the child transcript to stdout while also writing the capture file.
+    # capture_claude_setup_token must keep that operator-visible stream out of its own stdout;
+    # otherwise command substitution receives the entire transcript and the strict token-shape
+    # check rejects it instead of storing the freshly minted token.
     bin_dir = _fake_script_bin(
         tmp_path,
         "#!/bin/sh\n"
         'log=""\n'
         'for a in "$@"; do log=$a; done\n'
+        "printf 'noise\\nyour token: sk-ant-oat01-FAKE_TOKEN_123\\n'\n"
         "printf 'noise\\nyour token: sk-ant-oat01-FAKE_TOKEN_123\\n' > \"$log\"\n"
         "exit 0\n",
     )
@@ -910,6 +920,42 @@ def test_capture_claude_setup_token_returns_the_token_on_a_successful_capture(
         'out=$(capture_claude_setup_token); echo "exit=$? token=[$out]"'
     )
     assert out.strip() == "exit=0 token=[sk-ant-oat01-FAKE_TOKEN_123]"
+
+
+def test_capture_claude_setup_token_with_the_host_script_keeps_transcript_out_of_token(
+    tmp_path: Path,
+) -> None:
+    """Exercise the installed BSD/util-linux `script` with a deterministic fake Claude CLI."""
+    if shutil.which("script") is None:
+        pytest.skip("host has no script utility")
+
+    bin_dir = tmp_path / "fakebin"
+    bin_dir.mkdir()
+    fake_claude = bin_dir / "claude"
+    fake_claude.write_text(
+        "#!/bin/sh\n"
+        "printf 'interactive chatter\\nCLAUDE_CODE_OAUTH_TOKEN="
+        "sk-ant-oat01-HOST_SCRIPT_FAKE\\n'\n"
+    )
+    fake_claude.chmod(0o755)
+    result = subprocess.run(
+        [
+            "sh",
+            "-c",
+            f"PANOPTICON_PYTHON={shlex.quote(sys.executable)}\n"
+            f"{_LIB}\n"
+            f'PATH={shlex.quote(str(bin_dir))}:"$PATH"\n'
+            "token=$(capture_claude_setup_token); rc=$?; "
+            'printf "exit=%s token=[%s]\\n" "$rc" "$token"',
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        stdin=subprocess.DEVNULL,
+    )
+
+    assert result.stdout.strip() == "exit=0 token=[sk-ant-oat01-HOST_SCRIPT_FAKE]"
+    assert "interactive chatter" in result.stderr
 
 
 def test_capture_claude_setup_token_fails_when_the_command_itself_fails(tmp_path: Path) -> None:

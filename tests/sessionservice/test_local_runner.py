@@ -79,6 +79,19 @@ def test_local_runner_is_a_runner() -> None:
     assert issubclass(LocalRunner, Runner)
 
 
+def test_spawn_labels_a_configured_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PANOPTICON_RUNTIME_ID", "tmp-dev-123")
+    rec = _Recorder()
+
+    LocalRunner("http://svc:8000", run=rec).spawn("t1")
+
+    docker_run = next(
+        command for command, _ in rec.calls if command[:3] == ["docker", "run", "--detach"]
+    )
+    runtime_label = docker_run.index("panopticon.runtime=tmp-dev-123")
+    assert docker_run[runtime_label - 1] == "--label"
+
+
 def test_spawn_runs_detached_container_then_tmux_pane_execing_in() -> None:
     rec = _Recorder()
     runner = LocalRunner("http://svc:8000", image="img:1", runner_id="r1", run=rec)
@@ -109,6 +122,7 @@ def test_spawn_runs_detached_container_then_tmux_pane_execing_in() -> None:
     assert "PANOPTICON_RUNNER_ID=r1" in docker_run
     # container -> host addressing so the container can reach the task service
     assert docker_run[docker_run.index("--add-host") + 1] == "host.docker.internal:host-gateway"
+    assert not any(value.startswith("panopticon.runtime=") for value in docker_run)
     # the tmux session (on the default `panopticon` socket) shares the container name; its
     # pane execs the in-container agent launcher (so `tmux attach` reaches the live agent).
     # This is also the session-creating call, so it carries the shipped tmux defaults (REQ-030)

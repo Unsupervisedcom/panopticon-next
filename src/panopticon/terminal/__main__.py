@@ -396,8 +396,11 @@ def main(
         import subprocess
 
         try:
+            filters = ["--filter", "label=panopticon.task"]
+            if runtime_id := os.environ.get("PANOPTICON_RUNTIME_ID"):
+                filters += ["--filter", f"label=panopticon.runtime={runtime_id}"]
             result = subprocess.run(
-                ["docker", "ps", "--all", "--quiet", "--filter", "label=panopticon.task"],
+                ["docker", "ps", "--all", "--quiet", *filters],
                 capture_output=True,
                 text=True,
             )

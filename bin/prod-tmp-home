@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Install the latest (or selected) PyPI release and run quickstart in a temporary HOME.
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_tmp-home-common
+source "$SCRIPT_DIR/_tmp-home-common"
+
+VERSION=${1:-latest}
+TARGET=${2:-$PWD}
+case "$VERSION" in
+  *[!0-9A-Za-z._+-]*) tmp_home_die "version must be 'latest' or a plain Python version" ;;
+esac
+if [ "$VERSION" = latest ]; then
+  PACKAGE=panopticon-next
+else
+  PACKAGE="panopticon-next==$VERSION"
+fi
+
+tmp_home_preflight
+tmp_home_init prod "$TARGET"
+trap tmp_home_cleanup EXIT
+
+tmp_home_print_codex_auth "Host Codex auth" "$ORIGINAL_HOME/.codex/auth.json"
+tmp_home_copy_codex_auth "${PANOPTICON_PROD_TMP_HOME_AUTH:-0}"
+tmp_home_print_codex_auth "Temporary Codex auth" "$TMP_HOME/.codex/auth.json"
+
+printf 'Installing %s into temporary pipx home.\n' "$PACKAGE"
+tmp_home_run pipx install "$PACKAGE"
+PANOPTICON_BIN="$PIPX_BIN_DIR/panopticon"
+export PANOPTICON_BIN
+[ -x "$PANOPTICON_BIN" ] || tmp_home_die "pipx did not install the panopticon executable"
+
+printf 'Panopticon prod HOME: %s\n' "$TMP_HOME"
+printf 'Target repository: %s\n' "$TARGET_REPO"
+printf 'Isolated service URL: %s\n' "$TMP_PANOPTICON_SERVICE_URL"
+tmp_home_run "$PANOPTICON_BIN" --version
+cd -- "$TARGET_REPO"
+_prod_status=0
+tmp_home_run "$PANOPTICON_BIN" quickstart || _prod_status=$?
+tmp_home_print_codex_auth "Final temporary Codex auth" "$TMP_HOME/.codex/auth.json"
+tmp_home_print_codex_auth \
+  "Final repo Codex auth" "$TMP_HOME/.config/panopticon/secrets/openai.d/auth.json"
+exit "$_prod_status"

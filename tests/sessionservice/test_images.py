@@ -111,6 +111,14 @@ def test_image_tag_names_by_harness_workflow_and_repo() -> None:
     )
 
 
+def test_image_tag_is_namespaced_by_runtime_without_exposing_runtime_id() -> None:
+    tag = image_tag("codex", "github-self-reviewed", "r1", runtime_id="tmp-dev-secret")
+
+    assert tag.startswith("panopticon-codex-github-self-reviewed-r1-")
+    assert tag == image_tag("codex", "github-self-reviewed", "r1", runtime_id="tmp-dev-secret")
+    assert "tmp-dev-secret" not in tag
+
+
 def test_compose_dockerfile_chains_base_then_layers() -> None:
     df = compose_dockerfile("panopticon-base", ["RUN install gh", "", "RUN deps"])
     assert df.startswith("FROM panopticon-base\n")
@@ -140,6 +148,18 @@ def test_build_composes_and_runs_docker_build() -> None:
     assert tag == "panopticon-codex-github-peer-reviewed-r1"
     assert rec.cmd[:4] == ["docker", "build", "--tag", "panopticon-codex-github-peer-reviewed-r1"]
     assert rec.dockerfile.startswith("FROM panopticon-base") and "RUN x" in rec.dockerfile
+
+
+def test_build_uses_runtime_namespaced_composed_image_tag() -> None:
+    rec = _BuildRecorder()
+
+    tag = ImageBuilder(base="panopticon-base-tmp", runtime_id="tmp-dev-123", run=rec).build(
+        "codex", "github-self-reviewed", "r1", []
+    )
+
+    assert tag != "panopticon-codex-github-self-reviewed-r1"
+    assert rec.cmd[:4] == ["docker", "build", "--tag", tag]
+    assert rec.dockerfile == "FROM panopticon-base-tmp\n"
 
 
 class _MultiRecorder:

@@ -71,6 +71,46 @@ Individual pieces, when you want just one:
 See [`docs/overview.md`](overview.md) for the mental model behind these pieces, and the
 [README quickstart](../README.md#quickstart) for the end-to-end first run.
 
+## Human smoke tests in a temporary home
+
+Two interactive launchers mirror a clean user's first run without touching the current user's
+Panopticon configuration:
+
+```sh
+bin/dev-tmp-home                               # build and exercise this worktree
+bin/prod-tmp-home latest /path/to/repo         # install the latest PyPI release
+bin/prod-tmp-home 0.2.8 /path/to/repo          # install one published version
+```
+
+Both commands create isolated `HOME`, XDG, and pipx directories, install a wheel, and run
+`panopticon quickstart` interactively. The development launcher always builds and runs from the
+worktree containing the script; before it opens the dashboard, it builds the isolated base task
+container image so the first planning task can create its tmux session without waiting for that
+one-time build. The production launcher runs from its target repository. They unset inherited
+Panopticon and harness-auth variables so the setup prompts prove what the temporary home contains;
+`GH_TOKEN` remains available for GitHub repository setup.
+
+`bin/dev-tmp-home` reports the host and temporary Codex auth state using non-secret SHA-256
+fingerprints, but does not copy `~/.codex/auth.json` by default. Log in through the isolated
+setup-repo flow to exercise the ChatGPT-subscription `auth.json` → repo `credential_dir` →
+task-container mount path without forking the host's rotating credential chain. To deliberately
+copy the host credential, set `PANOPTICON_DEV_TMP_HOME_AUTH=1`; the launcher warns that either copy
+can become invalid after the other refreshes. The production launcher also starts without native
+Codex auth; set `PANOPTICON_PROD_TMP_HOME_AUTH=1` to copy it.
+
+The development launcher can run beside an existing Panopticon installation. It uses a private
+short-path tmux socket directory, an automatically allocated task-service port, and a Docker runtime label
+that scopes cleanup to its own task containers. It also carries the active Docker context's daemon
+endpoint into the clean home (needed by context-based runtimes such as OrbStack) without copying
+the user's general application configuration. It retains the host Docker client directory so CLI
+plugins such as Buildx remain available. Temporary paths are canonicalized so macOS's `/var` →
+`/private/var` symlink does not conflict with Panopticon's symlink-safe state/log traversal. The
+production launcher retains the collision
+guard because an older installed release does not yet understand that label. Quit the temporary
+dashboard normally; the launcher then runs the temporary installation's `panopticon stop` and
+deletes its home. Set `PANOPTICON_TMP_HOME_KEEP=1` to retain the files for inspection after
+stopping the runtime.
+
 ## Database migrations
 
 Schema is managed by **Alembic**. After changing the ORM rows, generate and apply a migration:

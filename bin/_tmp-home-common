@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# Shared machinery for the human-operated local/PyPI temporary-home launchers.
+set -Eeuo pipefail
+
+tmp_home_die() {
+  printf 'panopticon tmp-home: %s\n' "$*" >&2
+  exit 1
+}
+
+tmp_home_require() {
+  command -v "$1" >/dev/null 2>&1 \
+    || tmp_home_die "required command '$1' is not installed"
+}
+
+tmp_home_preflight() {
+  _pth_isolation=${1:-strict}
+  tmp_home_require docker
+  tmp_home_require pipx
+  tmp_home_require python3
+  tmp_home_require tmux
+
+  docker info >/dev/null 2>&1 || tmp_home_die "the Docker daemon is unreachable"
+  if [ -n "${DOCKER_HOST:-}" ]; then
+    TMP_DOCKER_HOST=$DOCKER_HOST
+  else
+    TMP_DOCKER_HOST=$(docker context inspect --format '{{ (index .Endpoints "docker").Host }}') \
+      || tmp_home_die "could not resolve the active Docker context endpoint"
+  fi
+  [ -n "$TMP_DOCKER_HOST" ] \
+    || tmp_home_die "the active Docker context has no daemon endpoint"
+  TMP_DOCKER_CONFIG=${DOCKER_CONFIG:-${HOME:-}/.docker}
+  [ "$_pth_isolation" = isolated ] && return 0
+
+  if tmux -L panopticon has-session >/dev/null 2>&1; then
+    tmp_home_die "the shared tmux -L panopticon server is already active; run 'panopticon stop' first"
+  fi
+  _pth_containers=$(docker ps --all --quiet --filter label=panopticon.task) \
+    || tmp_home_die "the Docker daemon is unreachable"
+  if [ -n "$_pth_containers" ]; then
+    tmp_home_die "Panopticon task containers already exist; stop the active fleet first"
+  fi
+}
+
+tmp_home_init() {
+  _pth_kind=$1
+  _pth_target=$2
+  [ -d "$_pth_target" ] || tmp_home_die "target repository directory does not exist: $_pth_target"
+  TARGET_REPO=$(cd -- "$_pth_target" && pwd)
+  ORIGINAL_HOME=${HOME:-}
+  TMP_HOME=$(mktemp -d -t "panopticon-${_pth_kind}-home.XXXXXX")
+  # macOS commonly returns /var/folders/... even though /var is a symlink to /private/var.
+  # Panopticon's hardened private-directory traversal intentionally rejects symlink components,
+  # so expose the physical path as HOME and every XDG root from the outset.
+  TMP_HOME=$(cd -- "$TMP_HOME" && pwd -P)
+  PIPX_HOME="$TMP_HOME/pipx"
+  PIPX_BIN_DIR="$TMP_HOME/bin"
+  # tmux appends /tmux-<uid>/<socket>; macOS limits the resulting Unix socket path to 104 bytes.
+  # Keep it out of the much longer per-user temporary-home path.
+  TMP_TMUX_DIR=$(mktemp -d /tmp/pan-tmux.XXXXXX)
+  TMP_TMUX_DIR=$(cd -- "$TMP_TMUX_DIR" && pwd -P)
+  TMP_PANOPTICON_PORT=$(python3 -c \
+    'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()') \
+    || tmp_home_die "could not allocate a temporary task-service port"
+  case "$TMP_PANOPTICON_PORT" in
+    *[!0-9]*|'') tmp_home_die "temporary task-service port was not numeric" ;;
+  esac
+  TMP_PANOPTICON_SERVICE_URL="http://127.0.0.1:$TMP_PANOPTICON_PORT"
+  TMP_PANOPTICON_CONTAINER_SERVICE_URL="http://host.docker.internal:$TMP_PANOPTICON_PORT"
+  TMP_PANOPTICON_RUNTIME_ID="tmp-${_pth_kind}-$$-$RANDOM"
+  TMP_PANOPTICON_BASE_IMAGE="panopticon-base-$TMP_PANOPTICON_RUNTIME_ID"
+  mkdir -p "$PIPX_HOME" "$PIPX_BIN_DIR" "$TMP_HOME/.config" "$TMP_HOME/.cache" \
+    "$TMP_HOME/.local/share"
+  chmod 700 "$TMP_TMUX_DIR"
+  PANOPTICON_BIN=
+  export ORIGINAL_HOME TMP_HOME PIPX_HOME PIPX_BIN_DIR TARGET_REPO PANOPTICON_BIN \
+    TMP_TMUX_DIR TMP_PANOPTICON_PORT TMP_PANOPTICON_SERVICE_URL \
+    TMP_PANOPTICON_CONTAINER_SERVICE_URL TMP_PANOPTICON_RUNTIME_ID \
+    TMP_PANOPTICON_BASE_IMAGE TMP_DOCKER_HOST TMP_DOCKER_CONFIG
+}
+
+tmp_home_print_codex_auth() {
+  _pth_auth_label=$1
+  _pth_auth_path=$2
+  if [ ! -f "$_pth_auth_path" ]; then
+    printf '%s: not configured (%s)\n' "$_pth_auth_label" "$_pth_auth_path"
+    return 0
+  fi
+  python3 -c '
+import hashlib
+import json
+import pathlib
+import sys
+
+label, raw_path = sys.argv[1:]
+path = pathlib.Path(raw_path)
+try:
+    auth = json.loads(path.read_text())
+except (OSError, ValueError) as exc:
+    print(f"{label}: unreadable auth.json ({exc})")
+    raise SystemExit(0)
+tokens = auth.get("tokens") if isinstance(auth.get("tokens"), dict) else {}
+token = tokens.get("access_token") or auth.get("OPENAI_API_KEY") or ""
+fingerprint = hashlib.sha256(token.encode()).hexdigest()[:12] if token else "none"
+account = str(tokens.get("account_id") or "")
+account_fingerprint = hashlib.sha256(account.encode()).hexdigest()[:12] if account else "unknown"
+mode = auth.get("auth_mode") or "unknown"
+refreshed = auth.get("last_refresh") or "unknown"
+print(
+    f"{label}: mode={mode!r} account_sha256={account_fingerprint} "
+    f"token_sha256={fingerprint} refreshed={refreshed!r}"
+)
+' "$_pth_auth_label" "$_pth_auth_path"
+}
+
+tmp_home_copy_codex_auth() {
+  _pth_copy=$1
+  [ "$_pth_copy" = 1 ] || return 0
+  [ -n "$ORIGINAL_HOME" ] || return 0
+  _pth_source="$ORIGINAL_HOME/.codex/auth.json"
+  [ -f "$_pth_source" ] || return 0
+  printf '%s\n' \
+    'WARNING: copying a rotating Codex login can invalidate the host copy after either copy refreshes.'
+  mkdir -p "$TMP_HOME/.codex"
+  install -m 600 "$_pth_source" "$TMP_HOME/.codex/auth.json"
+  printf 'Copied Codex auth into the temporary HOME.\n'
+}
+
+tmp_home_run() {
+  env \
+    -u DOCKER_CONTEXT \
+    -u ANTHROPIC_API_KEY \
+    -u CLAUDE_CODE_OAUTH_TOKEN \
+    -u CODEX_ACCESS_TOKEN \
+    -u CODEX_API_KEY \
+    -u CODEX_HOME \
+    -u OPENAI_API_KEY \
+    -u PANOPTICON_ARTIFACTS \
+    -u PANOPTICON_CACHE \
+    -u PANOPTICON_CONFIG \
+    -u PANOPTICON_DATA \
+    -u PANOPTICON_DB \
+    -u PANOPTICON_HOST \
+    -u PANOPTICON_PORT \
+    -u PANOPTICON_SERVICE_AUTH_FILE \
+    -u PANOPTICON_SERVICE_AUTH_MODE \
+    -u PANOPTICON_SERVICE_AUTH_TOKEN \
+    -u PANOPTICON_SERVICE_URL \
+    HOME="$TMP_HOME" \
+    XDG_CACHE_HOME="$TMP_HOME/.cache" \
+    XDG_CONFIG_HOME="$TMP_HOME/.config" \
+    XDG_DATA_HOME="$TMP_HOME/.local/share" \
+    PIPX_HOME="$PIPX_HOME" \
+    PIPX_BIN_DIR="$PIPX_BIN_DIR" \
+    DOCKER_HOST="$TMP_DOCKER_HOST" \
+    DOCKER_CONFIG="$TMP_DOCKER_CONFIG" \
+    TMUX_TMPDIR="$TMP_TMUX_DIR" \
+    PANOPTICON_PORT="$TMP_PANOPTICON_PORT" \
+    PANOPTICON_SERVICE_URL="$TMP_PANOPTICON_SERVICE_URL" \
+    PANOPTICON_CONTAINER_SERVICE_URL="$TMP_PANOPTICON_CONTAINER_SERVICE_URL" \
+    PANOPTICON_RUNTIME_ID="$TMP_PANOPTICON_RUNTIME_ID" \
+    PANOPTICON_BASE_IMAGE="$TMP_PANOPTICON_BASE_IMAGE" \
+    PATH="$PIPX_BIN_DIR:$PATH" \
+    "$@"
+}
+
+tmp_home_cleanup() {
+  _pth_status=$?
+  trap - EXIT
+  if [ -n "${PANOPTICON_BIN:-}" ] && [ -x "$PANOPTICON_BIN" ]; then
+    tmp_home_run "$PANOPTICON_BIN" stop >/dev/null 2>&1 || true
+  fi
+  if [ "${PANOPTICON_TMP_HOME_KEEP:-0}" = 1 ]; then
+    printf 'Kept temporary HOME: %s\n' "$TMP_HOME"
+  elif [ -n "${TMP_HOME:-}" ] && [ -d "$TMP_HOME" ]; then
+    rm -rf -- "$TMP_HOME"
+  fi
+  if [ -n "${TMP_TMUX_DIR:-}" ] && [ -d "$TMP_TMUX_DIR" ]; then
+    rm -rf -- "$TMP_TMUX_DIR"
+  fi
+  exit "$_pth_status"
+}

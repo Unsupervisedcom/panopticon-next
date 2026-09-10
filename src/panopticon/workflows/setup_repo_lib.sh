@@ -35,6 +35,11 @@ extract_oauth_token() {
 # when supported, else the file followed by the command as trailing positional words (BSD). `-e`
 # returns the wrapped command's own exit status rather than `script`'s.
 #
+# `script` mirrors the interactive session to its stdout as well as the capture file. Send that
+# stream to stderr so it remains visible to the operator but does not contaminate this function's
+# stdout, which the caller reads through command substitution and expects to contain only the
+# extracted token.
+#
 # Prints the extracted token (if any) and returns 0 when the command itself ran to completion —
 # whether or not a token could be extracted from what it captured. Returns nonzero only when the
 # command itself failed or was cancelled (nothing was minted or shown to the operator). Callers
@@ -44,9 +49,9 @@ extract_oauth_token() {
 capture_claude_setup_token() {
     _cst_log=$(mktemp "${TMPDIR:-/tmp}/panopticon-setup-token.XXXXXX") || return 1
     if script_supports_dash_c; then
-        script -q -e -c 'claude setup-token' "$_cst_log"
+        script -q -e -c 'claude setup-token' "$_cst_log" >&2
     else
-        script -q -e "$_cst_log" claude setup-token
+        script -q -e "$_cst_log" claude setup-token >&2
     fi
     _cst_ran_ok=$?
     [ "$_cst_ran_ok" -eq 0 ] && extract_oauth_token "$_cst_log"
