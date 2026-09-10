@@ -514,6 +514,7 @@ class CredentialScopePolicy:
                 if entry in task_targeted
                 or entry == ("POST", "/tasks")
                 or entry == ("GET", "/tasks")
+                or entry == ("PATCH", "/repos/{repo_id}")
                 else AuthorizationClass.OPERATOR_MIGRATION
                 if entry == ("PUT", "/tasks/{task_id}/migration")
                 else AuthorizationClass.FLEET_WRITE
@@ -554,7 +555,6 @@ class CredentialScopePolicy:
     def fleet_administration_rest_surfaces() -> set[tuple[str, str]]:
         return {
             ("POST", "/repos"),
-            ("PATCH", "/repos/{repo_id}"),
             ("DELETE", "/repos/{repo_id}"),
             ("GET", "/workflow-files"),
             ("PUT", "/tasks/{task_id}/claim"),

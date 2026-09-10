@@ -813,6 +813,24 @@ def test_create_repo_with_an_existing_credential_dir_round_trips(
     assert client.get("/repos/r2").json()["credential_dir"] == "openai.d"
 
 
+def test_create_repo_rejects_the_secrets_root_as_credential_dir(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(tmp_path))
+    (tmp_path / "secrets").mkdir()
+    resp = client.post(
+        "/repos",
+        json={
+            "id": "r2",
+            "name": "acme/other",
+            "git_url": "https://x/r2.git",
+            "credential_dir": ".",
+        },
+    )
+    assert resp.status_code == 400, resp.text
+    assert "below the secrets dir" in resp.json()["detail"]
+
+
 def test_create_task_unknown_harness_400(client: TestClient) -> None:
     resp = client.post("/tasks", json={"repo_id": "r1", "workflow": "spike", "harness": "cursor"})
     assert resp.status_code == 400

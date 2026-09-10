@@ -1006,6 +1006,30 @@ def create_app(
             request.state.principal_task_id = task_subject
             if request.method == "GET" and route_path == "/tasks":
                 return await call_next(request)
+            if request.method == "PATCH" and route_path.startswith("/repos/"):
+                repo_id = route_path.removeprefix("/repos/")
+                try:
+                    parsed_body = json.loads(await request.body())
+                    body = parsed_body if isinstance(parsed_body, dict) else {}
+                    subject_task = await service.get_task(task_subject)
+                except (json.JSONDecodeError, UnicodeDecodeError, NotFound):
+                    body = {}
+                    subject_task = None
+                credential_dir = body.get("credential_dir")
+                allowed = bool(
+                    "/" not in repo_id
+                    and set(body) == {"credential_dir"}
+                    and isinstance(credential_dir, str)
+                    and credential_dir.strip()
+                    and Path(credential_dir).name == credential_dir
+                    and credential_dir not in {".", ".."}
+                    and service.task_configures_repo_credentials(subject_task, repo_id)
+                )
+                if allowed:
+                    return await call_next(request)
+                return JSONResponse(
+                    status_code=403, content={"detail": "credential scope forbids operation"}
+                )
             if request.method == "GET" and route_path.startswith("/repos/"):
                 repo_id = route_path.removeprefix("/repos/")
                 if "/" not in repo_id:
