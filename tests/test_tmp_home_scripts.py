@@ -140,6 +140,9 @@ def test_dev_tmp_home_reports_host_auth_without_copying_it(tmp_path: Path) -> No
         f"panopticon:quickstart|home={home}|config=unset|codex_key=unset|cwd={ROOT}|auth=no"
         in observed
     )
+    assert "Building isolated base task-container image" in output
+    assert "panopticon:build" in observed
+    assert observed.index("panopticon:build") < observed.index("panopticon:quickstart")
     assert "runtime:tmp-dev-" in observed
     assert "|base_image=panopticon-base-tmp-dev-" in observed
     assert "|port=41873|service=http://127.0.0.1:41873" in observed

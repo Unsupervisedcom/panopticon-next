@@ -34,6 +34,8 @@ printf 'Panopticon dev HOME: %s\n' "$TMP_HOME"
 printf 'Worktree under test: %s\n' "$TARGET_REPO"
 printf 'Isolated service URL: %s\n' "$TMP_PANOPTICON_SERVICE_URL"
 tmp_home_run "$PANOPTICON_BIN" --version
+printf 'Building isolated base task-container image before opening the dashboard...\n'
+tmp_home_run "$PANOPTICON_BIN" build
 cd -- "$TARGET_REPO"
 _dev_status=0
 tmp_home_run "$PANOPTICON_BIN" quickstart || _dev_status=$?

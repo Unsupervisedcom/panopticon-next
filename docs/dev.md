@@ -84,7 +84,9 @@ bin/prod-tmp-home 0.2.8 /path/to/repo          # install one published version
 
 Both commands create isolated `HOME`, XDG, and pipx directories, install a wheel, and run
 `panopticon quickstart` interactively. The development launcher always builds and runs from the
-worktree containing the script; the production launcher runs from its target repository. They unset inherited
+worktree containing the script; before it opens the dashboard, it builds the isolated base task
+container image so the first planning task can create its tmux session without waiting for that
+one-time build. The production launcher runs from its target repository. They unset inherited
 Panopticon and harness-auth variables so the setup prompts prove what the temporary home contains;
 `GH_TOKEN` remains available for GitHub repository setup.
 
