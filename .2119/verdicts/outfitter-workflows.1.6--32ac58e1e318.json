@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.6--32ac58e1e318",
+  "requirementId": "outfitter-workflows.1.6",
+  "hash": "32ac58e1e318",
+  "verdict": "pass",
+  "summary": "A directly missing nested package is rejected, cycles are distinguished, and a provided nested DAG is accepted so failure is tied to unavailability rather than nested shape.",
+  "timestamp": "2026-09-08T22:34:23.967Z"
+}

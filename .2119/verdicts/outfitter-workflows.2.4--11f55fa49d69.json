@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.2.4--11f55fa49d69",
+  "requirementId": "outfitter-workflows.2.4",
+  "hash": "11f55fa49d69",
+  "verdict": "pass",
+  "summary": "The parser test rejects an agent actor missing profile while accepting the nearest allowed profile-less human actor.",
+  "timestamp": "2026-09-09T00:23:36.261Z"
+}

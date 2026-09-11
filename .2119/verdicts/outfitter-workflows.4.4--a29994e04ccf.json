@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.4--a29994e04ccf",
+  "requirementId": "outfitter-workflows.4.4",
+  "hash": "a29994e04ccf",
+  "verdict": "pass",
+  "summary": "Enabled validation and projection failures are individually omitted and diagnosed while two valid packages and spike remain usable; malformed settings also degrade diagnostically without losing built-ins.",
+  "timestamp": "2026-09-08T22:49:49.910Z"
+}

@@ -190,6 +190,7 @@ class Harness(ABC):
     host_binary: ClassVar[str]
     install_hint: ClassVar[str]
     field_label: ClassVar[str] = "model"
+    requires_starting_model: ClassVar[bool] = False
 
     def suggested_models(self) -> Sequence[tuple[str, str]]:
         """Static ``(value, label)`` suggestions for an advisory dashboard picker."""

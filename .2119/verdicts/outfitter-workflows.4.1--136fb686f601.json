@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.1--136fb686f601",
+  "requirementId": "outfitter-workflows.4.1",
+  "hash": "136fb686f601",
+  "verdict": "pass",
+  "summary": "Discovery registers every enabled fixture id plus a novel source-provided id as opt-in outfitter-prefixed workflows without a package-specific class.",
+  "timestamp": "2026-09-08T21:48:17.813Z"
+}

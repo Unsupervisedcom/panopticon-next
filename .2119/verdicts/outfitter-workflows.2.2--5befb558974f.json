@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.2.2--5befb558974f",
+  "requirementId": "outfitter-workflows.2.2",
+  "hash": "5befb558974f",
+  "verdict": "pass",
+  "summary": "The test rejects both forbidden XOR boundaries, both fields and neither field, and includes a valid exactly-one positive control.",
+  "timestamp": "2026-09-08T21:48:05.932Z"
+}

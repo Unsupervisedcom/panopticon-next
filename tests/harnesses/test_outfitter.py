@@ -1,19 +1,22 @@
-"""Golden rendering tests for the Outfitter adapter (pinned 0.11.0).
+"""Golden rendering tests for the Outfitter adapter (pinned 1.16.0).
 
-The install requirements, ``run --profile --agent pi --`` pass-through surface, profile-source
-settings shape, and pi state fallback come from Outfitter's published docs/source. Live npm/tmux
-smoke reached pi; 0.10.0's width-unsafe header (fixed upstream in 0.11.0) blocked registration; registry tests keep
-this staged adapter unavailable until upstream fixes it.
+The install requirements, ``run <agent> --harness pi --`` pass-through surface, catalog-source
+settings shape, and Pi state fallback come from Outfitter's published docs/source.
 """
 
 from __future__ import annotations
 
+import base64
+import json
 from pathlib import Path
+
+import pytest
 
 from panopticon.core.models import Skill
 from panopticon.harnesses import INTERRUPT_PROMPT, BootstrapContext, LaunchContext
 from panopticon.harnesses.outfitter import (
     EXTENSION_FILE,
+    INJECTED_SKILLS_ROOT,
     NODE_VERSION,
     OUTFITTER_VERSION,
     PI_NATIVE_CONFIG_DIR,
@@ -27,6 +30,10 @@ from panopticon.harnesses.outfitter import (
 )
 
 HARNESS = OutfitterHarness()
+
+
+def _injected_skill(home: Path, name: str) -> Path:
+    return home / ".outfitter" / INJECTED_SKILLS_ROOT / name
 
 
 def _ctx(home: Path, **kwargs: str | None) -> LaunchContext:
@@ -51,19 +58,19 @@ def _bootstrap_ctx(home: Path, **kwargs: object) -> BootstrapContext:
 def test_bootstrap_pins_every_outfitter_artifact(tmp_path: Path) -> None:
     HARNESS.bootstrap(_bootstrap_ctx(tmp_path))
     config = tmp_path / ".outfitter"
-    assert (config / SETTINGS_FILE).read_text() == SETTINGS
-    assert SETTINGS == "profile_sources:\n  - path: ./profile_sources\n"
+    assert (tmp_path / ".agents" / SETTINGS_FILE).read_text() == SETTINGS
+    assert SETTINGS == "default_harness: pi\nsources:\n  - path: ../.outfitter/profile_sources\n"
     assert (config / PROFILE_SOURCES_DIR).is_dir()
     assert (config / WORKFLOW_OVERVIEW_FILE).read_text() == "# the workflow map"
     assert (config / EXTENSION_FILE).read_text() == TURN_EXTENSION
 
-    skill = (tmp_path / ".agents" / "skills" / "open-pr" / "SKILL.md").read_text()
+    skill = (_injected_skill(tmp_path, "open-pr") / "SKILL.md").read_text()
     assert skill == (
         "---\nname: open-pr\ndescription: Open the PR.\n---\n"
         'gh pr create\n\nThis is task `t1` — pass `task_id="t1"` to every panopticon MCP '
         "tool you call here.\n"
     )
-    operation = (tmp_path / ".agents" / "skills" / "advance" / "SKILL.md").read_text()
+    operation = (_injected_skill(tmp_path, "advance") / "SKILL.md").read_text()
     assert operation == (
         "---\nname: advance\ndescription: Apply the workflow's 'advance' operation.\n---\n"
         "Apply this workflow's `advance` operation — it moves the task to **COMPLETE**. "
@@ -73,41 +80,113 @@ def test_bootstrap_pins_every_outfitter_artifact(tmp_path: Path) -> None:
         "directly. It's gated on the current state's responsibilities and starts a new turn.\n\n"
         'This is task `t1` — pass `task_id="t1"` to every panopticon MCP tool you call here.\n'
     )
+    responsibility = (_injected_skill(tmp_path, "resolve-responsibility") / "SKILL.md").read_text()
+    assert "POST" in responsibility
+    assert "/tasks/t1/responsibilities" in responsibility
+    assert '"status": sys.argv[2]' in responsibility
+    assert "Do not call `advance`" in responsibility
 
 
-def test_bootstrap_adds_existing_credential_profile_source(tmp_path: Path) -> None:
+def test_bootstrap_materializes_existing_credential_catalog_as_global_resources(
+    tmp_path: Path,
+) -> None:
     credentials = tmp_path / "credentials"
     env = {"PANOPTICON_CREDENTIALS": str(credentials)}
 
     HARNESS.bootstrap(_bootstrap_ctx(tmp_path, environ=env))
-    assert (tmp_path / ".outfitter" / SETTINGS_FILE).read_text() == SETTINGS
+    assert (tmp_path / ".agents" / SETTINGS_FILE).read_text() == SETTINGS
 
-    profiles = credentials / "outfitter" / "profiles"
-    profiles.mkdir(parents=True)
+    profiles = credentials / "outfitter" / ".agents"
+    agent = profiles / "agents" / "vega"
+    agent.mkdir(parents=True)
+    (agent / "agent.md").write_text("---\nname: vega\n---\n")
+    source_uri = "git+https://github.com/ai-outfitter/community-profiles.git"
+    source_ref = "v1.9.0"
+    cache_key = base64.urlsafe_b64encode(f"{source_uri}#{source_ref}".encode()).decode().rstrip("=")
+    source_agent = profiles / "cache" / "repos" / cache_key / "agents" / "engineer"
+    source_agent.mkdir(parents=True)
+    (source_agent / "agent.md").write_text("---\nname: engineer\n---\n")
+    source_skill = profiles / "cache" / "repos" / cache_key / "skills" / "review" / "SKILL.md"
+    source_skill.parent.mkdir(parents=True)
+    source_skill.write_text("---\nname: review\n---\nSource review.\n")
+    source_root = profiles / "cache" / "repos" / cache_key
+    (source_root / "mcp.json").write_text(
+        '{"mcpServers": {"github-hosted": {"url": "https://example.test/mcp"}}}\n'
+    )
+    (source_root / "models.json").write_text(
+        '{"providers": {"openai": {"api": "openai-responses", "baseUrl": '
+        '"https://example.test/v1", "models": [{"id": "test"}]}}}\n'
+    )
+    skill = profiles / "skills" / "review" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("---\nname: review\n---\nReview.\n")
+    (profiles / "mcp.json").write_text('{"mcpServers": {"github": {}}}\n')
+    (profiles / "models.json").write_text('{"providers": {"spark": {}}}\n')
+    prompt = profiles / "prompts" / "resident.md"
+    prompt.parent.mkdir()
+    prompt.write_text("Resident context.\n")
+    (profiles / "settings.yml").write_text(
+        f"sources: [{{github: ai-outfitter/community-profiles, ref: {source_ref}}}]\n"
+    )
+    (profiles / "settings.local.yml").write_text("telemetry: {enabled: false}\n")
+    (profiles / "cache" / "large").write_text("not copied")
+    git_metadata = profiles / ".git"
+    git_metadata.mkdir()
+    (git_metadata / "config").write_text("not copied")
     HARNESS.bootstrap(_bootstrap_ctx(tmp_path, environ=env))
-    assert (tmp_path / ".outfitter" / SETTINGS_FILE).read_text() == (
-        SETTINGS + f"  - path: {profiles}\n"
-    )
+    global_root = tmp_path / ".agents"
+    assert (global_root / SETTINGS_FILE).read_text() == SETTINGS
+    assert (global_root / "agents" / "vega" / "agent.md").read_text() == ("---\nname: vega\n---\n")
+    assert (global_root / "agents" / "engineer" / "agent.md").is_file()
+    assert (global_root / "skills" / "review" / "SKILL.md").read_text().endswith("Review.\n")
+    assert (global_root / "prompts" / "resident.md").read_text() == "Resident context.\n"
+    assert not (global_root / "cache").exists()
+    assert not (global_root / ".git").exists()
+    assert not (global_root / "settings.local.yml").exists()
+    mcp = json.loads((global_root / "mcp.json").read_text())
+    assert set(mcp["mcpServers"]) == {"github", "github-hosted"}
+    models = json.loads((global_root / "models.json").read_text())
+    assert set(models["providers"]) == {"openai", "spark"}
+    argv = HARNESS.argv(_ctx(tmp_path, starting_model="vega"))
+    assert str(global_root / "skills" / "review") not in argv
+    assert str(_injected_skill(tmp_path, "open-pr")) in argv
 
 
-def test_suggested_models_discovers_flat_and_directory_profiles(tmp_path: Path) -> None:
-    (tmp_path / "founder.yml").write_text(
-        "label: Founder\ndescription: Founder-operator defaults for product and engineering.\n"
+def test_bootstrap_requires_configured_catalog_sources_to_be_synced(tmp_path: Path) -> None:
+    credentials = tmp_path / "credentials"
+    catalog = credentials / "outfitter" / ".agents"
+    catalog.mkdir(parents=True)
+    (catalog / "settings.yml").write_text(
+        "sources: [{github: ai-outfitter/community-profiles, ref: v1.9.0}]\n"
     )
-    (tmp_path / "data.yaml").write_text(
-        'id: "data-analyst"\nlabel: Data Analyst\n'
-        'description: "Analyze product data with concise evidence."\n'
+    with pytest.raises(ValueError, match=r"not materialized.*outfitter sync --strict"):
+        HARNESS.bootstrap(
+            _bootstrap_ctx(tmp_path / "home", environ={"PANOPTICON_CREDENTIALS": str(credentials)})
+        )
+
+
+def test_suggested_models_discovers_agents(tmp_path: Path) -> None:
+    founder = tmp_path / "founder"
+    founder.mkdir()
+    (founder / "agent.md").write_text(
+        "---\nlabel: Founder\ndescription: Founder-operator defaults for product and engineering.\n---\n"
     )
-    directory = tmp_path / "engineering"
+    data = tmp_path / "data-analyst"
+    data.mkdir()
+    (data / "agent.md").write_text(
+        '---\nname: "data-analyst"\nlabel: Data Analyst\n'
+        'description: "Analyze product data with concise evidence."\n---\n'
+    )
+    directory = tmp_path / "engineering-default"
     directory.mkdir()
-    (directory / "profile.yml").write_text(
-        "id: 'engineering-default'\nlabel: Engineering Default\n"
-        "description: 'Review, build, and ship.'\n"
+    (directory / "agent.md").write_text(
+        "---\nname: 'engineering-default'\nlabel: Engineering Default\n"
+        "description: 'Review, build, and ship.'\n---\n"
     )
 
     harness = OutfitterHarness(profile_sources_root=tmp_path)
 
-    assert harness.field_label == "profile"
+    assert harness.field_label == "agent"
     assert harness.suggested_models() == (
         ("data-analyst", "data-analyst — Analyze product data with concise evidence."),
         ("engineering-default", "engineering-default — Review, build, and ship."),
@@ -115,9 +194,31 @@ def test_suggested_models_discovers_flat_and_directory_profiles(tmp_path: Path) 
     )
 
 
+def test_suggested_models_honors_the_configured_agents_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog = tmp_path / "catalog"
+    agent = catalog / "agents" / "resident-engineer"
+    agent.mkdir(parents=True)
+    (agent / "agent.md").write_text("---\ndescription: Work without supervision.\n---\n")
+    source = tmp_path / "community"
+    sourced_agent = source / "agents" / "resident-reviewer"
+    sourced_agent.mkdir(parents=True)
+    (sourced_agent / "agent.md").write_text("---\ndescription: Review independently.\n---\n")
+    (catalog / "settings.yml").write_text(f"sources:\n  - path: {source}\n")
+    monkeypatch.setenv("PANOPTICON_AGENTS", str(catalog))
+
+    assert HARNESS.suggested_models() == (
+        ("resident-engineer", "resident-engineer — Work without supervision."),
+        ("resident-reviewer", "resident-reviewer — Review independently."),
+    )
+
+
 def test_suggested_models_block_description_degrades_to_id_only(tmp_path: Path) -> None:
-    (tmp_path / "data.yml").write_text(
-        "id: data-analyst\ndescription: >-\n  Analyze product data with\n  concise evidence.\n"
+    data = tmp_path / "data-analyst"
+    data.mkdir()
+    (data / "agent.md").write_text(
+        "---\nname: data-analyst\ndescription: >-\n  Analyze product data with\n  concise evidence.\n---\n"
     )
 
     assert OutfitterHarness(profile_sources_root=tmp_path).suggested_models() == (
@@ -125,15 +226,20 @@ def test_suggested_models_block_description_degrades_to_id_only(tmp_path: Path) 
     )
 
 
-def test_suggested_models_skips_bad_and_template_profiles_and_truncates(tmp_path: Path) -> None:
-    (tmp_path / "template.yml").write_text(
-        "id: base\ntemplate: TrUe\ndescription: Not directly launchable.\n"
+def test_suggested_models_skips_abstract_and_unreadable_agents_and_truncates(
+    tmp_path: Path,
+) -> None:
+    template = tmp_path / "base"
+    template.mkdir()
+    (template / "agent.md").write_text(
+        "---\nname: base\nabstract: TrUe\ndescription: Not directly launchable.\n---\n"
     )
-    missing_id = tmp_path / "missing-id"
-    missing_id.mkdir()
-    (missing_id / "profile.yml").write_text("description: Cannot infer a directory id.\n")
-    (tmp_path / "long.yml").write_text("description: " + "word " * 30)
-    (tmp_path / "unreadable.yml").write_bytes(b"\xff")
+    long = tmp_path / "long"
+    long.mkdir()
+    (long / "agent.md").write_text("---\ndescription: " + "word " * 30 + "\n---\n")
+    unreadable = tmp_path / "unreadable"
+    unreadable.mkdir()
+    (unreadable / "agent.md").write_bytes(b"\xff")
 
     suggestions = OutfitterHarness(profile_sources_root=tmp_path).suggested_models()
 
@@ -148,38 +254,38 @@ def test_suggested_models_fails_soft_when_source_is_absent(tmp_path: Path) -> No
     assert OutfitterHarness(profile_sources_root=tmp_path / "missing").suggested_models() == ()
 
 
-def test_argv_passes_profile_and_panopticon_controls_through_to_pi(tmp_path: Path) -> None:
+def test_argv_passes_agent_and_panopticon_controls_through_to_pi(tmp_path: Path) -> None:
     HARNESS.bootstrap(_bootstrap_ctx(tmp_path))
     assert HARNESS.argv(
         _ctx(tmp_path, starting_model="engineering-default", initial_prompt="start now")
     ) == [
         "outfitter",
         "run",
-        "--profile",
         "engineering-default",
-        "--agent",
+        "--harness",
         "pi",
+        "--append-prompt",
+        str(tmp_path / ".outfitter" / WORKFLOW_OVERVIEW_FILE),
         "--",
         "--extension",
         str(tmp_path / ".outfitter" / EXTENSION_FILE),
-        "--append-system-prompt",
-        "# the workflow map",
         "--skill",
-        str(tmp_path / ".agents" / "skills" / "advance"),
+        str(_injected_skill(tmp_path, "advance")),
         "--skill",
-        str(tmp_path / ".agents" / "skills" / "open-pr"),
+        str(_injected_skill(tmp_path, "open-pr")),
+        "--skill",
+        str(_injected_skill(tmp_path, "resolve-responsibility")),
         "start now",
     ]
 
 
-def test_starting_model_is_a_profile_id_not_a_pi_model(tmp_path: Path) -> None:
+def test_starting_model_is_an_agent_slug_not_a_pi_model(tmp_path: Path) -> None:
     argv = HARNESS.argv(_ctx(tmp_path, starting_model="local-qwen-high"))
     assert argv == [
         "outfitter",
         "run",
-        "--profile",
         "local-qwen-high",
-        "--agent",
+        "--harness",
         "pi",
         "--",
     ]
@@ -194,11 +300,25 @@ def test_blank_overview_and_absent_skills_still_render_required_turn_extension(
     assert HARNESS.argv(_ctx(tmp_path)) == [
         "outfitter",
         "run",
-        "--agent",
+        "--harness",
         "pi",
         "--",
         "--extension",
         str(tmp_path / ".outfitter" / EXTENSION_FILE),
+        "--skill",
+        str(_injected_skill(tmp_path, "resolve-responsibility")),
+    ]
+    assert HARNESS.argv(_ctx(tmp_path, starting_model="vega")) == [
+        "outfitter",
+        "run",
+        "vega",
+        "--harness",
+        "pi",
+        "--",
+        "--extension",
+        str(tmp_path / ".outfitter" / EXTENSION_FILE),
+        "--skill",
+        str(_injected_skill(tmp_path, "resolve-responsibility")),
     ]
 
 
@@ -216,9 +336,8 @@ def test_resume_uses_pi_native_state_fallback_and_interrupt_prompt(tmp_path: Pat
     ) == [
         "outfitter",
         "run",
-        "--profile",
         "ignored-on-resume",
-        "--agent",
+        "--harness",
         "pi",
         "--",
         "--continue",
@@ -263,7 +382,7 @@ def test_image_layer_installs_all_runtime_components_at_pinned_versions() -> Non
     layer = HARNESS.image_layer()
     assert NODE_VERSION == "22.19.0"
     assert PI_VERSION == "0.80.3"
-    assert OUTFITTER_VERSION == "0.11.0"
+    assert OUTFITTER_VERSION == "1.16.0"
     assert layer == (
         "RUN set -eux; \\\n"
         '    arch="$(uname -m)"; \\\n'

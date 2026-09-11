@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.2.4--ecd2cda88de4",
+  "requirementId": "outfitter-workflows.2.4",
+  "hash": "ecd2cda88de4",
+  "verdict": "pass",
+  "summary": "Real parsing rejects an agent actor with no profile and accepts the adjacent human-without-profile case, directly discriminating the requirement boundary.",
+  "timestamp": "2026-09-08T21:48:39.940Z"
+}

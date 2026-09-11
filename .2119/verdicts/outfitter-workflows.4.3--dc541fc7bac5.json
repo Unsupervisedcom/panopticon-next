@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.3--dc541fc7bac5",
+  "requirementId": "outfitter-workflows.4.3",
+  "hash": "dc541fc7bac5",
+  "verdict": "pass",
+  "summary": "Discovery with an explicitly empty workflow list succeeds without Outfitter registrations and preserves built-ins; null YAML enablement also normalizes to no roots.",
+  "timestamp": "2026-09-08T22:34:25.291Z"
+}

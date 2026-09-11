@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.4.2--a9f34fe33183",
+  "requirementId": "REQ-012.4.2",
+  "hash": "a9f34fe33183",
+  "verdict": "pass",
+  "summary": "The test creates repository-derived, workflow-derived, and explicit tasks, changes both default sources, and reads every task back with its original concrete harness and model.",
+  "timestamp": "2026-09-08T22:48:42.585Z"
+}

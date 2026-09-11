@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.1--cc226393619e",
+  "requirementId": "outfitter-workflows.1.1",
+  "hash": "cc226393619e",
+  "verdict": "pass",
+  "summary": "The loader is exercised against PANOPTICON_AGENTS and the ~/.agents default, while an adjacent packaged fallback with an empty root is explicitly rejected.",
+  "timestamp": "2026-09-08T21:54:32.538Z"
+}

@@ -49,6 +49,16 @@ def test_ignores_underscored_and_non_workflow_files(tmp_path: Path) -> None:
     assert "private" not in registry  # underscore-prefixed modules are skipped
 
 
+def test_ignores_a_reexported_workflow_provider(tmp_path: Path) -> None:
+    (tmp_path / "reexport.py").write_text(
+        "from panopticon.workflows.outfitter_catalog import workflow_provider\n"
+    )
+    registry = discover_workflows(
+        path=str(tmp_path), _home_workflows=tmp_path / "empty-home-workflows"
+    )
+    assert "spike" in registry
+
+
 def test_duplicate_name_is_rejected(tmp_path: Path) -> None:
     (tmp_path / "dupe.py").write_text(
         _CUSTOM_WORKFLOW.replace('"custom"', '"spike"')

@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.3.4--af03f272830d",
+  "requirementId": "outfitter-workflows.3.4",
+  "hash": "af03f272830d",
+  "verdict": "pass",
+  "summary": "The human-node projection directly checks all three conjuncts: user turn on entry, user advancement, and an empty responsibility tuple.",
+  "timestamp": "2026-09-08T21:48:15.068Z"
+}

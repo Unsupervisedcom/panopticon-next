@@ -266,6 +266,48 @@ def operation_instructions(
     )
 
 
+def responsibility_instructions(
+    task_id: str,
+    service_url: str,
+    *,
+    authenticated: bool = False,
+) -> str:
+    """Render Pi's REST procedure for resolving one current responsibility."""
+    url = f"{service_url.rstrip('/')}/tasks/{task_id}/responsibilities"
+    auth_setup = (
+        "_panopticon_had_xtrace=; case $- in *x*) set +x; "
+        "_panopticon_had_xtrace=1 ;; esac; "
+        '_panopticon_config=$(mktemp); chmod 600 "$_panopticon_config"; '
+        "printf 'header = \"Authorization: Bearer %s\"\\n' "
+        '"$PANOPTICON_SERVICE_AUTH_TOKEN" >"$_panopticon_config"; '
+        if authenticated
+        else ""
+    )
+    auth_option = '--config "$_panopticon_config" ' if authenticated else ""
+    cleanup = (
+        '; _panopticon_status=${PIPESTATUS[1]}; rm -f "$_panopticon_config"; '
+        '[ -n "$_panopticon_had_xtrace" ] && set -x; (exit "$_panopticon_status")'
+        if authenticated
+        else ""
+    )
+    return (
+        "Resolve one pending responsibility immediately after completing it. Replace `KEY`, "
+        "`met`, and the optional comment in this command; use status `failed` only with a "
+        "non-empty comment: `"
+        + auth_setup
+        + 'python -c \'import json,sys; print(json.dumps({"key": sys.argv[1], '
+        '"status": sys.argv[2], **({"comment": sys.argv[3]} if len(sys.argv) > 3 '
+        "else {})}))' 'KEY' 'met' | curl --disable --noproxy '*' "
+        + auth_option
+        + "--fail --silent --show-error --request POST --header "
+        + "'Content-Type: application/json' --data-binary @- "
+        + f'"{url}"'
+        + cleanup
+        + "`. Do not call `advance` until every responsibility shown in the current briefing "
+        "has been resolved."
+    )
+
+
 def write_settings(config_dir: Path) -> Path:
     """Merge ``defaultProjectTrust: "always"`` into ``<config_dir>/settings.json``.
 

@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.3--3bc2de61ffc0",
+  "requirementId": "outfitter-workflows.4.3",
+  "hash": "3bc2de61ffc0",
+  "verdict": "pass",
+  "summary": "An empty enabled-workflow list with a physically present package proves discovery succeeds, registers no Outfitter workflow, and preserves built-ins.",
+  "timestamp": "2026-09-08T21:52:12.230Z"
+}

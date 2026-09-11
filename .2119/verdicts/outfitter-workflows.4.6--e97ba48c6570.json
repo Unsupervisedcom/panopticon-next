@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.4.6--e97ba48c6570",
+  "requirementId": "outfitter-workflows.4.6",
+  "hash": "e97ba48c6570",
+  "verdict": "pass",
+  "summary": "The shared test proves a nested dependency stays absent from top-level discovery until that same package is explicitly added to workflow enablement, after which it registers.",
+  "timestamp": "2026-09-08T21:55:02.246Z"
+}

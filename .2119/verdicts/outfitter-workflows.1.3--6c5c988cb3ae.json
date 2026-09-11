@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.3--6c5c988cb3ae",
+  "requirementId": "outfitter-workflows.1.3",
+  "hash": "6c5c988cb3ae",
+  "verdict": "pass",
+  "summary": "Tests distinguish default and overridden cache directories, hard-code GitHub normalization, require credential-redacted keys, and discriminate unpadded URL-safe base64 from standard encoding.",
+  "timestamp": "2026-09-08T22:34:22.639Z"
+}

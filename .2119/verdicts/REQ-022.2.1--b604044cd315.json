@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-022.2.1--b604044cd315",
+  "requirementId": "REQ-022.2.1",
+  "hash": "b604044cd315",
+  "verdict": "pass",
+  "summary": "All discovered shipped workflow layers are compared against exact audited byte digests, catching any gh reinstallation spelling or new layer.",
+  "timestamp": "2026-09-08T22:29:17.392Z"
+}

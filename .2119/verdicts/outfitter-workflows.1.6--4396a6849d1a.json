@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.6--4396a6849d1a",
+  "requirementId": "outfitter-workflows.1.6",
+  "hash": "4396a6849d1a",
+  "verdict": "pass",
+  "summary": "The tests reject a traversal-shaped nested workflow id, a valid but unprovided id, self and multi-package cycles, while accepting a provided nested DAG.",
+  "timestamp": "2026-09-08T23:06:05.769Z"
+}

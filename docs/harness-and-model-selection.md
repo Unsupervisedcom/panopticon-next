@@ -21,8 +21,8 @@ control plane never interprets them; each harness gives them meaning.
   a repo default never re-routes existing tasks.
 - **Model**: explicit `starting_model` ▸ the harness's own default. The string's vocabulary
   belongs to the harness — `opus` (claude), `gpt-5.6-sol` (codex), `provider/model` (pi), or an
-  Outfitter **profile id**. An Outfitter profile owns provider, model, thinking, skills, and
-  extensions, so Panopticon does not split or reinterpret that id.
+  Outfitter **agent slug**. An Outfitter agent owns provider, model, thinking, skills, and
+  extensions, so Panopticon does not split or reinterpret that slug.
 - **Reasoning effort** rides the same string as a suffix — `gpt-5.6-sol:high` — translated
   per CLI (codex: `--config model_reasoning_effort`; pi natively reads `model:thinking`).
   One stored string, no schema growth per dimension.
@@ -81,7 +81,7 @@ flowchart LR
 - **Per-harness pickers are advisory.** Each harness supplies suggested models/efforts and
   its field label as static adapter data; free text is always valid; nothing validates
   vocabularies centrally. pi's list can come from its native `pi --list-models`. An
-  outfitter harness would label the field **profile** — a profile id subsumes
+  outfitter harness labels the field **agent** — an agent slug subsumes
   provider + model + thinking + loadout, which is where local models arrive without the
   control plane learning anything about providers.
 
@@ -113,37 +113,33 @@ requested string; aliases are not canonicalized.
 
 ## Outfitter adapter
 
-Outfitter 0.11.0 is registered and selectable. That release fixed the width-unsafe startup header
-that blocked 0.10.0 in detached tmux, and the adapter passed the narrow-pane live smoke. Because
-quickstart detection iterates the registry, an installed Outfitter CLI appears in onboarding.
-`setup-repo` intentionally has no approved Outfitter-specific auth dispatch yet; it reports that
-gap instead of guessing. Configure Pi-compatible auth manually as described below, then rerun or
-complete setup.
+Outfitter 1.16.0 is registered and selectable. Because quickstart detection iterates the registry,
+an installed Outfitter CLI appears in onboarding. `setup-repo` routes authentication through Pi
+and prepares `<credential_dir>/outfitter/.agents` as the catalog source mounted into tasks.
 
-The Outfitter harness writes `~/.outfitter/settings.yml` with one local source:
-`~/.outfitter/profile_sources/`. Populate that directory before launch with a catalog's flat
-profile YAML files or directory profiles (`<id>/profile.yml`), then set the task's
-`starting_model` to the selected profile id. Outfitter also supports catalog repositories under
-its own settings format, but Panopticon does not yet fetch, mount, or otherwise provision them.
-That missing population mechanism is an explicit v1 integration gap, not an implicit host mount.
+The harness writes `~/.agents/settings.yml` with its generated local source first. When the
+credential catalog is present, its payload (including root MCP/model registries and referenced
+prompt files) is copied into that global `.agents` layer, excluding its settings, cache, and Git
+metadata; project settings can replace the effective `sources` list without making the selected
+resident disappear. Direct configured sources are flattened first from the catalog's existing
+`cache/`; run `HOME=<credential_dir>/outfitter outfitter sync --strict` before launch when it uses
+remote parents. Populate `<credential_dir>/outfitter/.agents/agents/<slug>/agent.md` and its
+referenced resources, then set the task's `starting_model` to a concrete selected agent slug (or
+set that slug as the repository's `default_model`). New Outfitter tasks reject an empty agent
+selection instead of entering the interactive setup wizard; a legacy row without one may still
+use Outfitter's configured `default_agent`.
+Panopticon does not fetch catalog sources inside a task; synchronize or populate that mounted
+catalog before launch.
 
 Outfitter launches pi underneath, so authentication is pi authentication: provider environment
 variables work as they do for pi, and a repo `credential_dir` may supply pi's `auth.json`.
-Outfitter builds a temporary composite Pi config and symlinks its `auth.json` from the selected
-profile's `cli_specific/pi/auth.json` when that file exists, otherwise from
-`~/.pi/agent/auth.json`. Bootstrap links the credential-dir file at that native fallback; it does
-not overwrite profile-owned auth.
+Outfitter builds a temporary composite Pi config and seeds it from `~/.pi/agent/auth.json`.
+Bootstrap links the credential-dir file at that native fallback without overwriting existing
+state. Panopticon operations and responsibility resolution are rendered as authenticated REST
+skills because Pi does not expose an MCP client.
 
-Like direct Pi tasks, Outfitter tasks currently cannot execute workflow skills that require
-Panopticon's MCP tools. Use Claude or Codex for the complete planned GitHub workflow in the
-new-user walkthrough.
-
-Panopticon launches Outfitter interactively in tmux. Outfitter also supports Pi's headless flags
-(`-p`/`--print`, `--export`, and `--list-models`): its source appends pass-through arguments after
-profile controls and suppresses its interactive runtime extension for those modes. A live
-operator smoke that appended `-p` hung with no Pi output, but that flag is not part of the
-Panopticon argv. The normal launch inherits the tmux TTY, contains no headless flag, and was
-verified through Outfitter's “launching pi” boundary.
+Panopticon launches Outfitter interactively in tmux. The normal launch inherits the tmux TTY and
+passes the workflow turn extension and rendered skills through to Pi.
 
 ## Targeted mutation review
 

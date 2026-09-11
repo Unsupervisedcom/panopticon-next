@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.4--5d1444fb72fa",
+  "requirementId": "outfitter-workflows.1.4",
+  "hash": "5d1444fb72fa",
+  "verdict": "pass",
+  "summary": "Tests prove nonempty and empty local sources lists replace committed sources wholesale, while a local file without sources preserves the committed list.",
+  "timestamp": "2026-09-08T21:53:47.359Z"
+}

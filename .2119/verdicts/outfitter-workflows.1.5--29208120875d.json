@@ -1,0 +1,8 @@
+{
+  "reviewId": "outfitter-workflows.1.5--29208120875d",
+  "requirementId": "outfitter-workflows.1.5",
+  "hash": "29208120875d",
+  "verdict": "pass",
+  "summary": "The real loader rejects an absent package and the exception regex independently requires both the package id and root path.",
+  "timestamp": "2026-09-08T21:48:02.043Z"
+}
