@@ -1033,6 +1033,15 @@ def test_gate_requires_two_verified_final_commit_reviews_for_every_round() -> No
         validate_review_gate(comments, reviewers=reviewers, commit="final", round_number=2) is None
     )
 
+    # Quoted examples can accompany real evidence without replacing or swallowing it.
+    quoted_example = "```markdown\n## Targeted mutation evidence\nOutcome: invalid\n```\n"
+    validate_review_gate(
+        (comments[0], render_review_comment(second, quoted_example + MUTATION_EVIDENCE_BODY)),
+        reviewers=reviewers,
+        commit="final",
+        round_number=2,
+    )
+
     invalid_sets = (
         comments[:1],
         (*comments, comments[0]),
@@ -1090,6 +1099,25 @@ def test_gate_requires_two_verified_final_commit_reviews_for_every_round() -> No
             comments[1]
             .replace("Outcome: survived", "The outcome was inconclusive.")
             .replace("Approve.", "Outcome: survived\n\nApprove."),
+        ),
+        *(
+            (
+                comments[0],
+                render_review_comment(second, f"{fence}\n{MUTATION_EVIDENCE_BODY}\n{close}"),
+            )
+            for fence, close in (
+                ("```markdown", "```"),
+                ("~~~", "~~~"),
+                ("   ```markdown", "   ```"),
+                ("````", "```"),
+                ("```", ""),
+            )
+        ),
+        (
+            comments[0],
+            render_review_comment(
+                second, "## Targeted mutation evidence\n```\nOutcome: killed\n```"
+            ),
         ),
         (comments[0], "not an evidence-bearing review comment"),
     )

@@ -494,6 +494,25 @@ def parse_review_comment(comment: str) -> tuple[ReviewEvidence, str]:
     return evidence, values["body"]
 
 
+def _outside_fenced_code(body: str) -> str:
+    """Keep body lines outside Markdown code fences; quoted examples are not evidence."""
+    lines: list[str] = []
+    fence = ""
+    for line in body.splitlines():
+        if fence:
+            if re.fullmatch(
+                r" {0,3}" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*", line
+            ):
+                fence = ""
+            continue
+        opening = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if opening and not (opening[1][0] == "`" and "`" in opening[2]):
+            fence = opening[1]
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def validate_review_gate(
     comments: Sequence[str],
     *,
@@ -512,6 +531,7 @@ def validate_review_gate(
     parsed = [parse_review_comment(comment) for comment in comments]
     expected_sources = {"claude": CLAUDE_SOURCE, "codex": CODEX_SOURCE}
     for (evidence, body), expected in zip(parsed, reviewers, strict=True):
+        body = _outside_fenced_code(body)
         mutation_heading = re.search(r"^## Targeted mutation evidence[ \t]*$", body, re.MULTILINE)
         if mutation_heading is None:
             raise _identity_error(
