@@ -1968,19 +1968,21 @@ async def test_pressing_t_with_no_running_session_does_not_signal() -> None:
     ],
 )
 @pytest.mark.parametrize("runner_host", [None, "runner.example.invalid"])
+@pytest.mark.parametrize("container_status", ["failed", "paused"])
 async def test_failed_attach_displays_reason_and_recovery_without_switching(
-    detail: str, runner_host: str | None
+    detail: str, runner_host: str | None, container_status: str
 ) -> None:
     from textual.widgets._toast import Toast
 
     picked: list[tuple[str, str | None, str]] = []
     task = {
         **_TASK,
-        "container_status": "failed",
+        "container_status": container_status,
         "lifecycle_detail": detail,
         "runner_host": runner_host,
     }
-    app = Dashboard(_FakeClient([task]), on_switch=lambda s, h, label: picked.append((s, h, label)))
+    client = _FakeClient([task])
+    app = Dashboard(client, on_switch=lambda s, h, label: picked.append((s, h, label)))
     async with app.run_test(size=(80, 24), notifications=True) as pilot:
         await pilot.press("t")
         await pilot.pause()
@@ -1988,11 +1990,12 @@ async def test_failed_attach_displays_reason_and_recovery_without_switching(
         assert detail in rendered
         if runner_host:
             assert f"setup on {runner_host}" in rendered
-            assert "Press g" not in rendered
+            assert "open its dashboard and press g, then s" in rendered
         else:
             assert "Press g to open repos, then s for setup" in rendered
         assert "press R to retry this task" in rendered
         assert picked == []
+        assert client.released == []
         assert app.is_running
 
 
@@ -5464,6 +5467,38 @@ async def test_pressing_s_runs_foreground_setup_for_selected_repo(
         assert isinstance(app.screen, dashboard.ReposScreen)
     assert selected == [(fake, "r1")]
     assert fake.created == []
+
+
+@pytest.mark.parametrize("failure", [KeyboardInterrupt, ValueError])
+async def test_setup_resume_keeps_the_selected_repository(
+    monkeypatch: pytest.MonkeyPatch, failure: type[BaseException]
+) -> None:
+    from panopticon.terminal import setup
+
+    repos = [
+        {"id": name, "name": name, "git_url": f"/example/{name}", "default_base": "main"}
+        for name in ("first", "second")
+    ]
+    fake = _FakeClient([_TASK], repos=repos)
+    app = Dashboard(fake)
+    selected: list[str] = []
+    monkeypatch.setattr(app, "suspend", contextlib.nullcontext)
+
+    def cancel(client: Any, repo_id: str) -> bool:
+        selected.append(repo_id)
+        raise failure("setup interrupted")
+
+    monkeypatch.setattr(setup, "configure_repo", cancel)
+    async with app.run_test() as pilot:
+        await pilot.press("g", "j", "s")
+        await pilot.pause()
+        assert isinstance(app.screen, dashboard.ReposScreen)
+        assert app.screen._current == "second"
+        await pilot.press("s")
+        await pilot.pause()
+        assert selected == ["second", "second"]
+        assert fake.created == []
+        assert fake.released == []
 
 
 async def test_no_repos_auto_opens_the_repos_screen_on_start() -> None:

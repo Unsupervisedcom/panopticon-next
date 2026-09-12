@@ -118,6 +118,7 @@ from panopticon.harnesses import DEFAULT_HARNESS, HARNESSES
 from panopticon.sessionservice.local_runner import session_name
 from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
 from panopticon.terminal.attach import task_context_label
+from panopticon.terminal.foreground_suspend import run_suspended
 
 
 def _make_sort_key(
@@ -2446,6 +2447,7 @@ class ReposScreen(_TableScreen):
 
     def _refresh(self) -> None:
         table = self.query_one("#repos", DataTable)
+        selected = self._current
         table.clear()
         self._repos = {str(r["id"]): r for r in self._client.list_repos()}
         for repo in self._repos.values():
@@ -2459,6 +2461,8 @@ class ReposScreen(_TableScreen):
                 "held — s to resume" if repo.get("launch_paused") else "–",
                 key=str(repo["id"]),
             )
+        if selected in self._repos:
+            table.move_cursor(row=list(self._repos).index(selected))
 
     def action_new_repo(self) -> None:
         # Returns an error to show inline (the form stays open, keeping the user's input) or None
@@ -2557,8 +2561,8 @@ class ReposScreen(_TableScreen):
         from panopticon.terminal.setup import configure_repo
 
         try:
-            with self.app.suspend():
-                complete = configure_repo(self._client, self._current)
+            repo_id = self._current
+            complete = run_suspended(self.app, lambda: configure_repo(self._client, repo_id))
         except (OSError, ValueError, RuntimeError, httpx.HTTPError) as exc:
             self._refresh()
             detail = _detail(exc) if isinstance(exc, httpx.HTTPStatusError) else str(exc)
@@ -3380,12 +3384,14 @@ class Dashboard(App[None]):
                 message += f"\n{detail}\nPress d for details."
                 runner_host = task.get("runner_host") if task else None
                 if runner_host:
-                    message += f" Open repository setup on {runner_host}, where this task runs."
+                    message += (
+                        f" For setup on {runner_host}, open its dashboard and press g, then s."
+                    )
                 else:
                     message += " Press g to open repos, then s for setup."
-                if task and task.get("container_status") == "failed":
+                if task and task.get("container_status") in {"failed", "paused"}:
                     message += " After resolving the problem, press R to retry this task."
-            self.notify(message, severity="warning", timeout=12 if detail else 3, markup=False)
+            self.notify(message, severity="warning", timeout=12 if detail else None, markup=False)
             return
         runner_host = task.get("runner_host")
         session = session_name(self._current)
