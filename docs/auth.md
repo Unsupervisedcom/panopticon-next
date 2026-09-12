@@ -120,7 +120,8 @@ Each **harness** (the agent CLI a task runs) authenticates its own way. `panopti
 Claude, Codex, or Pi in the foreground and saves a reusable, host-local connection containing only
 that harness's credentials. It does not require Docker, tmux, or a running task service. A reusable
 connection has no repository or forge token and is never an implicit fallback for an existing
-repository.
+repository. Pasting an API key or token needs no host agent CLI; install the selected CLI only
+when using its native browser login.
 
 `panopticon quickstart` connects or reuses an agent, selects a repository source, verifies the
 local runtime, and registers or reuses the repository before opening the dashboard. A new
@@ -184,7 +185,14 @@ An existing repository's explicit harness, env-file, and credential-directory bi
 effect unless you choose replacement. Replacement copies retained repository values into a new
 private env-file and changes the repository reference only after the private write succeeds. An
 incomplete explicit binding is reported as incomplete; setup does not silently substitute a saved
-connection. Credentials are runner-local, so repeat setup on each host that will launch tasks.
+connection. Keeping a complete binding leaves the repository and its pending tasks unchanged.
+Interrupted repair remains visible as held on the repository screen; press `s` to resume.
+Credentials are runner-local, so repeat setup on each host that will launch tasks.
+
+For Codex connections selected through foreground setup, retrying a task replaces its old
+credential file or link with the repository's current selection. Shared subscription credentials
+and session history are retained. Older bindings keep their existing persisted-login behavior
+until explicitly replaced through setup.
 
 The legacy `setup-repo` workflow remains available for explicit API and integration compatibility,
 and its existing task records remain visible. Quickstart and the repository screen no longer create

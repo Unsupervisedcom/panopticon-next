@@ -106,10 +106,19 @@ def configure_repo(
         if not replace:
             if not repo_configured(repo):
                 print(
-                    "The existing connection is incomplete. Select replacement in setup to repair it."
+                    f"The existing connection is incomplete. Run `panopticon setup --repo {repo_id}` and select replacement to repair it."
                 )
                 return False
             connection = None
+            existing_values = (
+                env_values(read_private(existing.env_file)) if existing.env_file else {}
+            )
+            needs_forge = "github-self-reviewed" in choose_enabled_workflows(str(repo["git_url"]))
+            if not repo.get("launch_paused") and (
+                not needs_forge or existing_values.get("GH_TOKEN", "").strip()
+            ):
+                print("This repository's existing connection is configured; no changes needed.")
+                return True
     with setup_lock():
         client.begin_repo_setup(repo_id)
         # Keep admission closed on any failure. Reopening setup resumes repair; finishing clears
@@ -137,6 +146,10 @@ def configure_repo(
                 if line.split("=", 1)[0].strip() not in AUTH_KEYS[connection.harness]
             )
             old_content = merge_env(retained, connection_values(connection))
+            if connection.harness == "codex":
+                from panopticon.harnesses.codex import RECONCILE_AUTH_ENV
+
+                old_content = merge_env(old_content, {RECONCILE_AUTH_ENV: "1"})
             changes.update(
                 default_harness=connection.harness, credential_dir=connection.credential_dir
             )
@@ -151,7 +164,9 @@ def configure_repo(
                 "GitHub token (input hidden; Enter to leave setup incomplete): "
             ).strip()
             if not token:
-                print("GitHub setup remains incomplete; run setup for this repository to resume.")
+                print(
+                    f"Repository launches remain held. Resume with `panopticon setup --repo {repo_id}`."
+                )
                 return False
             old_content = merge_env(old_content, {"GH_TOKEN": token})
         reference = f"repo-{uuid.uuid4().hex}.env"

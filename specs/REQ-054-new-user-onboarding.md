@@ -56,14 +56,14 @@ GitHub task, and tear the local runtime down cleanly.
 3. The walkthrough MUST state separately that `github-peer-reviewed` requires another person to
    approve the pull request.
 
-### REQ-054.5: Private repository environment template
+### REQ-054.5: Private repository environment files
 
 1. If the documented secrets directory does not exist, quickstart MUST create it as a directory
    owned by the effective user with mode `0700`.
 2. If the documented repository environment file does not exist, quickstart MUST create it as a
    non-symlinked regular file owned by the effective user with mode `0600`.
-3. A newly created empty repository environment file MUST contain no live secret until the
-   operator explicitly configures credentials through foreground setup.
+3. Initial foreground setup MUST NOT create a repository environment file until the operator
+   supplies or explicitly selects the agent credentials for that repository.
 4. If a valid repository environment file already exists, quickstart MUST retain that file
    unchanged, using a new private file when the operator selects credential replacement.
 5. If the secrets directory or environment pathname is unsafe, quickstart MUST fail and identify

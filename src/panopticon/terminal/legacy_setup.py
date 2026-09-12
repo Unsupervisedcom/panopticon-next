@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.resources
 import os
 import subprocess
+from pathlib import Path
 
 from panopticon.harnesses.pi import API_KEY_ENV_VARS
 from panopticon.terminal.setup_credentials import setup_lock
@@ -16,7 +17,8 @@ def main() -> int:
     task_lib = (importlib.resources.files("panopticon.sessionservice") / "task_lib.sh").read_text()
     environment = dict(os.environ, PANOPTICON_PI_API_KEY_ENV_VARS=" ".join(API_KEY_ENV_VARS))
     try:
-        with setup_lock():
+        secrets_root = environment.get("PANOPTICON_SECRETS_DIR")
+        with setup_lock(secrets_root=Path(secrets_root) if secrets_root else None):
             return subprocess.run(
                 ["sh", "-c", f"{task_lib}\n{SetupRepo().legacy_script()}"],
                 env=environment,

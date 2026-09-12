@@ -40,20 +40,29 @@ class Connection:
     credential_dir: str | None = None
 
 
-def _directory() -> int:
-    root = _secrets_dir()
-    fd = open_private_directory(root, create=True)
+def _private_root(secrets_root: Path | None = None) -> Path:
+    """Resolve configured parent aliases while refusing a symlink at the secrets directory."""
+    root = secrets_root if secrets_root is not None else _secrets_dir()
+    return root.parent.resolve() / root.name
+
+
+def _directory(secrets_root: Path | None = None) -> int:
+    root = _private_root(secrets_root)
+    try:
+        fd = open_private_directory(root, create=True)
+    except OSError as exc:
+        raise ValueError(f"Cannot safely open secrets directory: {root}") from exc
     info = os.fstat(fd)
     if info.st_uid != os.geteuid() or info.st_mode & 0o077:
         os.close(fd)
-        raise ValueError("Setup needs an owner-only secrets directory (0700).")
+        raise ValueError(f"Setup needs an owner-only secrets directory (0700): {root}")
     return fd
 
 
-def _validate_file(fd: int) -> None:
+def _validate_file(fd: int, path: Path) -> None:
     info = os.fstat(fd)
     if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
-        raise ValueError("Setup requires owner-only regular credential files (0600).")
+        raise ValueError(f"Setup requires an owner-only regular credential file (0600): {path}")
 
 
 def read_private(reference: str) -> str:
@@ -61,11 +70,20 @@ def read_private(reference: str) -> str:
     relative = Path(reference)
     if relative.is_absolute() or ".." in relative.parts or not relative.name:
         raise ValueError("Invalid private credential reference.")
-    directory = open_private_directory(_secrets_dir() / relative.parent, create=False)
+    directory = open_private_directory(_private_root() / relative.parent, create=False)
     try:
-        fd = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
         try:
-            _validate_file(fd)
+            fd = os.open(
+                relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory
+            )
+        except FileNotFoundError:
+            raise
+        except OSError as exc:
+            raise ValueError(
+                f"Cannot safely read credential file: {_private_root() / relative}"
+            ) from exc
+        try:
+            _validate_file(fd, _secrets_dir() / relative)
         except BaseException:
             os.close(fd)
             raise
@@ -88,7 +106,7 @@ def write_private(reference: str, content: str) -> None:
             pass
         else:
             try:
-                _validate_file(old)
+                _validate_file(old, _secrets_dir() / reference)
             finally:
                 os.close(old)
         fd = os.open(
@@ -106,9 +124,9 @@ def write_private(reference: str, content: str) -> None:
 
 
 @contextlib.contextmanager
-def setup_lock() -> Iterator[None]:
+def setup_lock(*, secrets_root: Path | None = None) -> Iterator[None]:
     """A process-lifetime writer lock, released automatically even after interrupted login."""
-    directory = _directory()
+    directory = _directory(secrets_root)
     try:
         fd = os.open(
             "setup.lock",
@@ -119,7 +137,9 @@ def setup_lock() -> Iterator[None]:
     finally:
         os.close(directory)
     try:
-        _validate_file(fd)
+        _validate_file(
+            fd, (secrets_root if secrets_root is not None else _secrets_dir()) / "setup.lock"
+        )
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
@@ -190,7 +210,9 @@ def connection_values(connection: Connection) -> dict[str, str]:
     values = env_values(read_private(connection.env_file))
     allowed = AUTH_KEYS[connection.harness]
     if any(key not in allowed for key in values):
-        raise ValueError("Reusable connection contains non-harness values; it cannot be applied.")
+        raise ValueError(
+            f"Reusable connection contains non-harness values: {_private_root() / connection.env_file}; it cannot be applied."
+        )
     return values
 
 
@@ -253,7 +275,7 @@ def connect(
             if not shutil.which("codex"):
                 raise RuntimeError("Install Codex, then run `panopticon setup` again.")
             credential_dir = f"codex-{uuid.uuid4().hex}.d"
-            path = _secrets_dir() / credential_dir
+            path = _private_root() / credential_dir
             fd = open_private_directory(path, create=True)
             os.close(fd)
             child_env = {

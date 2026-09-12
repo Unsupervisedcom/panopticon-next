@@ -94,3 +94,28 @@ def test_legacy_workflow_cannot_prompt_while_foreground_lock_is_held(
     assert "Another setup is active" in result.stdout
     assert "Paste" not in result.stdout
     assert not (tmp_path / "config" / "secrets" / "connections.json").exists()
+
+
+# 2119: 3.8
+def test_legacy_lock_uses_runner_secret_root_despite_stale_tmux_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    current_config = tmp_path / "current"
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(current_config))
+    environment = {
+        **os.environ,
+        "PANOPTICON_PYTHON": sys.executable,
+        "PANOPTICON_CONFIG": str(tmp_path / "stale"),
+        "PANOPTICON_SECRETS_DIR": str(current_config / "secrets"),
+    }
+    with setup_lock():
+        result = subprocess.run(
+            ["sh", "-c", SetupRepo().shell_script()],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    assert result.returncode != 0
+    assert "Another setup is active" in result.stdout
+    assert not (tmp_path / "stale").exists()

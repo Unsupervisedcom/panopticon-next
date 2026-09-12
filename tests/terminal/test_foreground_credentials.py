@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import select
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,11 @@ def answers(*values: str):
 def test_saved_connection_is_private_harness_only_and_never_adopts_ambient(
     private_config: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    def no_provider(*args, **kwargs):
+        raise AssertionError("setup contacted a provider")
+
+    monkeypatch.setattr("socket.create_connection", no_provider)
+    monkeypatch.setattr(credentials.subprocess, "run", no_provider)
     monkeypatch.setenv("GH_TOKEN", "ambient-forge")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "ambient-provider")
     with credentials.setup_lock():
@@ -38,6 +44,7 @@ def test_saved_connection_is_private_harness_only_and_never_adopts_ambient(
     assert values == {"ANTHROPIC_API_KEY": "sk-ant-api-test-only"}
     output = capsys.readouterr().out
     assert "configured locally" in output
+    assert not any(claim in output.lower() for claim in ("verified", "authenticated", "logged in"))
     assert "sk-ant-api-test-only" not in output
     assert "ambient" not in output
     assert private_config.stat().st_mode & 0o777 == 0o700
@@ -191,3 +198,71 @@ def test_env_merge_preserves_unrelated_literal_values_and_rejects_multiline() ->
     )
     with pytest.raises(ValueError, match="single line"):
         credentials.merge_env(existing, {"ANTHROPIC_API_KEY": "bad\nGH_TOKEN=wrong"})
+
+
+# 2119: 2.12
+def test_successful_codex_relogin_preserves_previous_directory_and_env(
+    private_config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(credentials.shutil, "which", lambda _: "/test/codex")
+    count = 0
+
+    def login(argv, **kwargs):
+        nonlocal count
+        count += 1
+        auth = Path(kwargs["env"]["CODEX_HOME"]) / "auth.json"
+        auth.write_text(json.dumps({"tokens": {"access_token": f"account-{count}-test"}}))
+        auth.chmod(0o600)
+        return SimpleNamespace(returncode=0)
+
+    first = credentials.connect("codex", secret_fn=answers(""), run=login)
+    old_env = (private_config / first.env_file).read_bytes()
+    old_auth = private_config / first.credential_dir / "auth.json"
+    old_bytes = old_auth.read_bytes()
+    second = credentials.connect("codex", input_fn=answers("n"), secret_fn=answers(""), run=login)
+    assert first.credential_dir != second.credential_dir
+    assert first.env_file != second.env_file
+    assert old_auth.read_bytes() == old_bytes
+    assert (private_config / first.env_file).read_bytes() == old_env
+    assert credentials.load_connections()["codex"] == second
+    assert credentials.configured(first) and credentials.configured(second)
+
+
+# 2119: 3.7
+def test_writer_lock_is_released_when_owner_process_is_killed(private_config: Path) -> None:
+    script = (
+        "from panopticon.terminal.setup_credentials import setup_lock\n"
+        "import time\nwith setup_lock():\n print('locked', flush=True)\n time.sleep(60)"
+    )
+    owner = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+    try:
+        assert select.select([owner.stdout], [], [], 5)[0], "lock owner never became ready"
+        assert owner.stdout.readline().strip() == "locked"
+        with pytest.raises(RuntimeError, match="Another setup"), credentials.setup_lock():
+            pytest.fail("second writer acquired lock")
+        owner.kill()
+        owner.wait(timeout=5)
+        with credentials.setup_lock():
+            credentials.write_private("after-exit.env", "TEST=acquired\n")
+        assert credentials.read_private("after-exit.env") == "TEST=acquired\n"
+    finally:
+        if owner.poll() is None:
+            owner.kill()
+            owner.wait(timeout=5)
+        owner.stdout.close()
+
+
+@pytest.mark.parametrize("alias_kind", ["config-parent", "tmp-alias"])
+def test_setup_accepts_config_parent_alias_without_following_secret_leaf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias_kind: str
+) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(real, target_is_directory=True)
+    config = alias / "config" if alias_kind == "tmp-alias" else alias
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(config))
+    with credentials.setup_lock():
+        connection = credentials.connect("claude", secret_fn=lambda _: "selected-test")
+    assert credentials.configured(connection)
+    assert (config / "secrets" / connection.env_file).stat().st_mode & 0o777 == 0o600
