@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from panopticon import __version__
 from panopticon.core.models import Actor, Repo, Responsibility, Task
 from panopticon.core.state import Complete, InitialState, TerminalState
 from panopticon.core.workflow import Workflow
@@ -66,7 +67,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     )
     asyncio.run(service.init())
     asyncio.run(service.create_repo(Repo(id="r1", name="acme/widgets", git_url="https://x/r1.git")))
-    with TestClient(create_app(service)) as c:
+    with TestClient(create_app(service, instance_id="test-runtime")) as c:
         yield c
 
 
@@ -78,6 +79,12 @@ def _new_task(client: TestClient) -> str:
 
 def test_health_and_workflows(client: TestClient) -> None:
     assert client.get("/healthz").json() == {"status": "ok"}
+    assert client.get("/identity").json() == {
+        "service": "panopticon-task-service",
+        "api_revision": 1,
+        "version": __version__,
+        "instance_id": "test-runtime",
+    }
     assert client.get("/workflows").json() == [
         {
             "name": "spike",

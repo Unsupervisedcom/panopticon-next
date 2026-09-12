@@ -41,15 +41,13 @@ def test_integrated_dashboard_pins_current_auth_environment(
 
     assert len(captured) == 1
     dashboard = captured[0]
-    assert dashboard[:7] == [
-        "env",
-        "-u",
+    for name in [
         "PANOPTICON_SERVICE_AUTH_FILE",
-        "-u",
         "PANOPTICON_SERVICE_AUTH_MODE",
-        "-u",
         "PANOPTICON_CONFIG",
-    ]
+    ]:
+        position = dashboard.index(name)
+        assert dashboard[position - 1] == "-u"
     assert "PANOPTICON_SERVICE_AUTH_FILE=current-auth.json" in dashboard
     assert "PANOPTICON_SERVICE_AUTH_MODE=enforced" in dashboard
     assert "PANOPTICON_CONFIG=/current/config" in dashboard

@@ -1,8 +1,7 @@
 """First-time setup helpers for ``panopticon quickstart``.
 
-Detects and confirms the repo's default harness, registers the repo quickstart is run in with the
-task service (idempotent — deduped on the remote URL), writes a secrets template when absent, and
-creates a harness-aware ``setup-repo`` task the console attaches to for auth setup.
+Detects and confirms the repo's default harness, selects and registers a repository source with the
+task service, writes a secrets template when absent, and retains legacy setup-task helpers.
 """
 
 from __future__ import annotations
@@ -20,6 +19,33 @@ from panopticon.client import TaskServiceClient
 from panopticon.harnesses import DEFAULT_HARNESS, HARNESSES
 from panopticon.harnesses.base import Harness
 from panopticon.terminal.setup_repo_task import SETUP_REPO_WORKFLOW, create_setup_repo_task
+from panopticon.terminal.source_selection import (
+    RepositorySource as RepositorySource,
+)
+from panopticon.terminal.source_selection import (
+    detect_git_url as detect_git_url,
+)
+from panopticon.terminal.source_selection import (
+    is_github_source as is_github_source,
+)
+from panopticon.terminal.source_selection import (
+    repo_id_candidates as repo_id_candidates,
+)
+from panopticon.terminal.source_selection import (
+    repo_id_from_url as repo_id_from_url,
+)
+from panopticon.terminal.source_selection import (
+    resolve_source as resolve_source,
+)
+from panopticon.terminal.source_selection import (
+    select_source as select_source,
+)
+from panopticon.terminal.source_selection import (
+    source_name as source_name,
+)
+from panopticon.terminal.source_selection import (
+    sources_equivalent as sources_equivalent,
+)
 
 _FALLBACK_GIT_URL = "https://github.com/Unsupervisedcom/panopticon.git"
 
@@ -27,13 +53,10 @@ _FALLBACK_GIT_URL = "https://github.com/Unsupervisedcom/panopticon.git"
 _TERMINAL_STATES = {"COMPLETE", "DROPPED"}
 
 #: The opt-in coding workflows quickstart enables for a repo (kept in sync with the workflow
-#: classes' ``name`` ClassVars): the forge lifecycle for hosted remotes, the forge-free one for
-#: local-only repos.
+#: classes' ``name`` ClassVars): the forge lifecycle for supported GitHub sources, the forge-free
+#: one for every other source.
 _FORGE_WORKFLOWS = ("github-self-reviewed", "github-peer-reviewed")
 _LOCAL_WORKFLOWS = ("local-git-self-reviewed",)
-
-#: URL schemes that mean a networked (hosted-forge) remote rather than a local path.
-_FORGE_SCHEMES = ("https://", "http://", "ssh://", "git://", "ftp://", "ftps://")
 
 
 @dataclass(frozen=True)
@@ -159,84 +182,13 @@ def _secrets_template() -> str:
     return ref.read_text()
 
 
-def detect_git_url() -> str:
-    """Return the origin URL for the repository in the current working directory."""
-    import subprocess
-
-    try:
-        subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        raise RuntimeError(
-            "quickstart must run inside a Git repository; change into the repository you want "
-            "Panopticon to manage and try again"
-        ) from exc
-
-    try:
-        result = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        url = result.stdout.strip()
-        if url:
-            return url
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
-    raise RuntimeError(
-        "the current Git repository has no `origin` URL; add an `origin` remote for the "
-        "repository you want Panopticon to manage and try again"
-    )
-
-
-def _normalize_url(git_url: str) -> str:
-    """Canonical form for comparing remote URLs: trimmed, no trailing ``.git`` or ``/``."""
-    url = git_url.strip().rstrip("/")
-    if url.endswith(".git"):
-        url = url[: -len(".git")]
-    return url
-
-
-def repo_id_from_url(git_url: str) -> str:
-    """Derive a repo id/name from a git URL — its last path segment without the ``.git`` suffix.
-
-    ``https://github.com/Unsupervisedcom/panopticon.git`` → ``panopticon``;
-    ``git@github.com:acme/Widget.git`` → ``widget``. Falls back to ``repo`` if the URL yields
-    nothing usable.
-    """
-    tail = _normalize_url(git_url).replace(":", "/").rstrip("/").rsplit("/", 1)[-1]
-    return tail.lower() or "repo"
-
-
-def _is_forge_url(git_url: str) -> bool:
-    """True when ``git_url`` names a hosted-forge remote (network push/PR/CI), not a local path.
-
-    Recognizes URL-scheme remotes (``https://…``, ``ssh://…``, …) and scp-like ``user@host:path``
-    remotes; treats a bare filesystem path or a ``file://`` URL as local-only.
-    """
-    url = git_url.strip()
-    if url.lower().startswith("file://"):
-        return False
-    if url.lower().startswith(_FORGE_SCHEMES):
-        return True
-    # scp-like syntax: user@host:path — an '@' and a ':' before any '/'. A Windows drive path
-    # (``C:\…``) has the ':' but no '@', so it stays local.
-    at, colon, slash = url.find("@"), url.find(":"), url.find("/")
-    return at != -1 and colon > at and (slash == -1 or colon < slash)
-
-
 def choose_enabled_workflows(git_url: str) -> tuple[str, ...]:
     """The opt-in workflows quickstart enables for a repo, chosen from its remote URL.
 
-    A hosted-forge remote gets both GitHub lifecycles so a new evaluator can choose the shorter
-    self-reviewed path or a second-person review gate. A local-only repo gets the forge-free flow.
+    Supported github.com transports get both GitHub lifecycles. All other sources get the
+    forge-free flow.
     """
-    return _FORGE_WORKFLOWS if _is_forge_url(git_url) else _LOCAL_WORKFLOWS
+    return _FORGE_WORKFLOWS if is_github_source(git_url) else _LOCAL_WORKFLOWS
 
 
 def _ensure_workflows_enabled(
@@ -336,17 +288,9 @@ def wait_for_service(service_url: str, *, timeout: int = 30) -> None:
 
 
 def _find_existing_repo(client: TaskServiceClient, git_url: str) -> dict[str, object] | None:
-    """The already-registered repo for ``git_url``, matched by normalized remote **or** derived id.
-
-    Deduping on the remote URL alone misses a repo registered under a different spelling of the
-    same remote (e.g. ``git@github.com:acme/x.git`` vs ``https://github.com/acme/x``), and since the
-    id we'd create is derived from the URL, that mismatch would then collide on create. Matching the
-    derived id too reuses the existing repo instead of colliding.
-    """
-    target = _normalize_url(git_url)
-    want_id = repo_id_from_url(git_url)
+    """Return only an already-registered repository with an equivalent source."""
     for repo in client.list_repos():
-        if _normalize_url(str(repo.get("git_url", ""))) == target or repo.get("id") == want_id:
+        if sources_equivalent(str(repo.get("git_url", "")), git_url):
             return repo
     return None
 
@@ -354,20 +298,19 @@ def _find_existing_repo(client: TaskServiceClient, git_url: str) -> dict[str, ob
 def setup_repo(
     client: TaskServiceClient,
     git_url: str,
-    env_file: str,
+    env_file: str | None,
     *,
     default_harness: str | None = None,
 ) -> tuple[str, str]:
     """Register the repo quickstart is run in with the task service; return its ``(id, name)``.
 
-    Enables the opt-in coding workflows appropriate to the repo's remote — both GitHub lifecycles
-    for a hosted remote, or the forge-free ``local-git-self-reviewed`` workflow for a local-only
-    remote (see :func:`choose_enabled_workflows`).
+    Enables the opt-in coding workflows appropriate to the repo's source — both GitHub lifecycles
+    for supported github.com transports, or the forge-free ``local-git-self-reviewed`` workflow for
+    every other source (see :func:`choose_enabled_workflows`).
 
-    Idempotent: an already-registered repo (matched by remote URL or derived id, see
-    :func:`_find_existing_repo`) is reused rather than re-registered — and still has the workflow
-    ensured (merged in if absent) — and a create that races into a conflict falls back to the same
-    reuse. The name is used to seed the setup-repo task's memo.
+    Idempotent: an already-registered repo is reused only when its source is equivalent. Existing
+    credential and harness bindings are left untouched. A conflict refreshes repository state and
+    either finds an equivalent racing create or retries with a wider source-identity suffix.
     """
     workflows = choose_enabled_workflows(git_url)
     existing = _find_existing_repo(client, git_url)
@@ -375,34 +318,34 @@ def setup_repo(
         print(f"Repo already configured for {git_url!r} — skipping registration.")
         _ensure_workflows_enabled(client, existing, workflows)
         repo_id = str(existing["id"])
-        if default_harness is not None and existing.get("default_harness") != default_harness:
-            client.update_repo(repo_id, default_harness=default_harness)
-            print(f"  → Set the repo's default harness to {default_harness!r}.")
         return repo_id, str(existing.get("name") or repo_id)
-    repo_id = repo_id_from_url(git_url)
-    try:
-        client.create_repo(
-            repo_id,
-            repo_id,
-            git_url,
-            env_file=env_file,
-            enabled_workflows=list(workflows),
-            default_harness=default_harness,
-        )
-    except httpx.HTTPStatusError as err:
-        if err.response.status_code != 409:
-            raise
-        # A repo with this id already exists (a race after our dedup check) — reuse it, and still
-        # ensure the workflow is enabled on it.
-        print(f"Repo {repo_id!r} already exists — reusing it.")
-        raced = _find_existing_repo(client, git_url)
-        if raced is not None:
+    name = source_name(git_url)
+    for repo_id in repo_id_candidates(git_url):
+        try:
+            client.create_repo(
+                repo_id,
+                name,
+                git_url,
+                env_file=env_file,
+                enabled_workflows=list(workflows),
+                default_harness=default_harness,
+            )
+        except httpx.HTTPStatusError as err:
+            if err.response.status_code != 409:
+                raise
+            raced = _find_existing_repo(client, git_url)
+            if raced is None:
+                continue
+            raced_id = str(raced["id"])
+            print(f"Repo already configured for {git_url!r} — reusing {raced_id!r}.")
             _ensure_workflows_enabled(client, raced, workflows)
-        return repo_id, repo_id
-    print(f"Registered repo {repo_id!r} (git_url={git_url!r}).")
-    print(f"  → Secrets file: {env_file}")
-    print(f"  → Enabled workflows: {', '.join(workflows)}.")
-    return repo_id, repo_id
+            return raced_id, str(raced.get("name") or raced_id)
+        print(f"Registered repo {repo_id!r} (git_url={git_url!r}).")
+        if env_file is not None:
+            print(f"  → Secrets file: {env_file}")
+        print(f"  → Enabled workflows: {', '.join(workflows)}.")
+        return repo_id, name
+    raise RuntimeError(f"could not allocate a repository id for source {git_url!r}")
 
 
 def ensure_setup_repo_task(client: TaskServiceClient, repo_id: str, name: str) -> str | None:

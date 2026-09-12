@@ -99,6 +99,17 @@ def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_runtime_identity_is_authenticated_fleet_read(tmp_path: Path) -> None:
+    # 2119: runtime-readiness.2.1
+    # 2119: runtime-readiness.2.2
+    with _client(tmp_path, read=[READ_TOKEN]) as client:
+        unauthenticated = client.get("/identity")
+        assert (unauthenticated.status_code, unauthenticated.json()) == (401, GENERIC_FAILURE)
+        assert client.get("/identity", headers=_bearer(READ_TOKEN)).status_code == 200
+        policy = client.app.state.credential_scope_policy
+        assert policy.classification_for_rest("GET", "/identity") is AuthorizationClass.FLEET_READ
+
+
 def _wire_response(response: object) -> tuple[int, dict[str, str], bytes]:
     return response.status_code, dict(response.headers), response.content  # type: ignore[attr-defined]
 

@@ -11,23 +11,22 @@ GitHub task, and tear the local runtime down cleanly.
 ### REQ-054.1: Install identity
 
 1. The new-user documentation MUST provide one canonical installation command that installs the
-   latest published `panopticon-next` release and immediately enters quickstart.
+   latest published `panopticon-next` release, followed by a separate launch command.
 2. Following the documented installation steps in a new isolated package environment MUST expose
    a `panopticon` executable that runs without importing code from a source checkout.
 3. `panopticon --version` MUST report the installed distribution version and exit successfully.
 
-### REQ-054.2: Side-effect-free repository validation
+### REQ-054.2: Side-effect-free repository selection and validation
 
-1. Before performing any Panopticon side effect, `panopticon quickstart` MUST verify that its
-   current working directory is inside a Git worktree and that the worktree has a nonempty
-   `remote.origin.url`.
-2. If the current working directory is not inside a Git worktree, the command MUST exit nonzero,
-   identify that condition, and instruct the operator to change into the repository Panopticon
-   should manage.
-3. If `remote.origin.url` is absent or empty, the command MUST exit nonzero and identify the missing
-   `origin` URL.
-4. Either failure MUST leave Panopticon configuration paths, data paths, database state, tmux
-   servers and sessions, containers, and images unchanged from their pre-invocation state.
+1. Before repository registration, runtime startup, or task creation, `panopticon quickstart` MUST
+   select and validate a repository source under `source-selection.1` and `source-selection.2`.
+2. If the current working directory identifies a supported Git checkout, the command MUST: (a)
+   offer it as the suggested source; and (b) allow the operator to enter a different supported
+   source.
+3. A Git checkout without `remote.origin.url` MUST remain selectable by its canonical local path.
+4. Source-validation failure MUST leave repository registrations, task records, tmux servers and
+   sessions, containers, and images unchanged from their pre-selection state. Harness setup that the
+   operator explicitly saved before source selection may remain.
 
 ### REQ-054.3: Fresh-shell authentication
 
@@ -49,9 +48,9 @@ GitHub task, and tear the local runtime down cleanly.
 
 ### REQ-054.4: First GitHub workflow choice
 
-1. For a repository whose `origin` is a supported GitHub HTTPS or SSH URL, successful quickstart
-   MUST persist the union of the previously enabled workflows, `github-self-reviewed`, and
-   `github-peer-reviewed`.
+1. For a repository whose selected source is a supported GitHub HTTPS or SSH URL, successful
+   quickstart MUST persist the union of the previously enabled workflows, `github-self-reviewed`,
+   and `github-peer-reviewed`.
 2. The new-user walkthrough MUST use `github-self-reviewed` for its first task and state that the
    initiating operator performs its approval.
 3. The walkthrough MUST state separately that `github-peer-reviewed` requires another person to
@@ -63,10 +62,10 @@ GitHub task, and tear the local runtime down cleanly.
    owned by the effective user with mode `0700`.
 2. If the documented repository environment file does not exist, quickstart MUST create it as a
    non-symlinked regular file owned by the effective user with mode `0600`.
-3. The newly created template MUST contain every environment key used by the documented quickstart
-   path, distinguish required from optional values, and contain no live secret.
-4. If a valid repository environment file already exists, quickstart MUST leave its pathname,
-   contents, ownership, and mode unchanged.
+3. A newly created empty repository environment file MUST contain no live secret until the
+   operator explicitly configures credentials through foreground setup.
+4. If a valid repository environment file already exists, quickstart MUST retain that file
+   unchanged, using a new private file when the operator selects credential replacement.
 5. If the secrets directory or environment pathname is unsafe, quickstart MUST fail and identify
    the unsafe path.
 6. Failure under clause 5 MUST NOT repair, replace, or modify the unsafe path.
@@ -86,8 +85,7 @@ GitHub task, and tear the local runtime down cleanly.
 ### REQ-054.7: Executable first-task walkthrough
 
 1. The acceptance fixture MUST begin with no Panopticon configuration or data, no Panopticon tmux
-   server, no Panopticon task container, and a supported disposable GitHub repository with an
-   `origin` remote.
+   server, no Panopticon task container, and a supported disposable GitHub repository source.
 2. Following only the documented walkthrough, with its documented placeholders supplied, MUST
    install Panopticon, complete quickstart, start the integrated services, authenticate a client
    command from a new shell, and complete one `github-self-reviewed` task.
@@ -96,11 +94,11 @@ GitHub task, and tear the local runtime down cleanly.
    pull-request opening, task completion, and teardown.
 4. No successful step MAY depend on an environment variable, credential transfer, command-line
    option, preexisting session, or seeded task that the walkthrough does not document.
-5. The `setup-repo` task MUST NOT advance to complete while authentication for its selected harness
-   or the required GitHub token is absent from the repository's task-container credential sources.
-6. After `setup-repo` completes, the acceptance run MUST create the coding task and initiate every
+5. Foreground setup MUST NOT report repository setup complete while the selected harness
+   credentials or required GitHub token is absent from its task-container credential sources.
+6. After foreground setup completes, the acceptance run MUST create the coding task and initiate every
    human approval through the documented dashboard and attached-agent inputs.
-7. After `setup-repo` completes, the acceptance driver MUST NOT directly mutate task state through
+7. After foreground setup completes, the acceptance driver MUST NOT directly mutate task state through
    the REST API, MCP, a fixture, or a seeded task. Task mutations initiated by the real user inputs
    are permitted when carried out internally by Panopticon or the attached task agent.
 8. The acceptance run MUST operate `panopticon quickstart` through a real terminal, use `t` to move

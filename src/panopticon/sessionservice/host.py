@@ -182,6 +182,7 @@ def hold_runner_liveness(
     *,
     running: Callable[[], bool],
     host: str | None = None,
+    instance_id: str | None = None,
     reconnect_backoff: float = RUNNER_RECONNECT_BACKOFF_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
@@ -197,7 +198,10 @@ def hold_runner_liveness(
     ``host`` is passed to the task service so the terminal supervisor can ssh-attach to remote tasks.
     """
     while running():
-        live = client.live_runner(runner_id, host=host)
+        if instance_id is None:
+            live = client.live_runner(runner_id, host=host)
+        else:
+            live = client.live_runner(runner_id, host=host, instance_id=instance_id)
         try:
             for _ in live:  # each tick is a server keepalive; recheck whether to stop
                 if not running():
@@ -335,7 +339,13 @@ def main(
 
     def hold_liveness() -> None:
         try:
-            hold_runner_liveness(client, args.runner_id, running=lambda: True, host=args.host)
+            hold_runner_liveness(
+                client,
+                args.runner_id,
+                running=lambda: True,
+                host=args.host,
+                instance_id=os.environ.get("PANOPTICON_INSTANCE_ID"),
+            )
         except BaseException as exc:
             liveness_errors.append(exc)
             permanent_rejection.set()

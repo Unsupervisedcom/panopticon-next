@@ -1,0 +1,30 @@
+setup_and_launch:
+  description: Validate setup, launch recovery, and release evidence against observable requirements.
+  match:
+    include:
+      - "src/panopticon/**/*.py"
+      - "src/panopticon/workflows/setup_repo*.sh"
+      - "tests/**/*.py"
+      - "specs/*.md"
+      - "README.md"
+      - "docs/**/*.md"
+  review:
+    strategy: matches_together
+    instructions: |
+      Review the changed implementation and its tests adversarially against foreground-setup,
+      source-selection, runtime-readiness, and task-auth-readiness requirements. Follow actual
+      entrypoints and negative paths: stale services and tmux environment, interrupted login,
+      explicit credential overrides, repository collisions, simultaneous setup and claims,
+      durable task holds across restart, and individual retry. Reject ambient credential fallback,
+      secrets in diagnostics or command arguments, mutations of other repositories, and tests
+      that merely assert mocked implementation calls. Preserve the deterministic control plane.
+      Check new onboarding no longer requires authentication-task attach/detach. Distinguish
+      credential presence from actual provider access. Require evidence for package installation
+      and real terminal behavior; distinguish deterministic tests from opt-in live checks.
+      Return prioritized concrete findings and unresolved verification gaps. Never claim release
+      or multi-host acceptance from unit tests or a setup shell alone.
+    reference_files:
+      - path: specs/foreground-setup.md
+      - path: specs/source-selection.md
+      - path: specs/runtime-readiness.md
+      - path: specs/task-auth-readiness.md

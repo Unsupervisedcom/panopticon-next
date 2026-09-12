@@ -1,18 +1,21 @@
 """``panopticon`` / ``python -m panopticon.terminal`` — the operator CLI.
 
-On a fresh install, `panopticon` with no argument enters quickstart so prerequisite failures include
-their corrective instructions. After quickstart has created the default credential, a bare
-`panopticon` (or `panopticon start`) starts everything: runs DB migrations, starts the task service
-and session-service runner in background tmux sessions, then opens the session supervisor (ADR
-0009) — the dashboard, plus handing the terminal to a task's tmux on `t` and rejoining on detach.
+On a fresh install, `panopticon` with no argument enters quickstart. Quickstart connects an agent,
+selects a repository, verifies the local runtime, binds repository credentials in the foreground,
+and opens the dashboard without creating an authentication task. After quickstart has created the
+default service credential, a bare `panopticon` (or `panopticon start`) starts everything: runs DB
+migrations, starts the task service and session-service runner in background tmux sessions, then
+opens the session supervisor (ADR 0009) — the dashboard, plus handing the terminal to a task's tmux
+on `t` and rejoining on detach.
 Given a task id or slug (`panopticon start <task>`), it joins — attaches straight to — that task's
 container session first, falling into the dashboard on detach.
 `panopticon console` opens the supervisor only (assumes services are already running) and takes
 the same optional task argument. `panopticon dashboard` runs the dashboard once without the attach loop;
 `panopticon tasks` lists tasks as plain text; `panopticon migrate` applies DB migrations to head
-via the bundled Alembic config. `panopticon quickstart` registers panopticon itself as a repo
-(idempotent) then starts everything. `panopticon doctor` checks that the host has the
-prerequisites (git, docker + a running daemon, tmux, claude, Python 3.11+) those flows need.
+via the bundled Alembic config. `panopticon setup` connects an agent without requiring the fleet;
+`panopticon setup --repo <repo-id>` repairs an explicit repository binding on the verified local
+runtime. `panopticon doctor` checks that the host has the prerequisites (Git, Docker and its
+daemon, tmux, a supported agent CLI, and Python 3.11+) that integrated startup needs.
 `panopticon start`/`panopticon host` each preflight the Docker daemon before starting sessions
 (REQ-031) — refusing with an actionable message rather than spawning every task into a crash loop.
 """
@@ -267,6 +270,29 @@ def _start_sessions_with_help(command: str) -> bool:
     return True
 
 
+def _prepare_integrated_runtime(service_url: str, command: str) -> bool:
+    """Guard migration and verify real services before presenting executable work."""
+    from panopticon.terminal.runtime import (
+        MigrationDecision,
+        guard_before_migration,
+        resolve_runtime,
+        wait_until_ready,
+    )
+
+    try:
+        runtime = resolve_runtime(service_url)
+        os.environ.update(runtime.environment)
+        if guard_before_migration(runtime) is MigrationDecision.SERVICE_ABSENT:
+            _run_migrate()
+        if not _start_sessions_with_help(command):
+            return False
+        wait_until_ready(runtime)
+        return True
+    except (OSError, ValueError, RuntimeError, httpx.HTTPError) as exc:
+        print(f"panopticon: {exc}")
+        return False
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -296,9 +322,7 @@ def main(
     mig = sub.add_parser("migrate", help="apply DB migrations to head (or pass alembic args)")
     mig.add_argument("alembic_args", nargs="*", default=["upgrade", "head"])
     sub.add_parser("build", help="build the base task-container image (panopticon-base)")
-    sub.add_parser(
-        "doctor", help="check host prerequisites for quickstart/start/setup-repo, then exit"
-    )
+    sub.add_parser("doctor", help="check prerequisites for quickstart and startup, then exit")
     sub.add_parser(
         "host", help="start task service + runner in background tmux sessions (no console)"
     )
@@ -308,11 +332,19 @@ def main(
     sub.add_parser(
         "quickstart",
         help=(
-            "first-time setup: register panopticon as a repo (idempotent), "
-            "then start everything and open the dashboard supervisor"
+            "connect an agent and configure a selected repository in the foreground, "
+            "then open the dashboard supervisor"
         ),
     )
+    setup = sub.add_parser(
+        "setup",
+        help="connect an agent locally or repair a repository on the verified local runtime",
+    )
+    setup.add_argument(
+        "--repo", help="repair a registered repository on the verified local runtime"
+    )
     args = parser.parse_args(argv)
+    bare = args.command is None
 
     # A package installer cannot safely run an interactive post-install hook. Make the first
     # invocation useful instead: an unconfigured bare command enters the prerequisite-checking
@@ -349,48 +381,58 @@ def main(
             print(message)
             return 1
         _ensure_integrated_auth()
-        _run_migrate()
-        if not _start_sessions_with_help("panopticon host"):
+        if not _prepare_integrated_runtime(args.service_url, "panopticon host"):
             return 1
         return 0
+    elif args.command == "setup":
+        from panopticon.terminal.setup import configure_connection, configure_repo
+
+        try:
+            if args.repo:
+                _select_existing_integrated_auth()
+                configure_repo(_make_client(args.service_url), args.repo)
+            else:
+                configure_connection()
+            return 0
+        except (EOFError, KeyboardInterrupt):
+            print("\nSetup paused. Saved steps are retained; run `panopticon setup` to resume.")
+            return 1
+        except (OSError, ValueError, RuntimeError, httpx.HTTPError) as exc:
+            print(f"panopticon: {exc}")
+            return 1
     elif args.command == "quickstart":
-        from panopticon.taskservice.auth import environment_token
         from panopticon.terminal import doctor
         from panopticon.terminal import quickstart as _qs
+        from panopticon.terminal.setup import configure_connection, configure_repo
 
-        # Fail fast on missing host prerequisites before touching the DB or starting sessions,
-        # so a missing binary / stopped Docker daemon surfaces as the doctor report rather than
-        # a cryptic failure deep inside session or container spawn.
-        environment_token()
-        if doctor.report(doctor.run_checks()) != 0:
-            return 1
         try:
-            git_url = _qs.detect_git_url()
-        except RuntimeError as exc:
+            connection = configure_connection()
+            source = _qs.select_source()
+            if doctor.report(doctor.run_checks()) != 0:
+                print(
+                    "Your connection is saved. Fix the prerequisite, then run `panopticon quickstart`."
+                )
+                return 1
+            _ensure_integrated_auth()
+            if not _prepare_integrated_runtime(args.service_url, "panopticon quickstart"):
+                return 1
+            qs_client = _make_client(args.service_url)
+            repo_id, _ = _qs.setup_repo(
+                qs_client, source.git_url, None, default_harness=connection.harness
+            )
+            if not configure_repo(qs_client, repo_id, connection=connection):
+                return 1
+        except (EOFError, KeyboardInterrupt):
+            print(
+                "\nSetup paused. Saved steps are retained; run `panopticon quickstart` to resume."
+            )
+            return 1
+        except (OSError, ValueError, RuntimeError, httpx.HTTPError) as exc:
             print(f"panopticon: {exc}")
             return 1
-        _ensure_integrated_auth()
-
-        _run_migrate()
-        if not _start_sessions_with_help("panopticon quickstart"):
-            return 1
-        _qs.wait_for_service(args.service_url)
-        try:
-            env_file = _qs.ensure_secrets_file()
-        except ValueError as exc:
-            print(f"panopticon: {exc}")
-            return 1
-        harness = _qs.choose_harness(
-            _qs.detect_harnesses(environ=_qs.harness_environment(env_file))
-        )
-        qs_client = _make_client(args.service_url)
-        repo_id, repo_name = _qs.setup_repo(qs_client, git_url, env_file, default_harness=harness)
-        task_id = _qs.ensure_setup_repo_task(qs_client, repo_id, repo_name)
         from panopticon.terminal.console import run_console_local
 
-        # Open the console already attached to the setup-repo task so the operator lands straight
-        # in `claude setup-token`; if its shell session isn't up yet, join falls back to the dashboard.
-        run_console_local(args.service_url, client=qs_client, join=task_id)
+        run_console_local(args.service_url, client=qs_client)
         return 0
     elif args.command == "stop":
         import subprocess
@@ -465,13 +507,20 @@ def main(
                 print(message)
                 return 1
             _ensure_integrated_auth()
-            _run_migrate()
-            if not _start_sessions_with_help("panopticon start"):
+            if not _prepare_integrated_runtime(args.service_url, "panopticon start"):
                 return 1
         from panopticon.terminal.console import run_console_local
 
         _select_existing_integrated_auth()
         client = client or _make_client(args.service_url)
+        if bare:
+            from panopticon.terminal.setup import repo_configured
+
+            repos = client.list_repos()
+            if not repos or not any(repo_configured(repo) for repo in repos):
+                print(
+                    "Agent setup is incomplete. Run `panopticon quickstart` to connect an agent and select a repository."
+                )
         run_console_local(args.service_url, client=client, join=getattr(args, "task", None))
     return 0
 

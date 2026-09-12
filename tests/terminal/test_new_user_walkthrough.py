@@ -20,11 +20,12 @@ RELEASE_VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"
 
 def test_install_docs_name_one_public_install_and_onboarding_command() -> None:
     # 2119: REQ-054.1.1
-    command = "pipx install panopticon-next && panopticon quickstart"
+    install_command = "pipx install panopticon-next"
+    onboarding_command = "panopticon quickstart"
     for document in (README, WALKTHROUGH):
-        assert command in document
-        remaining = document.replace(command, "")
-        remaining = remaining.replace("pipx install panopticon-next", "")
+        assert install_command in document
+        assert onboarding_command in document
+        remaining = document.replace(install_command, "")
         remaining = remaining.replace(
             'pipx install "./panopticon_next-${PANOPTICON_RELEASE_VERSION}-py3-none-any.whl"',
             "",
@@ -88,7 +89,7 @@ def test_walkthrough_has_ordered_success_checks_for_every_evaluation_stage() -> 
     # 2119: REQ-054.7.3
     success_checks = [part.casefold() for part in WALKTHROUGH.split("Success check:")[1:]]
     expected_checks = (
-        ("quickstart", "dashboard", "setup-repo"),
+        ("setup", "credentials configured", "dashboard"),
         ("fresh shell", "panopticon tasks", "401"),
         ("task", "queued"),
         ("container", "live"),
@@ -132,11 +133,13 @@ def test_walkthrough_documents_retention_and_verifiable_teardown() -> None:
 def test_walkthrough_names_every_input_instead_of_relying_on_hidden_state() -> None:
     # 2119: REQ-054.7.4
     documented_inputs = (
-        "pipx install panopticon-next && panopticon quickstart",
-        "cd /path/to/disposable-repo",
-        "git remote get-url origin",
-        "working authentication for the selected harness",
-        "gh_token",
+        "pipx install panopticon-next",
+        "panopticon quickstart",
+        "run setup from any directory",
+        "choose claude or codex",
+        "token or api key with hidden input",
+        "repository's url or local checkout path",
+        "github token scoped to the disposable repository",
         "open a new shell",
         "unset panopticon_service_auth_file panopticon_service_auth_mode",
     )

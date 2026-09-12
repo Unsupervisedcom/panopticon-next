@@ -50,10 +50,21 @@ def test_every_integrated_entrypoint_reaches_auth_bootstrap(
 ) -> None:
     # 2119: REQ-035.49.1
     # 2119: REQ-054.3.2
+    reached = []
+
     class _ReachedBootstrap(RuntimeError):
         pass
 
-    from panopticon.terminal import doctor, quickstart
+    from panopticon.terminal import doctor, quickstart, setup
+    from panopticon.terminal.setup_credentials import Connection
+    from panopticon.terminal.source_selection import RepositorySource
+
+    monkeypatch.setattr(setup, "configure_connection", lambda: Connection("claude", "test.env"))
+    monkeypatch.setattr(
+        quickstart,
+        "select_source",
+        lambda: RepositorySource("https://github.com/example/repo", "repo", "remote"),
+    )
 
     monkeypatch.setattr(
         "panopticon.sessionservice.docker_daemon.preflight_message", lambda _command: None
@@ -66,11 +77,15 @@ def test_every_integrated_entrypoint_reaches_auth_bootstrap(
     monkeypatch.setattr(
         cli,
         "_ensure_integrated_auth",
-        lambda: (_ for _ in ()).throw(_ReachedBootstrap),
+        lambda: (reached.append(True), (_ for _ in ()).throw(_ReachedBootstrap))[1],
     )
 
-    with pytest.raises(_ReachedBootstrap):
-        cli.main(argv)
+    if argv == ["quickstart"]:
+        assert cli.main(argv) == 1
+    else:
+        with pytest.raises(_ReachedBootstrap):
+            cli.main(argv)
+    assert reached == [True]
 
 
 def test_bootstrap_credential_is_private_and_uses_256_bits_of_randomness(

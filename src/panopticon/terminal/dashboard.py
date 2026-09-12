@@ -118,7 +118,6 @@ from panopticon.harnesses import DEFAULT_HARNESS, HARNESSES
 from panopticon.sessionservice.local_runner import session_name
 from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
 from panopticon.terminal.attach import task_context_label
-from panopticon.terminal.setup_repo_task import create_setup_repo_task
 
 
 def _make_sort_key(
@@ -509,6 +508,7 @@ _STATUS_COLORS = {
     "awaiting": "yellow",
     "down": "red",
     "failed": "red",
+    "paused": "yellow",
     "disconnected": "red",
 }
 
@@ -2549,22 +2549,23 @@ class ReposScreen(_TableScreen):
         )
 
     def action_setup_repo(self) -> None:
-        """`s`: run host-side setup for the highlighted repo — create a `setup-repo` task.
-
-        The `setup-repo` workflow is hidden from the pickers, so this is how it's launched: one
-        task, seeded with a memo, on the repo under the cursor."""
+        """Configure the selected repository in the foreground, then return to this screen."""
         if self._current is None:
             self.notify("Highlight a repo first.", severity="warning")
             return
-        repo_id = self._current
-        name = str(self._repos[repo_id].get("name", repo_id))
+        from panopticon.terminal.setup import configure_repo
+
         try:
-            create_setup_repo_task(self._client, repo_id, name)
-        except httpx.HTTPStatusError as exc:
-            self.notify(f"Can't create setup-repo task: {_detail(exc)}", severity="error")
+            with self.app.suspend():
+                complete = configure_repo(self._client, self._current)
+        except (OSError, ValueError, RuntimeError, httpx.HTTPError) as exc:
+            self.notify(f"Setup needs attention: {exc}", severity="error")
             return
-        self.notify(f"Created setup-repo task for {name}.")
-        self.dismiss(None)  # back to the task view, where the new task shows up
+        except (EOFError, KeyboardInterrupt):
+            self.notify("Setup paused. Saved steps are retained.")
+            return
+        self._refresh()
+        self.notify("Setup complete." if complete else "Setup incomplete; reopen to resume.")
 
 
 def _detail(exc: httpx.HTTPStatusError) -> str:
@@ -3297,14 +3298,25 @@ class Dashboard(App[None]):
         if task_id is None:
             return
         task = self._tasks.get(task_id)
-        if not task or not self._respawn_task(task):
-            self.notify("Task isn't claimed by a runner — nothing to respawn.", severity="warning")
+        try:
+            retried = task is not None and self._respawn_task(task)
+        except httpx.HTTPStatusError as exc:
+            self.notify(f"Cannot retry: {_detail(exc)}", severity="warning")
+            return
+        if not retried:
+            self.notify(
+                "Task is waiting to launch; check its status or run setup for its repository.",
+                severity="warning",
+            )
             return
         self.notify("Respawning: the runner will stop and restart the container.")
         self.action_refresh()
 
     def _respawn_task(self, task: JsonObj) -> bool:
         """Release one claimed task through the path shared by single and bulk respawn."""
+        if task.get("launch_paused"):
+            self._client.retry_task(str(task["id"]))
+            return True
         if not task.get("claimed_by"):
             return False
         self._client.release(str(task["id"]))

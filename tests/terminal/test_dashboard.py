@@ -5394,33 +5394,40 @@ async def test_workflows_screen_refuses_builtin_deletion_with_notification(
         assert notices == ["Built-in workflows cannot be deleted."]
 
 
-async def test_pressing_s_in_the_repos_screen_creates_a_setup_repo_task() -> None:
-    # The setup-repo workflow is hidden from the pickers; the repos modal's `s` hotkey is how it's
-    # launched — one setup-repo task for the highlighted repo, seeded with a memo.
+# 2119: foreground-setup.1.3
+async def test_pressing_s_runs_foreground_setup_for_selected_repo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import contextlib
+
+    from panopticon.terminal import setup
+
     fake = _FakeClient(
         [_TASK],
         repos=[
             {
                 "id": "r1",
-                "name": "acme/widgets",
-                "git_url": "https://x/r1.git",
+                "name": "Example",
+                "git_url": "https://example.test/r1",
                 "default_base": "main",
             }
         ],
     )
     app = Dashboard(fake)  # type: ignore[arg-type]
+    selected = []
+    monkeypatch.setattr(app, "suspend", contextlib.nullcontext)
+    monkeypatch.setattr(
+        setup, "configure_repo", lambda client, repo_id: selected.append((client, repo_id)) or True
+    )
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("g")
         await pilot.pause()
         await pilot.press("s")
         await pilot.pause()
-        # creating the task dismisses the repos modal, dropping back to the task view
-        assert not isinstance(app.screen, dashboard.ReposScreen)
-    assert len(fake.created) == 1
-    repo_id, workflow, memo, _, _, _ = fake.created[0]
-    assert (repo_id, workflow) == ("r1", "setup-repo")
-    assert memo is not None and "acme/widgets" in memo
+        assert isinstance(app.screen, dashboard.ReposScreen)
+    assert selected == [(fake, "r1")]
+    assert fake.created == []
 
 
 async def test_no_repos_auto_opens_the_repos_screen_on_start() -> None:

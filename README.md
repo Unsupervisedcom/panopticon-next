@@ -8,12 +8,13 @@ Code, Codex, or pi for each task and gives you one place to supervise the fleet.
 ## Quick install
 
 ```sh
-pipx install panopticon-next && panopticon quickstart
+pipx install panopticon-next
+panopticon quickstart
 ```
 
-Run that command from the Git repository you want Panopticon to manage. Quickstart checks the host
-before changing Panopticon state; if Docker, tmux, Git, or an agent harness is missing, it prints an
-exact corrective action. See [Requirements](#requirements) and [Install](#install) for details.
+Run quickstart from any directory. Connect a coding agent, select a repository, and open the
+dashboard. Missing prerequisites have a corrective action; your saved connection remains available
+when you resume. See [Requirements](#requirements) and [Install](#install) for details.
 
 - **A live dashboard** of all your tasks, showing which agents are working and which are blocked
   waiting on you, so you stop cycling through terminals to find the one that's stuck.
@@ -25,9 +26,9 @@ exact corrective action. See [Requirements](#requirements) and [Install](#instal
 Self-hosted: your infrastructure, your secrets, your repos. Workflows control Panopticon's state
 transitions; they do not restrict the commands an agent can execute. Use least-privilege
 credentials and forge branch protection as hard controls. Containers separate workspaces but are
-not a security boundary against a malicious or compromised agent. Quickstart reuses one shared
-`panopticon.env` by default; configure a distinct environment file per repo when credential
-separation matters.
+not a security boundary against a malicious or compromised agent. Quickstart writes a separate environment file for each repository. Reusable agent connections
+contain no GitHub token; repositories using the same Codex subscription share its rotating
+authentication directory.
 
 New here? Follow the [new-user walkthrough](docs/getting-started.md). For the mental model behind
 the dashboard, read [`docs/overview.md`](docs/overview.md).
@@ -101,12 +102,11 @@ new one** so the PATH change takes effect:
 pipx ensurepath
 ```
 
-In that new terminal, move into the repository Panopticon should manage, then install and start
-onboarding:
+In that new terminal, install Panopticon, then start setup:
 
 ```sh
-cd /path/to/your/repo
-pipx install panopticon-next && panopticon quickstart
+pipx install panopticon-next
+panopticon quickstart
 ```
 
 [//]: # (x-release-please-start-version)
@@ -119,25 +119,31 @@ both **`panopticon`**. To work from a checkout, run `uv sync` and then `uv run p
 
 ## Quickstart
 
-Run `panopticon quickstart` **from inside the repo you want agents to work on**: it registers
-whatever repo you're in as the target for your tasks.
+Run `panopticon quickstart` from any directory:
 
 ```sh
-cd ~/code/my-project   # the repo you want agents to work on
-panopticon quickstart  # first-time setup, then open the dashboard
+panopticon quickstart
 ```
 
-After installation, a bare `panopticon` also enters quickstart when no default configuration exists.
-Once that configuration exists, bare invocations start the configured stack normally.
+Connect Claude, Codex, or Pi, then confirm a repository URL or local path. The current checkout is
+suggested when available; a checkout without an origin works locally, and a Git bundle is labeled
+a fixed snapshot. GitHub sources enable GitHub workflows; local and other sources use the local
+Git workflow.
 
-`panopticon quickstart` checks prerequisites, detects installed/authenticated harnesses, asks you to
-confirm or choose the repo default, brings the stack up, registers the repo, and drops you into a
-`setup-repo` task for that harness's auth flow. Then you create tasks and watch your fleet from the
-dashboard.
+Setup runs in the foreground. Claude can open its browser login and accept a hidden token paste;
+Codex browser login writes directly to a new private directory. GitHub workflow credentials are
+entered separately for the selected repository. A saved connection means credentials are
+configured; the first real task verifies provider access.
 
-The setup task completes only after both the selected agent client and GitHub credentials pass
-their checks. It then reports `All required task-container credentials are configured.` and
-returns you to the dashboard.
+Use `panopticon setup` to connect an agent even before Docker or tmux is installed. To repair a
+registered repository, open the repository screen and press `s`, or run
+`panopticon setup --repo <repo-id>`. Repository repair requires the local task service. Pending
+tasks remain paused after repair: select the one you want to start and press `R`. Running tasks
+remain available. Existing explicit credentials are preserved unless you select replacement.
+
+A second repository can use the saved agent connection. Credentials are configured on the current
+host; a remote runner needs its own setup. Bare `panopticon` opens first-use setup when no stack
+configuration exists and otherwise opens your fleet.
 
 Quickstart enables task-service authentication automatically. On Linux, the task service binds to
 `0.0.0.0` so bridge containers can reach it; restrict reachable interfaces with a firewall or

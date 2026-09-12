@@ -48,8 +48,8 @@ _RELEASE_VERSION = cast(
     str, tomllib.loads((_ROOT / "pyproject.toml").read_text())["project"]["version"]
 )
 _RELEASE_WHEEL = f"panopticon_next-{_RELEASE_VERSION}-py3-none-any.whl"
-_WALKTHROUGH_SHA256 = "a34ddeb6d4d643b4dfd8253b8eca311f7b2b39319b475dc36601a4a03d5ef1d3"
-_ACCEPTANCE_SOURCE_AST_SHA256 = "c5a486fa055d95077e921d3c635cbff6bfb75b030bc6c595bf2677073c87d280"
+_WALKTHROUGH_SHA256 = "4428fb21909a7b869255ca4c0dc95fe307d1a2a1a398780f9783a65d866d9eec"
+_ACCEPTANCE_SOURCE_AST_SHA256 = "e04f89b9cd465b49e660a7e7eae5639d207e7f572672562eb21528ecfb1e2e95"
 _OPT_IN = "I_AM_RUNNING_ON_A_DISPOSABLE_HOST"
 _REQUIRED = (
     "PANOPTICON_NEW_USER_ACCEPTANCE",
@@ -83,6 +83,11 @@ _WALKTHROUGH_SEQUENCE = (
     "panopticon --version",
     "panopticon doctor",
     "panopticon quickstart",
+    "Choose Claude or Codex and follow the foreground prompts.",
+    "No authentication task or attach/detach navigation is needed.",
+    "Enter the disposable repository's URL or local checkout path",
+    "enter a GitHub token scoped to the disposable repository",
+    "setup reports credentials configured on this host and opens the dashboard.",
     "unset PANOPTICON_SERVICE_AUTH_FILE PANOPTICON_SERVICE_AUTH_MODE PANOPTICON_SERVICE_AUTH_TOKEN",
     "panopticon tasks",
     "Press `n`. Select the registered repository with the arrow keys and Enter.",
@@ -99,7 +104,7 @@ _WALKTHROUGH_SEQUENCE = (
     "panopticon stop",
 )
 _WALKTHROUGH_PLACEHOLDERS = (
-    "/path/to/disposable-repo",
+    "<repo-id>",
     "PANOPTICON_ACCEPTANCE_INSTALL_SPEC",
     "PANOPTICON_ACCEPTANCE_GITHUB_REPO",
     "PANOPTICON_ACCEPTANCE_BASE_SHA",
@@ -159,7 +164,6 @@ class DocumentedWalkthrough:
     detach_keys: bytes
     submit_key: bytes
     next_choice_key: bytes
-    previous_row_key: bytes
 
 
 class _PostSetupRequestAudit:
@@ -221,7 +225,9 @@ _ALLOWED_POST_SETUP_CALLS = frozenset(
         "json.dumps",
         "len",
         "line.split",
+        "line.partition",
         "listed.stdout.splitlines",
+        "listed.stdout.strip",
         "next",
         "observed.get",
         "opened_artifact.read_bytes",
@@ -234,10 +240,10 @@ _ALLOWED_POST_SETUP_CALLS = frozenset(
         "re.fullmatch",
         "re.search",
         "rstrip",
-        "secrets_file.is_file",
-        "secrets_file.is_symlink",
-        "secrets_file.read_text",
-        "secrets_file.stat",
+        "repo_secrets_file.is_file",
+        "repo_secrets_file.is_symlink",
+        "repo_secrets_file.read_text",
+        "repo_secrets_file.stat",
         "sorted",
         "splitlines",
         "startswith",
@@ -261,12 +267,14 @@ _ALLOWED_PRE_SETUP_CALLS = frozenset(
         "_assert_installed_walkthrough_version",
         "_assert_no_legacy_worktree_state",
         "_assert_no_panopticon_tmux_server",
-        "_complete_setup_task",
+        "_drive_foreground_setup",
+        "_foreground_setup_complete",
         "_documented_local_wheel",
         "_documented_walkthrough",
         "_github_get",
         "_github_status",
         "_run",
+        "_wait_for_client_session",
         "_wait_until",
         "askpass.chmod",
         "askpass.write_text",
@@ -317,7 +325,6 @@ _ALLOWED_DRIVER_INPUTS = frozenset(
         "walkthrough.new_task_key",
         "walkthrough.next_choice_key * plan_index + walkthrough.submit_key",
         "walkthrough.next_choice_key * workflow_index + walkthrough.submit_key",
-        "walkthrough.previous_row_key",
         "walkthrough.pull_request_key",
         "walkthrough.submit_key",
     }
@@ -325,7 +332,7 @@ _ALLOWED_DRIVER_INPUTS = frozenset(
 _ALLOWED_SETUP_DRIVER_INPUTS = frozenset(
     {
         "b'\\r'",
-        "b'y\\r'",
+        "b'2\\r'",
         "config.github_token.encode() + b'\\r'",
         "config.harness_auth_token.encode() + b'\\r'",
     }
@@ -397,21 +404,15 @@ _OBSERVER_HELPER_CALLS = {
     ),
     "_capture_pane": frozenset({"dict", "subprocess.run"}),
     "_client_sessions": frozenset({"dict", "result.stdout.splitlines", "subprocess.run"}),
-    "_complete_setup_task": frozenset(
+    "_drive_foreground_setup": frozenset(
         {
-            "_api_get",
-            "_capture_pane",
-            "_wait_for_client_session",
             "config.github_token.encode",
             "config.harness_auth_token.encode",
             "driver.send",
-            "pytest.fail",
-            "responded.add",
-            "set",
-            "time.monotonic",
-            "time.sleep",
+            "driver.wait_for_text",
         }
     ),
+    "_foreground_setup_complete": frozenset(),
     "_failure_diagnostics": frozenset(
         {"_capture_pane", "_client_sessions", "_redacted_tail", "driver.tail", "len"}
     ),
@@ -712,7 +713,7 @@ def _observer_helper_violations(tree: ast.Module) -> list[str]:
                 if (
                     helper_name
                     in {
-                        "_complete_setup_task",
+                        "_drive_foreground_setup",
                         "_send_opener_key_while_unopened",
                         "_send_session_switch_while_attached",
                         "_send_user_approval_while_gated",
@@ -721,7 +722,7 @@ def _observer_helper_violations(tree: ast.Module) -> list[str]:
                     and (
                         not node.args
                         or (
-                            helper_name == "_complete_setup_task"
+                            helper_name == "_drive_foreground_setup"
                             and ast.unparse(node.args[0]) not in _ALLOWED_SETUP_DRIVER_INPUTS
                         )
                         or (
@@ -802,10 +803,10 @@ def _post_setup_direct_mutations(source: str) -> list[str]:
     setup_calls = [
         node
         for node in ast.walk(function)
-        if isinstance(node, ast.Call) and _call_path(node.func) == "_complete_setup_task"
+        if isinstance(node, ast.Call) and _call_path(node.func) == "_foreground_setup_complete"
     ]
     if len(setup_calls) != 1:
-        return ["acceptance driver must have exactly one _complete_setup_task phase boundary"]
+        return ["acceptance driver must have exactly one _foreground_setup_complete phase boundary"]
     phase_end = (
         setup_calls[0].end_lineno or setup_calls[0].lineno,
         setup_calls[0].end_col_offset or setup_calls[0].col_offset,
@@ -1052,6 +1053,7 @@ def _walkthrough_contract_errors(contents: str) -> list[str]:
         f"panopticon {_RELEASE_VERSION}",
         "panopticon doctor",
         "panopticon quickstart",
+        "panopticon setup --repo <repo-id>",
         "panopticon stop",
         "panopticon tasks",
     }
@@ -1065,8 +1067,6 @@ def _walkthrough_contract_errors(contents: str) -> list[str]:
         'pipx install "./panopticon_next-${PANOPTICON_RELEASE_VERSION}-py3-none-any.whl"',
         "panopticon --version",
         "panopticon doctor",
-        "cd /path/to/disposable-repo",
-        "git remote get-url origin",
         "panopticon quickstart",
         "unset PANOPTICON_SERVICE_AUTH_FILE PANOPTICON_SERVICE_AUTH_MODE PANOPTICON_SERVICE_AUTH_TOKEN",
         "panopticon tasks",
@@ -1119,6 +1119,7 @@ def _walkthrough_contract_errors(contents: str) -> list[str]:
             f"walkthrough contains unsupported placeholders: {sorted(unknown_environment_names)}"
         )
     unknown_angle_placeholders = set(re.findall(r"<[^>\n]+>", contents)) - {
+        "<repo-id>",
         "<reviewed 40-character default-branch SHA>",
         "<reviewed-wheel-sha256>",
     }
@@ -1190,7 +1191,6 @@ def _documented_walkthrough(contents: str) -> DocumentedWalkthrough:
         detach_keys=b"\x02d",
         submit_key=b"\r",
         next_choice_key=b"\x1b[B",
-        previous_row_key=b"\x1b[A",
     )
 
 
@@ -1722,69 +1722,27 @@ def _failure_diagnostics(
     return _redacted_tail(combined, tokens)
 
 
-def _complete_setup_task(
-    setup_id: str,
-    *,
-    config: LiveConfiguration,
-    driver: _PtyProcess,
-    env: Mapping[str, str],
-    cwd: Path,
-    client: httpx.Client,
-    write_token: str,
-) -> None:
-    session = f"panopticon-{setup_id}"
-    _wait_for_client_session(session, env=env, cwd=cwd)
-    responded: set[str] = set()
-    last_pane = ""
-    deadline = time.monotonic() + 180
-    while time.monotonic() < deadline:
-        task = _api_get(client, write_token, f"/tasks/{setup_id}")
-        if task["state"] == "COMPLETE":
-            return
-        # Setup is a scrolling shell, so prompt detection needs its history. Dashboard checks use
-        # only the current viewport so an old Textual frame cannot satisfy a later state wait.
-        last_pane = _capture_pane(env, cwd, session, scrollback=True)
-        if "A Claude credential is already set" in last_pane and "claude-keep" not in responded:
-            driver.send(b"\r")
-            responded.add("claude-keep")
-        elif "A GH_TOKEN is already set" in last_pane and "gh-keep" not in responded:
-            driver.send(b"\r")
-            responded.add("gh-keep")
-        elif (
-            "A CLAUDE_CODE_OAUTH_TOKEN is set" in last_pane
-            or "A ANTHROPIC_API_KEY is set" in last_pane
-        ) and "claude-adopt" not in responded:
-            driver.send(b"y\r")
-            responded.add("claude-adopt")
-        elif (
-            f"A {config.harness_auth_env} is set in your environment" in last_pane
-            and "codex-adopt" not in responded
-        ):
-            driver.send(b"y\r")
-            responded.add("codex-adopt")
-        elif "Paste a Claude token to store it" in last_pane and "claude-paste" not in responded:
-            driver.send(config.harness_auth_token.encode() + b"\r")
-            responded.add("claude-paste")
-        elif "A GH_TOKEN is set in your environment" in last_pane and "gh-adopt" not in responded:
-            driver.send(b"y\r")
-            responded.add("gh-adopt")
-        elif "Paste a GitHub token to store it" in last_pane and "gh-paste" not in responded:
-            driver.send(config.github_token.encode() + b"\r")
-            responded.add("gh-paste")
-        elif (
-            "After updating the repo credentials, press Enter to re-check" in last_pane
-            and "recheck" not in responded
-        ):
-            driver.send(b"\r")
-            responded.add("recheck")
-        elif (
-            "All required task-container credentials are configured." in last_pane
-            and "complete" not in responded
-        ):
-            driver.send(b"\r")
-            responded.add("complete")
-        time.sleep(0.1)
-    pytest.fail(f"setup-repo did not complete; final pane:\n{last_pane[-4000:]}")
+def _drive_foreground_setup(*, config: LiveConfiguration, driver: _PtyProcess) -> None:
+    """Drive only the documented foreground prompts."""
+    driver.wait_for_text("Agent [1]: ", timeout=60)
+    if config.harness == "claude":
+        driver.send(b"\r")
+        driver.wait_for_text("Paste a Claude token or API key (Enter for browser login): ")
+    else:
+        driver.send(b"2\r")
+        driver.wait_for_text("Paste an OpenAI API key (Enter for Codex browser login): ")
+    driver.send(config.harness_auth_token.encode() + b"\r")
+    driver.wait_for_text("Repository source [", timeout=60)
+    driver.send(b"\r")
+    driver.wait_for_text(
+        "GitHub token (input hidden; Enter to leave setup incomplete): ", timeout=180
+    )
+    driver.send(config.github_token.encode() + b"\r")
+    driver.wait_for_text("Credentials configured on this host.", timeout=180)
+
+
+def _foreground_setup_complete() -> None:
+    """Static-analysis phase marker: all later task mutation must arrive through user input."""
 
 
 def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> None:
@@ -1833,8 +1791,6 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
         "HOME": str(home_root),
         "PIPX_HOME": str(pipx_home),
         "PIPX_BIN_DIR": str(pipx_bin),
-        config.harness_auth_env: config.harness_auth_token,
-        "GH_TOKEN": config.github_token,
         "BROWSER": str(browser),
         "PANOPTICON_ACCEPTANCE_BROWSER_LOG": str(browser_log),
         "PANOPTICON_ACCEPTANCE_XDG_LOG": str(artifact_log),
@@ -1955,12 +1911,8 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
     try:
         # 2119: REQ-054.7.2, REQ-054.7.8
         driver = _PtyProcess.start(list(walkthrough.quickstart_argv), env=env, cwd=worktree)
-        secrets_file = config_root / "secrets" / "panopticon.env"
-        driver.wait_for_text(
-            f"Use {config.harness} as this repo's default harness? Press Enter to continue.",
-            timeout=60,
-        )
-        driver.send(b"\r")
+        _drive_foreground_setup(config=config, driver=driver)
+        _wait_for_client_session("dashboard", env=env, cwd=worktree)
 
         auth_file = config_root / "secrets" / "task-service-auth.json"
         _wait_until(
@@ -1987,35 +1939,18 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
             trust_env=False,
             event_hooks={"request": [request_audit]},
         ) as client:
-            setup = _wait_until(
-                "the setup-repo task",
-                lambda: next(
-                    (
-                        task
-                        for task in _api_get(client, write_token, "/tasks")
-                        if task["workflow"] == "setup-repo"
-                    ),
-                    None,
-                ),
-                timeout=120,
-                interval=0.2,
-            )
-            setup_id = str(setup["id"])
             request_audit.active = True
-            _complete_setup_task(
-                setup_id,
-                config=config,
-                driver=driver,
-                env=env,
-                cwd=worktree,
-                client=client,
-                write_token=write_token,
+            _foreground_setup_complete()
+            repos = _api_get(client, write_token, "/repos")
+            assert len(repos) == 1, "the fresh quickstart should register exactly its selected repo"
+            configured_repo = next(
+                item for item in repos if item["git_url"].rstrip("/") == config.repo_url.rstrip("/")
             )
-            _wait_for_client_session("dashboard", env=env, cwd=worktree)
-            assert secrets_file.is_file() and not secrets_file.is_symlink()
-            assert secrets_file.stat().st_mode & 0o077 == 0
-            secret_lines = secrets_file.read_text().splitlines()
-            assert f"{config.harness_auth_env}={config.harness_auth_token}" in secret_lines
+            repo_secrets_file = config_root / "secrets" / str(configured_repo["env_file"])
+            assert repo_secrets_file.is_file() and not repo_secrets_file.is_symlink()
+            assert repo_secrets_file.stat().st_mode & 0o077 == 0
+            secret_lines = repo_secrets_file.read_text().splitlines()
+            assert any(line.partition("=")[2] == config.harness_auth_token for line in secret_lines)
             assert f"GH_TOKEN={config.github_token}" in secret_lines
 
             fresh_shell = dict(env)
@@ -2049,34 +1984,15 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
             )
             assert rejected.returncode != 0
             assert "401" in rejected.stdout + rejected.stderr
-            completed_setup = _api_get(client, write_token, f"/tasks/{setup_id}")
-            assert completed_setup["workflow"] == "setup-repo"
-            assert completed_setup["state"] == "COMPLETE"
             listed = _run(["panopticon", "tasks"], env=fresh_shell, cwd=tmp_path)
-            listed_rows = [line.split(maxsplit=3) for line in listed.stdout.splitlines() if line]
-            assert listed_rows == [
-                [
-                    setup_id,
-                    "COMPLETE",
-                    str(completed_setup["turn"]),
-                    str(completed_setup["slug"] or "-"),
-                ]
-            ]
+            assert not listed.stdout.strip()
 
             post_setup_tasks = _api_get(client, write_token, "/tasks")
-            assert [str(item["id"]) for item in post_setup_tasks] == [setup_id], (
-                "no coding task may exist before setup-repo completes"
-            )
-            assert post_setup_tasks[0]["workflow"] == "setup-repo"
+            assert post_setup_tasks == [], "foreground setup must not create a hidden task"
 
             marker = "hello-panopticon.txt"
             content = "hello from Panopticon\n"
             prompt = walkthrough.task_prompt
-            repos = _api_get(client, write_token, "/repos")
-            assert len(repos) == 1, "the fresh quickstart should register exactly its current repo"
-            configured_repo = next(
-                item for item in repos if item["git_url"].rstrip("/") == config.repo_url.rstrip("/")
-            )
             before_ids = {str(task["id"]) for task in _api_get(client, write_token, "/tasks")}
             workflow_infos = _api_get(
                 client, write_token, f"/repos/{configured_repo['id']}/workflows"
@@ -2145,16 +2061,14 @@ def _run_live_new_user_journey(tmp_path: Path, config: LiveConfiguration) -> Non
             assert live["state"] == "PLANNING"
             _wait_for_pane_row_texts("dashboard", (marker, "live"), env=env, cwd=worktree)
 
-            # The completed setup row remains selected when the new active row appears above it.
-            # Move to the new task, attach through `t`, then issue tmux's raw detach chord.
+            # The first and only task row is selected after creation. Attach through `t`, then
+            # issue tmux's raw detach chord.
             # 2119: REQ-054.7.8
             _wait_for_pane_text("dashboard", marker, env=env, cwd=worktree)
             dashboard_pane = _pane_id(env, worktree, "dashboard")
             dashboard_pid = _pane_pid(env, worktree, "dashboard")
             assert dashboard_pane
             assert dashboard_pid
-            driver.send(walkthrough.previous_row_key)
-            time.sleep(0.2)
             _send_session_switch_while_attached(
                 env, worktree, driver, "dashboard", walkthrough.attach_key
             )
@@ -2514,7 +2428,63 @@ def test_live_driver_consumes_the_current_documented_walkthrough_contract() -> N
     assert walkthrough.detach_keys == b"\x02d"
     assert walkthrough.submit_key == b"\r"
     assert walkthrough.next_choice_key == b"\x1b[B"
-    assert walkthrough.previous_row_key == b"\x1b[A"
+
+
+@pytest.mark.parametrize(
+    ("harness", "choice", "credential_prompt"),
+    [
+        (
+            "claude",
+            b"\r",
+            "Paste a Claude token or API key (Enter for browser login): ",
+        ),
+        (
+            "codex",
+            b"2\r",
+            "Paste an OpenAI API key (Enter for Codex browser login): ",
+        ),
+    ],
+)
+def test_foreground_setup_driver_uses_only_documented_hidden_inputs(
+    harness: str, choice: bytes, credential_prompt: str
+) -> None:
+    class _Driver:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+            self.inputs: list[bytes] = []
+
+        def wait_for_text(self, prompt: str, *, timeout: float = 60) -> None:
+            self.prompts.append(prompt)
+
+        def send(self, value: bytes) -> None:
+            self.inputs.append(value)
+
+    config = LiveConfiguration(
+        install_spec="unused",
+        repo_url="https://github.com/acme/panopticon-acceptance-disposable.git",
+        base_sha="a" * 40,
+        github_token="github-test-token",
+        harness=harness,
+        harness_auth_env="ANTHROPIC_API_KEY" if harness == "claude" else "OPENAI_API_KEY",
+        harness_auth_token="provider-test-token",
+    )
+    driver = _Driver()
+
+    _drive_foreground_setup(config=config, driver=cast(Any, driver))
+
+    assert driver.inputs == [
+        choice,
+        b"provider-test-token\r",
+        b"\r",
+        b"github-test-token\r",
+    ]
+    assert driver.prompts == [
+        "Agent [1]: ",
+        credential_prompt,
+        "Repository source [",
+        "GitHub token (input hidden; Enter to leave setup incomplete): ",
+        "Credentials configured on this host.",
+    ]
 
 
 def test_live_install_version_is_bound_to_the_user_walkthrough() -> None:
@@ -2682,7 +2652,7 @@ def test_acceptance_source_digest_rejects_an_executable_digest_assignment() -> N
 )
 def test_post_setup_mutation_guard_rejects_shortcuts(shortcut: str) -> None:
     source = (
-        "def _complete_setup_task(*args):\n"
+        "def _foreground_setup_complete(*args):\n"
         "    _wait_for_client_session('service')\n"
         "    responded = set()\n"
         "    time.monotonic()\n"
@@ -2700,7 +2670,7 @@ def test_post_setup_mutation_guard_rejects_shortcuts(shortcut: str) -> None:
         "    _api_get(client, token, task_id)\n"
         "    time.sleep(0.1)\n"
         "def _run_live_new_user_journey(tmp_path, config):\n"
-        "    _complete_setup_task()\n"
+        "    _foreground_setup_complete()\n"
         f"    {shortcut}\n"
     )
 
@@ -2709,10 +2679,10 @@ def test_post_setup_mutation_guard_rejects_shortcuts(shortcut: str) -> None:
 
 def test_post_setup_mutation_guard_rejects_same_line_shortcut() -> None:
     source = (
-        "def _complete_setup_task():\n"
+        "def _foreground_setup_complete():\n"
         "    pass\n"
         "def _run_live_new_user_journey(tmp_path, config):\n"
-        "    _complete_setup_task(); client.post('/tasks', json={})\n"
+        "    _foreground_setup_complete(); client.post('/tasks', json={})\n"
     )
 
     assert any("client.post" in finding for finding in _post_setup_direct_mutations(source))
@@ -2731,11 +2701,11 @@ def test_post_setup_mutation_guard_rejects_precreated_deferred_generators(
     deferred_mutation: str,
 ) -> None:
     source = (
-        "def _complete_setup_task():\n"
+        "def _foreground_setup_complete():\n"
         "    pass\n"
         "def _run_live_new_user_journey(tmp_path, config):\n"
         f"    deferred = ({deferred_mutation} for _ in [None])\n"
-        "    _complete_setup_task()\n"
+        "    _foreground_setup_complete()\n"
         "    next(deferred)\n"
     )
 
@@ -2756,11 +2726,11 @@ def test_post_setup_mutation_guard_rejects_indirect_deferred_generator_consumers
     consumer: str,
 ) -> None:
     source = (
-        "def _complete_setup_task():\n"
+        "def _foreground_setup_complete():\n"
         "    pass\n"
         "def _run_live_new_user_journey(tmp_path, config):\n"
         '    deferred = (client.post("/tasks", json={}) for _ in [None])\n'
-        "    _complete_setup_task()\n"
+        "    _foreground_setup_complete()\n"
         f"    {consumer}\n"
     )
 
@@ -2788,11 +2758,11 @@ def test_mutation_guard_rejects_undocumented_pre_setup_rest_shortcuts(
     shortcut: str,
 ) -> None:
     source = (
-        "def _complete_setup_task():\n"
+        "def _foreground_setup_complete():\n"
         "    pass\n"
         "def _run_live_new_user_journey(tmp_path, config):\n"
         f"    {shortcut}\n"
-        "    _complete_setup_task()\n"
+        "    _foreground_setup_complete()\n"
     )
 
     assert _post_setup_direct_mutations(source)
@@ -2812,11 +2782,11 @@ def test_post_setup_mutation_guard_rejects_prebound_mutator(
     trusted_name: str, mutator: str
 ) -> None:
     source = (
-        "def _complete_setup_task():\n"
+        "def _foreground_setup_complete():\n"
         "    pass\n"
         "def _run_live_new_user_journey(tmp_path, config):\n"
         f"    {trusted_name} = {mutator}\n"
-        "    _complete_setup_task()\n"
+        "    _foreground_setup_complete()\n"
         f"    {trusted_name}()\n"
     )
 
@@ -2837,7 +2807,7 @@ def test_post_setup_mutation_guard_rejects_prebound_mutator(
 )
 def test_observer_helper_guard_rejects_hidden_mutations(hidden_mutation: str) -> None:
     source = (
-        "def _complete_setup_task(*args):\n"
+        "def _foreground_setup_complete(*args):\n"
         "    _wait_for_client_session('service')\n"
         "    responded = set()\n"
         "    time.monotonic()\n"
@@ -2853,7 +2823,7 @@ def test_observer_helper_guard_rejects_hidden_mutations(hidden_mutation: str) ->
         "    _api_get(client, token, task_id)\n"
         "    time.sleep(0.1)\n"
         "def _run_live_new_user_journey(tmp_path, config):\n"
-        "    _complete_setup_task()\n"
+        "    _foreground_setup_complete()\n"
         "    _api_get(client, token, '/tasks')\n"
     )
 
@@ -2862,7 +2832,7 @@ def test_observer_helper_guard_rejects_hidden_mutations(hidden_mutation: str) ->
 
 def test_setup_completion_boundary_rejects_a_hidden_mutation_before_helper_return() -> None:
     source = (
-        "def _complete_setup_task(*args):\n"
+        "def _foreground_setup_complete(*args):\n"
         "    _api_get(client, token, '/tasks/id')\n"
         "    client.post('/tasks', json={})\n"
         "def _api_get(client, token, path):\n"
@@ -2874,7 +2844,7 @@ def test_setup_completion_boundary_rejects_a_hidden_mutation_before_helper_retur
         "    _api_get(client, token, task_id)\n"
         "    time.sleep(0.1)\n"
         "def _run_live_new_user_journey(tmp_path, config):\n"
-        "    _complete_setup_task()\n"
+        "    _foreground_setup_complete()\n"
     )
 
     assert _post_setup_direct_mutations(source)

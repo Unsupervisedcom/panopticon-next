@@ -204,6 +204,7 @@ def _spawner(
         images=images or _FakeImageBuilder(),  # type: ignore[arg-type]
         makedirs=lambda _p: None,
         daemon_reachable=daemon_reachable,
+        credential_check=lambda _task, _repo: None,
     )
 
 
@@ -342,6 +343,7 @@ def _shell_spawner(
         images=_FakeImageBuilder(),  # type: ignore[arg-type]
         makedirs=(made.append if made is not None else (lambda _p: None)),
         daemon_reachable=daemon_reachable,
+        credential_check=lambda _task, _repo: None,
     )
 
 
@@ -500,6 +502,7 @@ def test_spawn_one_composes_the_workflow_image_when_it_has_a_layer() -> None:
         git=GitClones(run=_no_op_run),
         images=images,
         makedirs=lambda _p: None,  # type: ignore[arg-type]
+        credential_check=lambda _task, _repo: None,
     )
     spawner.spawn_one(
         {
@@ -538,6 +541,7 @@ def test_spawn_one_composes_workflow_then_repo_layers() -> None:
         git=GitClones(run=_no_op_run),
         images=images,
         makedirs=lambda _p: None,  # type: ignore[arg-type]
+        credential_check=lambda _task, _repo: None,
     )
     spawner.spawn_one(
         {
@@ -996,6 +1000,7 @@ def test_heal_caps_respawns_then_surfaces_a_crash_looping_task() -> None:
         now=lambda: clock["t"],
         max_respawns=3,
         respawn_reset=60.0,
+        credential_check=lambda _task, _repo: None,
     )
     for _ in range(6):
         spawner.heal(_orphan())
@@ -1082,6 +1087,7 @@ def test_pre_session_failures_latch_when_the_respawn_budget_is_exhausted(
             now=lambda: clock["t"],
             max_respawns=3,
             respawn_reset=60.0,
+            credential_check=lambda _task, _repo: None,
         )
 
         for _ in range(3):
@@ -1129,6 +1135,7 @@ def test_heal_resets_the_respawn_budget_after_a_survivor_window() -> None:
         now=lambda: clock["t"],
         max_respawns=2,
         respawn_reset=60.0,
+        credential_check=lambda _task, _repo: None,
     )
     spawner.heal(_orphan())  # respawn 1
     spawner.heal(_orphan())  # respawn 2 → budget now exhausted
@@ -1274,6 +1281,7 @@ def test_heal_resumes_with_its_prior_budget_once_the_daemon_returns() -> None:
         max_respawns=5,
         respawn_reset=60.0,
         daemon_reachable=lambda: reachable["ok"],
+        credential_check=lambda _task, _repo: None,
     )
     spawner.heal(_orphan())  # respawn 1 — budget now at 1/5
     assert len(runner.spawned) == 1
@@ -1359,6 +1367,7 @@ def test_mark_healing_skips_a_crash_looped_out_orphan() -> None:
         now=lambda: clock["t"],
         max_respawns=2,
         respawn_reset=60.0,
+        credential_check=lambda _task, _repo: None,
     )
     spawner.heal(_orphan())  # exhaust the respawn budget
     spawner.heal(_orphan())
@@ -1629,6 +1638,7 @@ def test_spawn_runs_repo_hook_with_correct_args() -> None:
         images=_FakeImageBuilder(),  # type: ignore[arg-type]
         run_hook=_fake_hook,
         makedirs=lambda _p: None,
+        credential_check=lambda _task, _repo: None,
     )
     spawner.spawn_one(
         {"id": "t1", "repo_id": "r1", "workflow": "spike", "state": "PLANNING", "claimed_by": None}
@@ -1652,6 +1662,7 @@ def _cleanup_spawner(runner: _FakeRunner, *, workspace_exists: bool) -> Spawner:
         makedirs=lambda _p: None,
         exists=lambda _p: workspace_exists,
         rmtree=lambda _p: None,  # swapped out per test when we need to record calls
+        credential_check=lambda _task, _repo: None,
     )
 
 
@@ -1671,6 +1682,7 @@ def test_cleanup_removes_workspace_when_terminal_and_container_gone() -> None:
         makedirs=lambda _p: None,
         exists=lambda _p: True,
         rmtree=removed.append,
+        credential_check=lambda _task, _repo: None,
     )
     spawner.cleanup({"id": "t1", "state": "COMPLETE"})
     assert removed == ["/tasks/t1"]
@@ -1692,6 +1704,7 @@ def test_cleanup_stops_terminal_backend_even_when_still_running() -> None:
         makedirs=lambda _p: None,
         exists=lambda _p: True,
         rmtree=removed.append,
+        credential_check=lambda _task, _repo: None,
     )
     spawner.cleanup({"id": "t1", "state": "COMPLETE"})
     assert removed == ["/tasks/t1"]
@@ -1713,6 +1726,7 @@ def test_cleanup_is_a_no_op_for_non_terminal_task() -> None:
         makedirs=lambda _p: None,
         exists=lambda _p: True,
         rmtree=removed.append,
+        credential_check=lambda _task, _repo: None,
     )
     spawner.cleanup({"id": "t1", "state": "ITERATING"})
     assert removed == []  # live task — never touch its workspace
@@ -1744,6 +1758,7 @@ def test_cleanup_invokes_docker_cleanup_when_rmtree_fails() -> None:
         exists=lambda _p: True,
         rmtree=rmtree_first_fails,
         docker_cleanup=docker_called.append,
+        credential_check=lambda _task, _repo: None,
     )
     spawner.cleanup({"id": "t1", "state": "COMPLETE"})
     assert docker_called == ["/tasks/t1"]
@@ -1784,6 +1799,7 @@ def test_cleanup_unknown_workflow_releases_claim_and_cleans_workspace() -> None:
         makedirs=lambda _p: None,
         exists=lambda _p: True,
         rmtree=removed.append,
+        credential_check=lambda _task, _repo: None,
     )
     task = {"id": "t1", "workflow": "parity", "state": "COMPLETE", "claimed_by": "host-1"}
     spawner.cleanup(task)  # must not raise
@@ -1809,6 +1825,7 @@ def test_spawn_hook_failure_aborts_spawn() -> None:
         images=_FakeImageBuilder(),  # type: ignore[arg-type]
         run_hook=_boom,
         makedirs=lambda _p: None,
+        credential_check=lambda _task, _repo: None,
     )
     with pytest.raises(RuntimeError, match="hook exited 1"):
         spawner.spawn_one(
@@ -1841,6 +1858,7 @@ def test_spawn_skips_hook_when_repo_has_no_hook_file() -> None:
         images=_FakeImageBuilder(),  # type: ignore[arg-type]
         run_hook=lambda *a: calls.append(a),
         makedirs=lambda _p: None,
+        credential_check=lambda _task, _repo: None,
     )
     spawner.spawn_one(
         {"id": "t1", "repo_id": "r1", "workflow": "spike", "state": "PLANNING", "claimed_by": None}
@@ -1870,6 +1888,7 @@ def test_spawner_against_the_real_service(tmp_path: Path) -> None:
             git=GitClones(run=_no_op_run),
             images=_FakeImageBuilder(),  # type: ignore[arg-type]
             makedirs=lambda _p: None,
+            credential_check=lambda _task, _repo: None,
         )
         (task,) = spawnable_tasks(client)()  # the fresh task is spawnable
         assert spawner.spawn_one(task) == f"panopticon-{task_id}"
@@ -1908,6 +1927,7 @@ def test_next_spawner_pass_starts_dependent_with_initial_prompt_when_last_dep_co
             git=GitClones(run=_no_op_run),
             images=_FakeImageBuilder(),  # type: ignore[arg-type]
             makedirs=lambda _p: None,
+            credential_check=lambda _task, _repo: None,
         )
 
         gated = client.get_task(dependent_id)
@@ -1967,6 +1987,7 @@ def test_spawner_pass_starts_dependent_when_dependency_reaches_a_custom_terminal
             git=GitClones(run=_no_op_run),
             images=_FakeImageBuilder(),  # type: ignore[arg-type]
             makedirs=lambda _p: None,
+            credential_check=lambda _task, _repo: None,
         )
 
         assert dependent_id not in {task["id"] for task in spawnable_tasks(client)()}

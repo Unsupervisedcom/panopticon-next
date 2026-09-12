@@ -36,9 +36,8 @@ panopticon --version
 panopticon doctor
 ```
 
-The public one-line command is `pipx install panopticon-next && panopticon quickstart`; it installs
-the latest published release and immediately enters onboarding. The local wheel path above remains
-available for an offline or independently checksummed evaluation.
+For the published release, run `pipx install panopticon-next`, then `panopticon quickstart`.
+The local wheel path above also supports an independently checksummed evaluation.
 
 [//]: # (x-release-please-start-version)
 Expected result: `panopticon --version` prints `panopticon 0.2.11` without requiring a source
@@ -56,38 +55,35 @@ authenticated task service binds to `0.0.0.0` so bridge containers can reach it.
 access with a host firewall or encrypted, access-controlled transport before using Panopticon on
 an untrusted network; see [authentication](auth.md).
 
-## 2. Start from the repository Panopticon should manage
+## 2. Connect an agent and select the repository
 
-Confirm the disposable repository has the right `origin` and does not already contain
-`hello-panopticon.txt`, then run quickstart from its worktree:
+Run setup from any directory:
 
 ```sh
-cd /path/to/disposable-repo
-git remote get-url origin
 panopticon quickstart
 ```
 
-Quickstart must stop with an actionable message before creating Panopticon state if the current
-directory is not a Git worktree or has no `origin`. On success it checks the host, creates an
-owner-only task-service credential, starts the local service and runner, registers exactly the
-displayed `origin`, asks which installed harness to use, and attaches to a `setup-repo` task.
+Choose Claude or Codex and follow the foreground prompts. Claude accepts a token or API key with
+hidden input; pressing Enter runs `claude setup-token`, followed by a hidden paste of the displayed
+token. Codex accepts an API key or runs browser login in a new private credential directory.
+No authentication task or attach/detach navigation is needed.
 
-Choose Claude or Codex and follow the setup prompts. For this GitHub walkthrough, task containers
-need both:
+Enter the disposable repository's URL or local checkout path when asked for its source. Confirm
+the displayed name and exact source. For this GitHub walkthrough, select a GitHub source whose
+repository does not already contain `hello-panopticon.txt`. Quickstart also accepts local Git
+checkouts without an origin and Git bundles, labeled fixed snapshots; those use a forge-free
+workflow rather than this walkthrough's GitHub lifecycle.
 
-- working authentication for the selected harness; and
-- a `GH_TOKEN` able to read the disposable repository, push a branch, and open and merge a pull
-  request.
+After prerequisite and runtime checks, enter a GitHub token scoped to the disposable repository,
+able to read it, push a branch, and open and merge a pull request. That token is stored only for
+this repository. The reusable agent connection contains no GitHub token.
 
-Do not treat “skip” as successful setup. The task will keep re-checking instead of completing until
-both credentials are present and it prints `All required task-container credentials are
-configured.` Press Enter at its final prompt to complete setup and return to the dashboard. If you
-need to leave first, detach with `Ctrl-b d`; highlight the setup task and press `t` to resume it.
-
-Success check: `panopticon quickstart` shows the client-auth prompts in an attached `setup-repo`
-task. After both credential checks pass, that task prints `All required task-container credentials
-are configured.`, completes, and returns you to the dashboard. A skipped or failed credential
-check is not success.
+Success check: setup reports credentials configured on this host and opens the dashboard.
+Configured credentials do not prove provider access; the real task below checks that. If setup
+is cancelled or a prerequisite fails, completed credential steps remain saved. Rerun quickstart
+to resume. For an existing repository, use the repository screen's `s` action or
+`panopticon setup --repo <repo-id>`. Repair holds pending tasks until individually retried with
+`R`; it does not stop running tasks or start the backlog.
 
 ## 3. Prove client access from a fresh shell
 
@@ -100,8 +96,8 @@ panopticon tasks
 
 The command automatically reuses the private default credential created on first startup.
 
-Success check: the client works from the fresh shell: `panopticon tasks` lists the completed
-`setup-repo` task without prompting for a credential or returning `401 Unauthorized`.
+Success check: the client works from the fresh shell: `panopticon tasks` exits successfully without prompting for a credential or returning
+`401 Unauthorized`. An empty list before the first coding task is expected.
 
 ## 4. Create and supervise the first task
 

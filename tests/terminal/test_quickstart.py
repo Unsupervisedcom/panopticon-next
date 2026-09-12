@@ -7,7 +7,6 @@ import subprocess
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -153,7 +152,7 @@ def test_detect_git_url_rejects_missing_git(monkeypatch: pytest.MonkeyPatch) -> 
         raise FileNotFoundError("git not found")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(RuntimeError, match="must run inside a Git repository"):
+    with pytest.raises(RuntimeError, match="could not identify a Git repository"):
         qs.detect_git_url()
 
 
@@ -162,35 +161,26 @@ def test_detect_git_url_rejects_nonzero_exit(monkeypatch: pytest.MonkeyPatch) ->
         raise subprocess.CalledProcessError(128, cmd)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(RuntimeError, match="must run inside a Git repository"):
+    with pytest.raises(RuntimeError, match="could not identify a Git repository"):
         qs.detect_git_url()
 
 
-def test_detect_git_url_rejects_a_repo_without_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_detect_git_url_uses_canonical_path_for_repo_without_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # 2119: REQ-054.2.1
     # 2119: REQ-054.2.3
-    calls = 0
-
-    def fake_run(cmd: list[str], **_: Any) -> Any:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            return MagicMock(stdout="true\n")
-        raise subprocess.CalledProcessError(2, cmd)
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    with pytest.raises(RuntimeError, match="no `origin` URL"):
-        qs.detect_git_url()
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    monkeypatch.chdir(tmp_path)
+    assert qs.detect_git_url() == str(tmp_path.resolve())
 
 
 @pytest.mark.parametrize(
     "git_url",
     [
         "https://github.com/acme/widget.git",
-        "http://example.com/acme/widget",
         "git@github.com:acme/widget.git",
         "ssh://git@github.com/acme/widget.git",
-        "git://github.com/acme/widget.git",
         qs._FALLBACK_GIT_URL,
     ],
 )
@@ -209,6 +199,8 @@ def test_choose_enabled_workflows_forge(git_url: str) -> None:
         "./widget",
         "file:///srv/repos/widget",
         "C:\\repos\\widget",
+        "http://example.com/acme/widget",
+        "git://github.com/acme/widget.git",
     ],
 )
 def test_choose_enabled_workflows_local(git_url: str) -> None:
@@ -349,14 +341,16 @@ def test_ensure_secrets_file_rejects_unsafe_destinations_without_mutation(
 @pytest.mark.parametrize(
     "url, expected",
     [
-        ("https://github.com/Unsupervisedcom/panopticon.git", "panopticon"),
-        ("https://github.com/example/repo", "repo"),
-        ("git@github.com:acme/Widget.git", "widget"),
-        ("https://github.com/acme/thing.git/", "thing"),
+        ("https://github.com/Unsupervisedcom/panopticon.git", "panopticon-"),
+        ("https://github.com/example/repo", "repo-"),
+        ("git@github.com:acme/Widget.git", "widget-"),
+        ("https://github.com/acme/thing.git/", "thing-"),
     ],
 )
 def test_repo_id_from_url(url: str, expected: str) -> None:
-    assert qs.repo_id_from_url(url) == expected
+    repo_id = qs.repo_id_from_url(url)
+    assert repo_id.startswith(expected)
+    assert len(repo_id.rsplit("-", 1)[-1]) == 8
 
 
 def test_setup_repo_dedups_on_remote_url(capsys: pytest.CaptureFixture[str]) -> None:
@@ -407,8 +401,8 @@ def test_setup_repo_creates_when_absent() -> None:
             return {}
 
     repo_id, name = qs.setup_repo(_Empty(), "https://github.com/x/y.git", "panopticon.env")  # type: ignore[arg-type]
-    assert (repo_id, name) == ("y", "y")
-    assert created["repo_id"] == "y"
+    assert (repo_id, name) == (qs.repo_id_from_url("https://github.com/x/y.git"), "y")
+    assert created["repo_id"] == repo_id
     assert created["name"] == "y"
     assert created["git_url"] == "https://github.com/x/y.git"
     assert created["env_file"] == "panopticon.env"
@@ -457,15 +451,15 @@ def test_setup_repo_enables_local_workflow_for_local_remote() -> None:
             return {}
 
     repo_id, _ = qs.setup_repo(_Empty(), "/srv/repos/widget", "panopticon.env")  # type: ignore[arg-type]
-    assert repo_id == "widget"
+    assert repo_id == qs.repo_id_from_url("/srv/repos/widget")
     # A local-only remote (a filesystem path) enables the forge-free lifecycle instead.
     assert created["enabled_workflows"] == ["local-git-self-reviewed"]
 
 
 def test_setup_repo_dedups_on_derived_id_and_preserves_existing_workflows() -> None:
     # 2119: REQ-054.4.1
-    # The existing repo's stored remote (ssh form) doesn't normalize-match the https origin, but its
-    # id equals the id we'd derive — so it's reused (not re-created, which would collide).
+    # GitHub SSH and HTTPS spellings resolve to the same bounded source identity. The legacy id is
+    # retained and its custom workflows survive the merge.
     class _HasRepo:
         create_repo_called = False
 
@@ -507,8 +501,8 @@ def _http_status_error(status: int) -> httpx.HTTPStatusError:
 
 
 def test_setup_repo_recovers_from_create_conflict() -> None:
-    # A create that collides (409) — e.g. the repo exists but dedup missed its remote — falls back
-    # to reusing the existing repo rather than crashing quickstart.
+    # Repeated conflicts without an equivalent source fail explicitly instead of reusing an
+    # unrelated repository.
     class _Conflict:
         def list_repos(self) -> list[dict[str, object]]:
             return []
@@ -516,8 +510,8 @@ def test_setup_repo_recovers_from_create_conflict() -> None:
         def create_repo(self, *a: Any, **kw: Any) -> dict[str, object]:
             raise _http_status_error(409)
 
-    repo_id, name = qs.setup_repo(_Conflict(), "https://github.com/x/y.git", "/tmp/env")  # type: ignore[arg-type]
-    assert (repo_id, name) == ("y", "y")
+    with pytest.raises(RuntimeError, match="could not allocate a repository id"):
+        qs.setup_repo(_Conflict(), "https://github.com/x/y.git", "/tmp/env")  # type: ignore[arg-type]
 
 
 def test_setup_repo_reraises_non_conflict_create_error() -> None:

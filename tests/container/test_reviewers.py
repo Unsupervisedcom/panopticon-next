@@ -1177,14 +1177,19 @@ def test_verified_dispatch_plumbing_lives_only_in_the_container_package() -> Non
     dispatch_module = root / "container" / "reviewers.py"
     assert dispatch_module.is_file()
     forbidden_dispatch_tokens = (
-        "PANOPTICON_2119_REVIEWER_",
         "claude --print --output-format json",
         "turn_context.payload.model",
         "dispatch_review(",
     )
+    non_dispatch_reviewer_environment = {
+        root / "terminal" / "runtime.py",
+        root / "terminal" / "session_environment.py",
+    }
     for package in ("core", "taskservice", "sessionservice", "terminal", "workflows"):
         for source in (root / package).glob("**/*.py"):
             text = source.read_text()
             assert "from panopticon.container.reviewers import" not in text
             if package != "workflows":
                 assert all(token not in text for token in forbidden_dispatch_tokens)
+                if "PANOPTICON_2119_REVIEWER_" in text:
+                    assert source in non_dispatch_reviewer_environment
