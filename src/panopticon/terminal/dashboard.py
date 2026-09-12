@@ -799,7 +799,7 @@ class ChoiceScreen(_OptionListModal[str]):
     """A modal list picker: select an option (Enter) or cancel (Escape); dismisses the choice."""
 
     CSS = """
-    ChoiceScreen { align: center middle; }
+    ChoiceScreen, RepoChoiceScreen { align: center middle; }
     #choice-box { width: 48; height: auto; max-height: 80%; padding: 1 2; border: round $accent; background: $surface; }
     """
     BOX_ID = "choice-box"
