@@ -29,17 +29,17 @@ def run_suspended(app: Suspendable, callback: Callable[[], Result]) -> Result:
     the prior signal handler have both been restored.
     """
 
-    previous_handler = signal.signal(signal.SIGINT, signal.default_int_handler)
     result: Result | None = None
     failure: BaseException | None = None
-    try:
-        with app.suspend():
-            try:
-                result = callback()
-            except BaseException as exc:
-                failure = exc
-    finally:
-        signal.signal(signal.SIGINT, previous_handler)
+    with app.suspend():
+        previous_handler = signal.getsignal(signal.SIGINT)
+        try:
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+            result = callback()
+        except BaseException as exc:
+            failure = exc
+        finally:
+            signal.signal(signal.SIGINT, previous_handler)
     if failure is not None:
         raise failure
     return cast(Result, result)

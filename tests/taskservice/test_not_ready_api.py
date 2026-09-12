@@ -45,6 +45,7 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+# 2119: task-auth-readiness.2.2
 def test_retry_during_repository_setup_is_structured_conflict_without_mutation(
     tmp_path: Path,
 ) -> None:
@@ -87,6 +88,7 @@ def test_retry_during_repository_setup_is_structured_conflict_without_mutation(
     asyncio.run(store.close())
 
 
+# 2119: task-auth-readiness.1.3
 def test_begin_setup_admission_refusal_is_structured_conflict_without_mutation(
     tmp_path: Path,
 ) -> None:

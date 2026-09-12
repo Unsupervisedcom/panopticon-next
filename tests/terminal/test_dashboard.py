@@ -5469,6 +5469,7 @@ async def test_pressing_s_runs_foreground_setup_for_selected_repo(
     assert fake.created == []
 
 
+# 2119: foreground-setup.1.3
 @pytest.mark.parametrize("failure", [KeyboardInterrupt, ValueError])
 async def test_setup_resume_keeps_the_selected_repository(
     monkeypatch: pytest.MonkeyPatch, failure: type[BaseException]

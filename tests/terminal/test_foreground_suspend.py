@@ -26,12 +26,15 @@ from panopticon.terminal.foreground_suspend import run_suspended
 class _SuspendRecorder:
     def __init__(self) -> None:
         self.events: list[str] = []
+        self.handlers: list[object] = []
 
     @contextmanager
     def suspend(self) -> Iterator[None]:
+        self.handlers.append(signal.getsignal(signal.SIGINT))
         self.events.append("suspended")
         yield
         self.events.append("resumed")
+        self.handlers.append(signal.getsignal(signal.SIGINT))
 
 
 def test_callback_exception_is_propagated_only_after_terminal_resume() -> None:
@@ -54,6 +57,7 @@ def test_default_interrupt_handler_is_scoped_to_callback_inside_asyncio() -> Non
         asyncio_handler = signal.getsignal(signal.SIGINT)
         callback_handler = run_suspended(app, lambda: signal.getsignal(signal.SIGINT))
         assert signal.getsignal(signal.SIGINT) is asyncio_handler
+        assert all(handler is asyncio_handler for handler in app.handlers)
         return callback_handler
 
     assert asyncio.run(exercise()) is signal.default_int_handler
