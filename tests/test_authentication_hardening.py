@@ -733,8 +733,9 @@ def test_integrated_stack_explicitly_exposes_service_to_linux_containers(
 
     terminal_cli._start_sessions(run=record)
     service = next(call for call in calls if "new-session" in call and "service" in call)
-    command = service[-1]
-    service_argv = shlex.split(command.split(" 2>&1", 1)[0])
+    command = shlex.split(service[-1])
+    assert command[-3:-1] == ["/bin/sh", "-c"]
+    service_argv = shlex.split(command[-1].split(" 2>&1", 1)[0])
     assert service_argv.count("--host") == 1
     assert service_argv[service_argv.index("--host") + 1] == "0.0.0.0"
 

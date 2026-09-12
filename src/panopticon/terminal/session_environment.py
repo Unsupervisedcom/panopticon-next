@@ -200,6 +200,4 @@ def session_environment_command(
 ) -> str:
     """Shell form of :func:`session_environment_argv` for tmux pane commands."""
 
-    return shlex.join(
-        session_environment_argv(["/bin/sh", "-c", command], environment=environment)
-    )
+    return shlex.join(session_environment_argv(["/bin/sh", "-c", command], environment=environment))

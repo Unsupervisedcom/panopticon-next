@@ -1478,3 +1478,81 @@ def test_direct_repository_repair_requires_matching_live_runner(
                 )
             assert (client.get_repo("repo"), client.list_tasks()) == before
         assert {p.name: p.read_bytes() for p in secrets.iterdir()} == before_files
+
+
+# 2119: foreground-setup.4.3, runtime-readiness.4.14
+def test_real_repository_repair_runs_on_the_textual_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from textual.app import App
+
+    from panopticon.client import TaskServiceClient
+    from panopticon.terminal.setup import configure_repo
+    from panopticon.terminal.setup_credentials import connect
+
+    with _live_authenticated_runtime(tmp_path, monkeypatch) as live:
+        (tmp_path / "config" / "secrets").chmod(0o700)
+        connection = connect("claude", secret_fn=lambda _: "synthetic-event-loop-credential")
+        with httpx.Client(base_url=live.service_url, headers=live.headers, trust_env=False) as http:
+            client = TaskServiceClient(http)
+
+            class RepairApp(App):
+                repaired = False
+
+                def on_mount(self) -> None:
+                    self.repaired = configure_repo(client, "repo", connection=connection)
+
+            async def exercise() -> None:
+                app = RepairApp()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    assert app.repaired
+
+            asyncio.run(exercise())
+            repo = client.get_repo("repo")
+            assert repo["env_file"]
+            assert not repo["launch_paused"]
+            assert client.get_task(live.task.id)["launch_paused"]
+
+
+# 2119: foreground-setup.3.7
+@pytest.mark.parametrize("writer", ["connection", "repository"])
+def test_real_foreground_writers_cannot_mutate_while_another_process_holds_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, writer: str
+) -> None:
+    from panopticon.terminal.setup_credentials import connect, setup_lock
+
+    with _live_authenticated_runtime(tmp_path, monkeypatch) as live:
+        (tmp_path / "config" / "secrets").chmod(0o700)
+        connection = connect("claude", secret_fn=lambda _: "synthetic-existing-credential")
+        if writer == "connection":
+            script = (
+                "from panopticon.terminal.setup import configure_connection; "
+                "responses=iter(['1', 'n']); "
+                "configure_connection(input_fn=lambda _: next(responses), secret_fn=lambda _: 'synthetic-replacement')"
+            )
+        else:
+            script = (
+                "import os; from panopticon.terminal.__main__ import _make_client; "
+                "from panopticon.terminal.setup import configure_repo; "
+                "from panopticon.terminal.setup_credentials import Connection; "
+                "configure_repo(_make_client(os.environ['PANOPTICON_SERVICE_URL']), 'repo', "
+                f"connection=Connection('claude', {connection.env_file!r}))"
+            )
+        secrets = tmp_path / "config" / "secrets"
+        with setup_lock():
+            before = {p.name: p.read_bytes() for p in secrets.iterdir()}
+            result = subprocess.run(
+                [sys.executable, "-c", script], capture_output=True, text=True, timeout=5
+            )
+            assert result.returncode != 0
+            assert "Another setup is active" in result.stderr
+            assert {p.name: p.read_bytes() for p in secrets.iterdir()} == before
+        with httpx.Client(base_url=live.service_url, headers=live.headers, trust_env=False) as http:
+            assert http.get("/repos/repo").json()["env_file"] is None
+            assert not http.get(f"/tasks/{live.task.id}").json()["launch_paused"]
+        accepted = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, timeout=5
+        )
+        assert accepted.returncode == 0, accepted.stderr
+        assert {p.name: p.read_bytes() for p in secrets.iterdir()} != before

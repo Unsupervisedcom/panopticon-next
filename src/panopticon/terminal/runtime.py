@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import os
@@ -229,28 +228,92 @@ def resolve_runtime(
 def _default_get(runtime: RuntimeConfiguration) -> GetResponse:
     token = environment_token()
     headers = {"Authorization": f"Bearer {token}"} if token else {}
+    helper = r"""
+import base64
+import http.client
+import json
+import socket
+import sys
+from urllib.parse import urlsplit
+
+config = json.load(sys.stdin)
+origin = urlsplit(config["origin"])
+connection = http.client.HTTPConnection(origin.hostname, origin.port or 80, timeout=None)
+try:
+    connection.request("GET", config["path"], headers=config["headers"])
+    response = connection.getresponse()
+    result = {
+        "status": response.status,
+        "headers": response.getheaders(),
+        "body": base64.b64encode(response.read()).decode("ascii"),
+    }
+except (ConnectionRefusedError, socket.gaierror):
+    result = {"error": "connect"}
+except (OSError, http.client.HTTPException):
+    result = {"error": "transport"}
+finally:
+    connection.close()
+json.dump(result, sys.stdout, separators=(",", ":"))
+"""
 
     def get(path: str, timeout: float) -> httpx.Response:
         total_timeout = max(timeout, 0.001)
+        deadline = time.monotonic() + total_timeout
+        request = httpx.Request("GET", f"{runtime.service_url}{path}")
+        payload = json.dumps(
+            {"origin": runtime.service_url, "path": path, "headers": headers},
+            separators=(",", ":"),
+        )
+        try:
+            process = subprocess.Popen(
+                [sys.executable, "-I", "-c", helper],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                env={},
+                text=True,
+            )
+        except OSError as exc:
+            raise httpx.TransportError("task service request failed", request=request) from exc
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(process.args, total_timeout)
+            output, _stderr = process.communicate(payload, timeout=remaining)
+        except subprocess.TimeoutExpired as exc:
+            if process.poll() is None:
+                process.kill()
+            process.communicate()
+            raise httpx.ReadTimeout(
+                f"request exceeded its {total_timeout:g}s total deadline",
+                request=request,
+            ) from exc
+        except BaseException:
+            if process.poll() is None:
+                process.kill()
+            process.communicate()
+            raise
+        if process.returncode != 0:
+            raise httpx.TransportError("task service request failed", request=request)
+        try:
+            result = json.loads(output)
+            if result.get("error") == "connect":
+                raise httpx.ConnectError("task service connection failed", request=request)
+            if "error" in result:
+                raise httpx.TransportError("task service request failed", request=request)
+            import base64
 
-        async def request() -> httpx.Response:
-            try:
-                async with asyncio.timeout(total_timeout):
-                    async with httpx.AsyncClient(
-                        base_url=runtime.service_url,
-                        headers=headers,
-                        trust_env=False,
-                        timeout=None,
-                    ) as client:
-                        return await client.get(path)
-            except TimeoutError as exc:
-                request = httpx.Request("GET", f"{runtime.service_url}{path}")
-                raise httpx.ReadTimeout(
-                    f"request exceeded its {total_timeout:g}s total deadline",
-                    request=request,
-                ) from exc
-
-        return asyncio.run(request())
+            content = base64.b64decode(result["body"], validate=True)
+            return httpx.Response(
+                int(result["status"]),
+                headers=result["headers"],
+                content=content,
+                request=request,
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise httpx.TransportError(
+                "task service response was invalid", request=request
+            ) from exc
 
     return get
 
@@ -413,7 +476,6 @@ def wait_until_ready(
         if attempted and monotonic() >= deadline:
             break
         attempted = True
-        service_verified = False
         remaining = max(0.001, deadline - monotonic())
         try:
             response = request("/identity", min(request_timeout, remaining))
@@ -436,9 +498,12 @@ def wait_until_ready(
                     f"preserve it and inspect {runner_log} before stopping or replacing it "
                     "deliberately"
                 )
-        except (httpx.TransportError, httpx.HTTPStatusError):
+        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
             # Connection startup and transient server errors may settle before the bounded deadline.
-            pass
+            # A short final timeout cannot disprove a previously verified service; a refused
+            # connection or other concrete failure can, and must retain the service diagnosis.
+            if not isinstance(exc, httpx.TimeoutException):
+                service_verified = False
         if monotonic() >= deadline:
             break
         sleep(min(interval, max(0.0, deadline - monotonic())))

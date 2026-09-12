@@ -3,8 +3,11 @@
 # 2119-spec: runtime-readiness
 from __future__ import annotations
 
+import asyncio
 import http.server
 import json
+import os
+import subprocess
 import threading
 import time
 from collections.abc import Iterator
@@ -13,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from panopticon.terminal import runtime as runtime_module
 from panopticon.terminal.runtime import (
     RuntimeReadinessError,
     guard_before_migration,
@@ -24,6 +28,7 @@ from panopticon.terminal.runtime import (
 class _RuntimeHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         server = self.server
+        server.authorization.append(self.headers.get("Authorization"))  # type: ignore[attr-defined]
         body: object
         slow = False
         if self.path == "/identity":
@@ -74,6 +79,7 @@ def _runtime_server(*, slow_path: str | None) -> Iterator[tuple[Any, str]]:
     server.slow_path = slow_path  # type: ignore[attr-defined]
     server.instance_id = "pending"  # type: ignore[attr-defined]
     server.client_disconnected = threading.Event()  # type: ignore[attr-defined]
+    server.authorization = []  # type: ignore[attr-defined]
     thread = threading.Thread(target=server.serve_forever, name="runtime-deadline-server")
     thread.start()
     service_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -130,7 +136,21 @@ def test_runner_slow_drip_cannot_extend_overall_readiness_deadline() -> None:
 
 
 # 2119: 4.1, 4.2, 4.3, 4.11
-def test_total_request_deadline_retains_healthy_identity_and_runner_path() -> None:
+def test_total_request_deadline_retains_authenticated_healthy_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "runtime-secret-that-must-not-enter-argv"
+    commands: list[list[str]] = []
+    child_environments: list[dict[str, str]] = []
+    real_popen = subprocess.Popen
+
+    def recording_popen(command: list[str], **kwargs: Any) -> subprocess.Popen[str]:
+        commands.append(command)
+        child_environments.append(kwargs["env"])
+        return real_popen(command, **kwargs)
+
+    monkeypatch.setattr(runtime_module, "environment_token", lambda: secret)
+    monkeypatch.setattr(runtime_module.subprocess, "Popen", recording_popen)
     with _runtime_server(slow_path=None) as (server, service_url):
         runtime = resolve_runtime(service_url, environ={"HOME": "/tmp", "PATH": "/bin"})
         server.instance_id = runtime.instance_id
@@ -143,3 +163,63 @@ def test_total_request_deadline_retains_healthy_identity_and_runner_path() -> No
             "version": "deadline-test",
             "instance_id": runtime.instance_id,
         }
+        assert server.authorization == [f"Bearer {secret}", f"Bearer {secret}"]
+        assert all(secret not in argument for command in commands for argument in command)
+        assert child_environments == [{}, {}]
+
+
+# 2119: 4.1, 4.2, 4.3
+def test_healthy_readiness_request_works_inside_running_event_loop() -> None:
+    with _runtime_server(slow_path=None) as (server, service_url):
+        runtime = resolve_runtime(service_url, environ={"HOME": "/tmp", "PATH": "/bin"})
+        server.instance_id = runtime.instance_id
+
+        async def call_synchronous_readiness() -> dict[str, Any]:
+            return wait_until_ready(runtime, timeout=0.5, request_timeout=0.2)
+
+        identity = asyncio.run(call_synchronous_readiness())
+
+        assert identity["instance_id"] == runtime.instance_id
+
+
+# 2119: 4.1, 4.11
+def test_dns_resolution_is_inside_deadline_and_child_is_reaped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    child_pids: list[int] = []
+    real_popen = subprocess.Popen
+    slow_dns_prefix = """
+import socket
+import time
+
+_real_getaddrinfo = socket.getaddrinfo
+def _slow_getaddrinfo(*args, **kwargs):
+    time.sleep(0.75)
+    return _real_getaddrinfo(*args, **kwargs)
+socket.getaddrinfo = _slow_getaddrinfo
+"""
+
+    def slow_dns_popen(command: list[str], **kwargs: Any) -> subprocess.Popen[str]:
+        child_command = list(command)
+        source_index = child_command.index("-c") + 1
+        child_command[source_index] = slow_dns_prefix + child_command[source_index]
+        process = real_popen(child_command, **kwargs)
+        child_pids.append(process.pid)
+        return process
+
+    monkeypatch.setattr(runtime_module.subprocess, "Popen", slow_dns_popen)
+    with _runtime_server(slow_path=None) as (server, service_url):
+        runtime = resolve_runtime(
+            service_url.replace("127.0.0.1", "localhost"),
+            environ={"HOME": "/tmp", "PATH": "/bin"},
+        )
+        server.instance_id = runtime.instance_id
+        started = time.monotonic()
+
+        with pytest.raises(RuntimeReadinessError, match=r"did not answer.*migration was not run"):
+            guard_before_migration(runtime, request_timeout=0.05)
+
+        assert time.monotonic() - started < 0.3
+        assert len(child_pids) == 1
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pids[0], 0)

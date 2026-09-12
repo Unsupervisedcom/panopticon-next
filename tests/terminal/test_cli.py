@@ -299,6 +299,8 @@ def _assert_new_session_commands(calls: list[list[str]], state_root: Path) -> No
             item.startswith(("ANTHROPIC_API_KEY=", "CODEX_API_KEY=", "GH_TOKEN="))
             for item in command
         )
+        assert command[-3:-1] == ["/bin/sh", "-c"]
+        command = shlex.split(command[-1])
         executable = command.index(sys.executable)
         module, extra = modules[name]
         assert command[executable : executable + 3 + len(extra)] == [
