@@ -266,3 +266,31 @@ def test_setup_accepts_config_parent_alias_without_following_secret_leaf(
         connection = credentials.connect("claude", secret_fn=lambda _: "selected-test")
     assert credentials.configured(connection)
     assert (config / "secrets" / connection.env_file).stat().st_mode & 0o777 == 0o600
+
+
+# 2119: 1.4
+def test_bootstrap_auth_does_not_skip_agent_setup_but_complete_connection_can_be_reused(
+    private_config: Path,
+) -> None:
+    from panopticon.taskservice.auth import ensure_bootstrap_credential
+    from panopticon.terminal.setup import configure_connection
+
+    reference = ensure_bootstrap_credential()
+    bootstrap = private_config / reference
+    before = bootstrap.read_bytes()
+    assert credentials.load_connections() == {}
+    prompts = []
+
+    def secret(prompt):
+        prompts.append(prompt)
+        return "explicit-agent-test-token"
+
+    connection = configure_connection(input_fn=answers("1"), secret_fn=secret)
+    assert len(prompts) == 1 and "Claude token" in prompts[0]
+    assert credentials.connection_values(connection) == {
+        "CLAUDE_CODE_OAUTH_TOKEN": "explicit-agent-test-token"
+    }
+    assert bootstrap.read_bytes() == before
+    reused = configure_connection(input_fn=answers("1", ""), secret_fn=answers())
+    assert reused == connection
+    assert bootstrap.read_bytes() == before
