@@ -32,6 +32,23 @@ from panopticon.workflows import Spike
 TOKEN = "isolated-operator-test-credential"
 
 
+def _file_state(path: Path) -> tuple[bytes, tuple[int, ...]]:
+    contents = path.read_bytes()
+    info = path.lstat()
+    # Reading may update atime; preserve all identity, permission, and modification checks.
+    return contents, (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_nlink,
+        info.st_uid,
+        info.st_gid,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
 @pytest.fixture
 def config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "config"
@@ -84,16 +101,16 @@ def test_live_reuse_and_rotation_never_overwrite_existing_operator_file(
     assert not config.exists()
     persist_operator_token(allow_create=True)
     path = config / "secrets" / OPERATOR_AUTH_FILE
-    before = (path.read_bytes(), path.stat())
+    before = _file_state(path)
     persist_operator_token(allow_create=False)
-    assert (path.read_bytes(), path.stat()) == before
+    assert _file_state(path) == before
     monkeypatch.setenv("PANOPTICON_OPERATOR_TOKEN", "different-operator-test")
     for allow_create in (False, True):
         with pytest.raises(ValueError, match="differs") as failure:
             persist_operator_token(allow_create=allow_create)
         assert TOKEN not in str(failure.value)
         assert "different-operator-test" not in str(failure.value)
-        assert (path.read_bytes(), path.stat()) == before
+        assert _file_state(path) == before
 
 
 @pytest.mark.parametrize("unsafe", ["symlink", "public", "malformed"])
@@ -108,11 +125,11 @@ def test_operator_file_rejects_unsafe_input_without_disclosure_or_mutation(
         target = tmp_path / "target"
         path.rename(target)
         path.symlink_to(target)
-    before = (path.lstat(), path.read_bytes())
+    before = _file_state(path)
     with pytest.raises(ValueError) as failure:
         operator_token()
     assert TOKEN not in str(failure.value)
-    assert (path.lstat(), path.read_bytes()) == before
+    assert _file_state(path) == before
 
 
 def test_file_backed_client_and_service_require_distinct_operator_and_fleet_authority(
