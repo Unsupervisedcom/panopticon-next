@@ -47,8 +47,13 @@ def _service_command(
 
 
 def _host_options(command: str) -> list[str]:
-    launch = command.split(" 2>&1", maxsplit=1)[0]
+    wrapper = shlex.split(command)
+    assert wrapper[0] == "env"
+    assert wrapper[-3:-1] == ["/bin/sh", "-c"]
+    # The pipeline is one quoted shell argument after the shared environment boundary.
+    launch = wrapper[-1].split(" 2>&1", maxsplit=1)[0]
     argv = shlex.split(launch)
+    assert argv[1:3] == ["-m", "panopticon.taskservice"]
     return [argv[index + 1] for index, item in enumerate(argv) if item == "--host"]
 
 
@@ -132,11 +137,12 @@ def test_integrated_service_shell_quotes_configured_host(
 # 2119: REQ-035.29.1
 # 2119: REQ-035.52.4
 @pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+@pytest.mark.parametrize("configured_host", [None, ""])
 def test_disabled_integrated_service_defaults_to_loopback(
-    monkeypatch: pytest.MonkeyPatch, platform: str
+    monkeypatch: pytest.MonkeyPatch, platform: str, configured_host: str | None
 ) -> None:
     monkeypatch.setenv("PANOPTICON_SERVICE_AUTH_MODE", "disabled")
-    command = _service_command(monkeypatch, platform=platform)
+    command = _service_command(monkeypatch, platform=platform, configured_host=configured_host)
     assert _host_options(command) == ["127.0.0.1"]
 
 

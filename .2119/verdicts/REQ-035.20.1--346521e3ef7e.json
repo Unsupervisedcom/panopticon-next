@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.20.1--346521e3ef7e",
+  "requirementId": "REQ-035.20.1",
+  "hash": "346521e3ef7e",
+  "verdict": "pass",
+  "summary": "Real setup shell helpers perform task read, repo read, and credential-dir PATCH with three exact bearer-config stdin records and token-free argv; unauthenticated or argv-token calls fail.",
+  "timestamp": "2026-09-12T08:37:01.655Z"
+}

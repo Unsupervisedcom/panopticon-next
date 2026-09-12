@@ -39,6 +39,18 @@ class _Completed:
     returncode = 1
 
 
+def _pipeline_argv(command: str) -> list[str]:
+    """Inspect the actual producer/sink pipeline inside its shared environment wrapper."""
+    wrapper = shlex.split(command)
+    assert wrapper[0] == "env"
+    assert wrapper[-3:-1] == ["/bin/sh", "-c"]
+    pipeline = shlex.split(wrapper[-1])
+    assert pipeline.count("|") == 1
+    assert "2>&1" in pipeline[: pipeline.index("|")]
+    assert pipeline[-3:-1] == ["-m", "panopticon.terminal.log_tee"]
+    return pipeline
+
+
 def _service(root: Path) -> TaskService:
     root.mkdir(parents=True, exist_ok=True)
     service = TaskService(
@@ -886,7 +898,7 @@ def test_integrated_stack_uses_private_per_user_state_logs(
     paths: list[Path] = []
     for session in ("service", "runner"):
         command = session_commands[session]
-        argv = shlex.split(command)
+        argv = _pipeline_argv(command)
         assert argv[-3:-1] == ["-m", "panopticon.terminal.log_tee"]
         log_path = Path(argv[-1])
         log_path.relative_to(expected_root)
@@ -913,7 +925,7 @@ def test_integrated_stack_refuses_symlinked_log_paths(
 
     terminal_cli._start_sessions(run=initial_record)
     commands = [call[-1] for call in initial_calls if "new-session" in call]
-    log_paths = [Path(shlex.split(command)[-1]) for command in commands]
+    log_paths = [Path(_pipeline_argv(command)[-1]) for command in commands]
     outside = tmp_path / f"outside-{target}"
     outside.mkdir()
     if target == "directory":
@@ -1077,7 +1089,7 @@ def test_integrated_stack_tees_identical_output_to_tmux_pane_and_log(
                 ["tmux", "-L", socket_name, "new-session", "-d", "-s", session, command],
                 check=True,
             )
-            log_path = Path(shlex.split(command)[-1])
+            log_path = Path(_pipeline_argv(command)[-1])
             deadline = time.monotonic() + 3
             while not log_path.exists() or "stderr-line" not in log_path.read_text():
                 if time.monotonic() >= deadline:

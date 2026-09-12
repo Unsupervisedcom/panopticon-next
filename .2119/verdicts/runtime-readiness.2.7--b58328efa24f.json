@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.7--b58328efa24f",
+  "requirementId": "runtime-readiness.2.7",
+  "hash": "b58328efa24f",
+  "verdict": "pass",
+  "summary": "Both migration and readiness checks reject unsupported revision 2 and noninteger revision representations with specific errors; genuine revision 1 succeeds on the live path. Unsupported identity acceptance is detected.",
+  "timestamp": "2026-09-12T09:34:26.021Z"
+}

@@ -134,6 +134,9 @@ class Workflow(ABC):
     #: governs a ``"shell"`` task: default ``False`` (an empty task dir — the common case for a
     #: utility that doesn't touch repo code), set ``True`` when the script needs the checkout.
     clone_repo: ClassVar[bool] = False
+    #: Preserve the task checkout after COMPLETE when it is the durable result of the work.
+    #: DROPPED tasks still discard their checkout; runtime credentials are always cleaned.
+    retain_completed_workspace: ClassVar[bool] = False
     #: A ``"shell"`` workflow's start directory, overriding the default (the task's own directory).
     #: ``None`` (default) runs in the task dir; set an absolute path for a workflow that operates
     #: somewhere else (e.g. the operator's home). Ignored for ``"docker"`` (which works in ``/workspace``).

@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.3.4--42a4b4fce903",
+  "requirementId": "runtime-readiness.3.4",
+  "hash": "42a4b4fce903",
+  "verdict": "pass",
+  "summary": "A compatible intended identity, even with a different package version, must return COMPATIBLE_SERVICE_LIVE. Reporting absence or refusing that healthy service fails the decision assertion.",
+  "timestamp": "2026-09-12T09:34:29.509Z"
+}

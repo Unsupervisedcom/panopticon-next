@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.5.2--0712acf11ef2",
+  "requirementId": "runtime-readiness.5.2",
+  "hash": "0712acf11ef2",
+  "verdict": "pass",
+  "summary": "Unknown kind and unsupported revision forbid every process boundary, a real service under a different instance and a real legacy health-only server forbid tmux and migration while fleet state stays equal, and a real inert tmux service session is still present after startup refuses with the inert diagnosis.",
+  "timestamp": "2026-09-12T09:58:10.541Z"
+}

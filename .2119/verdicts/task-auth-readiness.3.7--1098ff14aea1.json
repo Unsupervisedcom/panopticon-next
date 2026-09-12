@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.7--1098ff14aea1",
+  "requirementId": "task-auth-readiness.3.7",
+  "hash": "1098ff14aea1",
+  "verdict": "pass",
+  "summary": "Claim rejected by repair hold logs claim rejected with the service's paused reason.",
+  "timestamp": "2026-09-12T09:07:51.037Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.6.4--194732af4285",
+  "requirementId": "REQ-048.6.4",
+  "hash": "194732af4285",
+  "verdict": "fail",
+  "summary": "The every-other-repo-field boundary is tested only with name, alone or beside credential_dir; other mutable fields could be allowed unnoticed. Parametrize the repo update field inventory, malformed value types and both terminal states while checking unchanged persistence.",
+  "timestamp": "2026-09-12T09:14:27.143Z"
+}

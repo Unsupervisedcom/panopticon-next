@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.11--08eea7bed166",
+  "requirementId": "foreground-setup.2.11",
+  "hash": "08eea7bed166",
+  "verdict": "pass",
+  "summary": "Harness token copied into the repo's own file alongside repo-only values; Codex repos share only credential_dir with distinct env files.",
+  "timestamp": "2026-09-12T09:07:06.568Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.6--42748dad3d8a",
+  "requirementId": "task-auth-readiness.3.6",
+  "hash": "42748dad3d8a",
+  "verdict": "pass",
+  "summary": "Gateway URL, Codex key/token/dir, and every registered Pi env var and provider file transport have positive and absent controls.",
+  "timestamp": "2026-09-12T09:07:49.921Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.7.4--5db097ae9ffa",
+  "requirementId": "REQ-048.7.4",
+  "hash": "5db097ae9ffa",
+  "verdict": "pass",
+  "summary": "An ordinary task with real child and grandchild relations cannot create children, read or preplan descendants through REST/MCP, or hold their liveness; collection output remains self-only.",
+  "timestamp": "2026-09-12T09:14:29.293Z"
+}

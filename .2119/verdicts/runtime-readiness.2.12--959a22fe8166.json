@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.12--959a22fe8166",
+  "requirementId": "runtime-readiness.2.12",
+  "hash": "959a22fe8166",
+  "verdict": "pass",
+  "summary": "Legacy-response tests require the legacy diagnosis, leave-it-running instruction and panopticon stop remedy. An undifferentiated failure or omission of deliberate replacement guidance fails these assertions.",
+  "timestamp": "2026-09-12T09:34:21.028Z"
+}

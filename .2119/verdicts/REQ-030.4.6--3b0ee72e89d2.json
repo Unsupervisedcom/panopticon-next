@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.6--3b0ee72e89d2",
+  "requirementId": "REQ-030.4.6",
+  "hash": "3b0ee72e89d2",
+  "verdict": "fail",
+  "summary": "No-tool non-darwin cases cover only linux. Add a second non-darwin platform with no candidates and with pbcopy alone; an incorrect default tool on other platforms currently survives.",
+  "timestamp": "2026-09-12T09:13:47.606Z"
+}

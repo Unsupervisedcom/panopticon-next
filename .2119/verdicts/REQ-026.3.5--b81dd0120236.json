@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.3.5--b81dd0120236",
+  "requirementId": "REQ-026.3.5",
+  "hash": "b81dd0120236",
+  "verdict": "pass",
+  "summary": "Real API/spawner checks retain an unclaimed gated task, and dashboard tests assert its row before and after a feed refresh; hiding pending gated rows fails.",
+  "timestamp": "2026-09-12T08:29:36.446Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-046.2.1--60eee9eb0029",
+  "requirementId": "REQ-046.2.1",
+  "hash": "60eee9eb0029",
+  "verdict": "pass",
+  "summary": "linux and win32 each asserted as exactly ['0.0.0.0'] with PANOPTICON_HOST unset and empty; autouse conftest clears the auth-mode variable so the enforced default is what is observed, and a loopback default on either platform fails the equality.",
+  "timestamp": "2026-09-12T09:58:24.833Z"
+}

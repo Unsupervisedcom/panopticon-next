@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.3.1--787c0df5b78b",
+  "requirementId": "REQ-030.3.1",
+  "hash": "787c0df5b78b",
+  "verdict": "pass",
+  "summary": "Each of the four real command builders loads the shared config and sources it before new-session; config option/binding tests and a corrupted-existing-server integration reject omitted defaults and late application.",
+  "timestamp": "2026-09-12T09:13:43.850Z"
+}

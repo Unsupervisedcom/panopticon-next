@@ -1960,6 +1960,45 @@ async def test_pressing_t_with_no_running_session_does_not_signal() -> None:
         assert app.is_running
 
 
+@pytest.mark.parametrize(
+    "detail",
+    [
+        "Connect claude in foreground setup; no task credentials are configured.",
+        "Command ['docker', 'run'] failed: [missing image]",
+    ],
+)
+@pytest.mark.parametrize("runner_host", [None, "runner.example.invalid"])
+@pytest.mark.parametrize("container_status", ["failed", "paused"])
+async def test_failed_attach_displays_reason_and_recovery_without_switching(
+    detail: str, runner_host: str | None, container_status: str
+) -> None:
+    from textual.widgets._toast import Toast
+
+    picked: list[tuple[str, str | None, str]] = []
+    task = {
+        **_TASK,
+        "container_status": container_status,
+        "lifecycle_detail": detail,
+        "runner_host": runner_host,
+    }
+    client = _FakeClient([task])
+    app = Dashboard(client, on_switch=lambda s, h, label: picked.append((s, h, label)))
+    async with app.run_test(size=(80, 24), notifications=True) as pilot:
+        await pilot.press("t")
+        await pilot.pause()
+        rendered = str(app.query_one(Toast).render())
+        assert detail in rendered
+        if runner_host:
+            assert f"setup on {runner_host}" in rendered
+            assert "open its dashboard and press g, then s" in rendered
+        else:
+            assert "Press g to open repos, then s for setup" in rendered
+        assert "press R to retry this task" in rendered
+        assert picked == []
+        assert client.released == []
+        assert app.is_running
+
+
 async def test_pressing_s_switches_to_the_service_session_when_one_exists() -> None:
     # `s` switches to the task-service tmux session via on_service (record + detach, like `t`),
     # and the dashboard stays alive; on_service returns True when a service session exists.
@@ -5394,33 +5433,73 @@ async def test_workflows_screen_refuses_builtin_deletion_with_notification(
         assert notices == ["Built-in workflows cannot be deleted."]
 
 
-async def test_pressing_s_in_the_repos_screen_creates_a_setup_repo_task() -> None:
-    # The setup-repo workflow is hidden from the pickers; the repos modal's `s` hotkey is how it's
-    # launched — one setup-repo task for the highlighted repo, seeded with a memo.
+# 2119: foreground-setup.1.3
+async def test_pressing_s_runs_foreground_setup_for_selected_repo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import contextlib
+
+    from panopticon.terminal import setup
+
     fake = _FakeClient(
         [_TASK],
         repos=[
             {
                 "id": "r1",
-                "name": "acme/widgets",
-                "git_url": "https://x/r1.git",
+                "name": "Example",
+                "git_url": "https://example.test/r1",
                 "default_base": "main",
             }
         ],
     )
     app = Dashboard(fake)  # type: ignore[arg-type]
+    selected = []
+    monkeypatch.setattr(app, "suspend", contextlib.nullcontext)
+    monkeypatch.setattr(
+        setup, "configure_repo", lambda client, repo_id: selected.append((client, repo_id)) or True
+    )
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("g")
         await pilot.pause()
         await pilot.press("s")
         await pilot.pause()
-        # creating the task dismisses the repos modal, dropping back to the task view
-        assert not isinstance(app.screen, dashboard.ReposScreen)
-    assert len(fake.created) == 1
-    repo_id, workflow, memo, _, _, _ = fake.created[0]
-    assert (repo_id, workflow) == ("r1", "setup-repo")
-    assert memo is not None and "acme/widgets" in memo
+        assert isinstance(app.screen, dashboard.ReposScreen)
+    assert selected == [(fake, "r1")]
+    assert fake.created == []
+
+
+# 2119: foreground-setup.1.3
+@pytest.mark.parametrize("failure", [KeyboardInterrupt, ValueError])
+async def test_setup_resume_keeps_the_selected_repository(
+    monkeypatch: pytest.MonkeyPatch, failure: type[BaseException]
+) -> None:
+    from panopticon.terminal import setup
+
+    repos = [
+        {"id": name, "name": name, "git_url": f"/example/{name}", "default_base": "main"}
+        for name in ("first", "second")
+    ]
+    fake = _FakeClient([_TASK], repos=repos)
+    app = Dashboard(fake)
+    selected: list[str] = []
+    monkeypatch.setattr(app, "suspend", contextlib.nullcontext)
+
+    def cancel(client: Any, repo_id: str) -> bool:
+        selected.append(repo_id)
+        raise failure("setup interrupted")
+
+    monkeypatch.setattr(setup, "configure_repo", cancel)
+    async with app.run_test() as pilot:
+        await pilot.press("g", "j", "s")
+        await pilot.pause()
+        assert isinstance(app.screen, dashboard.ReposScreen)
+        assert app.screen._current == "second"
+        await pilot.press("s")
+        await pilot.pause()
+        assert selected == ["second", "second"]
+        assert fake.created == []
+        assert fake.released == []
 
 
 async def test_no_repos_auto_opens_the_repos_screen_on_start() -> None:
@@ -7646,3 +7725,50 @@ async def test_deleting_a_shared_file_workflow_names_every_sibling(tmp_path) -> 
         box = app.screen.query_one("#delete-workflow-box")
         prompt = " ".join(str(label.render()) for label in box.query(Label))
         assert "2119-auto" in prompt and "2119-human" in prompt
+
+
+async def test_repo_setup_hold_is_visible_and_service_refusal_detail_reaches_operator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import contextlib
+
+    import httpx
+
+    from panopticon.terminal import setup
+
+    fake = _FakeClient(
+        [_TASK],
+        repos=[
+            {
+                "id": "r1",
+                "name": "Example",
+                "git_url": "https://example.test/r1",
+                "default_base": "main",
+                "launch_paused": True,
+            }
+        ],
+    )
+    app = Dashboard(fake)
+    notices = []
+    monkeypatch.setattr(app, "suspend", contextlib.nullcontext)
+
+    def refuse(*args, **kwargs):
+        request = httpx.Request("POST", "http://test/repos/r1/setup")
+        response = httpx.Response(
+            409, json={"detail": "Confirm the old runner has stopped."}, request=request
+        )
+        response.raise_for_status()
+
+    monkeypatch.setattr(setup, "configure_repo", refuse)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("g")
+        await pilot.pause()
+        screen = app.screen
+        table = screen.query_one("#repos", DataTable)
+        assert "held — s to resume" in table.get_row("r1")
+        monkeypatch.setattr(screen, "notify", lambda message, **kwargs: notices.append(message))
+        await pilot.press("s")
+        await pilot.pause()
+        assert "Confirm the old runner has stopped." in notices[-1]
+        assert "held — s to resume" in table.get_row("r1")

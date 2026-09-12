@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.3.2--b62ac016caf2",
+  "requirementId": "REQ-030.3.2",
+  "hash": "b62ac016caf2",
+  "verdict": "pass",
+  "summary": "Container, shell, stack, and dashboard tests inspect the first socket command and require its config before pane-creating new-session; the config includes the independently pinned history-limit 50000.",
+  "timestamp": "2026-09-12T09:13:44.389Z"
+}

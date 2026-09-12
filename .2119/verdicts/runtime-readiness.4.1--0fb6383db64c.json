@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.1--0fb6383db64c",
+  "requirementId": "runtime-readiness.4.1",
+  "hash": "0fb6383db64c",
+  "verdict": "pass",
+  "summary": "Real slow-drip and non-responsive listeners bound the identity probe and total wait within measured wall-clock limits with the client disconnect observed, both requests carry the bearer credential, fake-clock cases stop exactly at the configured deadline, and readiness runs only after tmux creation in the ordered startup test.",
+  "timestamp": "2026-09-12T09:57:46.475Z"
+}

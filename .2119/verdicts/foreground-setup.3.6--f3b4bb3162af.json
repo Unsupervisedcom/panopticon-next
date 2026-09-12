@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.3.6--f3b4bb3162af",
+  "requirementId": "foreground-setup.3.6",
+  "hash": "f3b4bb3162af",
+  "verdict": "pass",
+  "summary": "Login receives a fresh CODEX_HOME; the personal auth.json content is asserted unchanged so writing there would fail.",
+  "timestamp": "2026-09-12T09:07:15.850Z"
+}

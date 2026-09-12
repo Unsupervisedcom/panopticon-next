@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.1.4--469ad77cb546",
+  "requirementId": "REQ-031.1.4",
+  "hash": "469ad77cb546",
+  "verdict": "pass",
+  "summary": "Refusal returns 1 from main() for start, host, and bare invocations, and a real subprocess run of the CLI with a failing docker shim on PATH exits non-zero while printing exactly the preflight refusal, so a wrapper discarding the status or a refusal exiting 0 is rejected.",
+  "timestamp": "2026-09-12T09:57:19.099Z"
+}

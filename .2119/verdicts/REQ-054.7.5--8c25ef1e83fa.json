@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.5--8c25ef1e83fa",
+  "requirementId": "REQ-054.7.5",
+  "hash": "8c25ef1e83fa",
+  "verdict": "pass",
+  "summary": "Incomplete foreground setup output must not say configured or setup complete and leaves launches held; legacy final gate loops on missing harness auth or GH_TOKEN until a re-check finds them.",
+  "timestamp": "2026-09-12T09:06:51.366Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.14.1--94758fec7639",
+  "requirementId": "REQ-035.14.1",
+  "hash": "94758fec7639",
+  "verdict": "pass",
+  "summary": "create_app must raise before returning for absent, missing, unreadable, traversal, absolute-escape and symlink references; malformed objects, invalid read/write arrays, empty write and overlapping tokens are independently exercised, with optional read accepted.",
+  "timestamp": "2026-09-12T09:13:49.698Z"
+}

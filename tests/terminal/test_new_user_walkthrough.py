@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -20,11 +21,16 @@ RELEASE_VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"
 
 def test_install_docs_name_one_public_install_and_onboarding_command() -> None:
     # 2119: REQ-054.1.1
-    command = "pipx install panopticon-next && panopticon quickstart"
+    install_command = "pipx install panopticon-next"
+    onboarding_command = "panopticon quickstart"
     for document in (README, WALKTHROUGH):
-        assert command in document
-        remaining = document.replace(command, "")
-        remaining = remaining.replace("pipx install panopticon-next", "")
+        lines = [line.strip() for line in document.splitlines()]
+        lines += re.findall(r"(?<!`)`([^`\n]+)`(?!`)", document)
+        assert install_command in lines
+        assert onboarding_command in lines
+        assert document.index(install_command) < document.index(onboarding_command)
+        assert not re.search(r"pipx install panopticon-next[^\s`]", document)
+        remaining = document.replace(install_command, "")
         remaining = remaining.replace(
             'pipx install "./panopticon_next-${PANOPTICON_RELEASE_VERSION}-py3-none-any.whl"',
             "",
@@ -40,7 +46,6 @@ def test_release_marker_cannot_consume_the_wheel_compatibility_tag() -> None:
 
 
 def test_ci_installs_the_wheel_and_runs_its_executable_outside_the_checkout() -> None:
-    # 2119: REQ-054.1.2
     smoke = CI.split("- name: Smoke-test clean wheel", 1)[1]
     assert "uv pip install --python .wheel-venv/bin/python dist/*.whl" in smoke
     assert "cd /tmp" in smoke
@@ -53,8 +58,11 @@ def test_walkthrough_uses_self_review_and_distinguishes_peer_review() -> None:
     # 2119: REQ-054.4.3
     assert "Select `github-self-reviewed`" in WALKTHROUGH_TEXT
     assert "the initiating operator approves the work" in WALKTHROUGH_TEXT
-    assert "`github-peer-reviewed`" in WALKTHROUGH_TEXT
-    assert "requires another person to approve the pull request" in WALKTHROUGH_TEXT
+    normalized = " ".join(WALKTHROUGH_TEXT.split())
+    assert (
+        "`github-peer-reviewed` is also available, but requires another person to approve the "
+        "pull request."
+    ) in normalized
 
 
 def test_walkthrough_names_the_real_advance_command_for_supported_evaluator_harnesses() -> None:
@@ -88,7 +96,7 @@ def test_walkthrough_has_ordered_success_checks_for_every_evaluation_stage() -> 
     # 2119: REQ-054.7.3
     success_checks = [part.casefold() for part in WALKTHROUGH.split("Success check:")[1:]]
     expected_checks = (
-        ("quickstart", "dashboard", "setup-repo"),
+        ("setup", "credentials configured", "dashboard"),
         ("fresh shell", "panopticon tasks", "401"),
         ("task", "queued"),
         ("container", "live"),
@@ -132,11 +140,13 @@ def test_walkthrough_documents_retention_and_verifiable_teardown() -> None:
 def test_walkthrough_names_every_input_instead_of_relying_on_hidden_state() -> None:
     # 2119: REQ-054.7.4
     documented_inputs = (
-        "pipx install panopticon-next && panopticon quickstart",
-        "cd /path/to/disposable-repo",
-        "git remote get-url origin",
-        "working authentication for the selected harness",
-        "gh_token",
+        "pipx install panopticon-next",
+        "panopticon quickstart",
+        "run setup from any directory",
+        "choose claude or codex",
+        "token or api key with hidden input",
+        "repository's url or local checkout path",
+        "github token scoped to the disposable repository",
         "open a new shell",
         "unset panopticon_service_auth_file panopticon_service_auth_mode",
     )
@@ -183,6 +193,8 @@ def test_repeated_stop_removes_runtime_and_preserves_stored_state(tmp_path: Path
     fake_bin.mkdir()
     command_log = tmp_path / "commands.log"
     docker_removed = tmp_path / "docker-removed"
+    tmux_alive = tmp_path / "tmux-alive"
+    tmux_alive.touch()
     docker = fake_bin / "docker"
     docker.write_text(
         """#!/bin/sh
@@ -199,6 +211,7 @@ fi
     tmux.write_text(
         """#!/bin/sh
 printf 'tmux:%s\\n' "$*" >> "$PANOPTICON_TEST_COMMAND_LOG"
+if [ "$3" = "kill-server" ]; then /bin/rm -f "$PANOPTICON_TEST_TMUX_ALIVE"; else exit 9; fi
 """
     )
     tmux.chmod(0o755)
@@ -211,6 +224,7 @@ printf 'tmux:%s\\n' "$*" >> "$PANOPTICON_TEST_COMMAND_LOG"
             "PANOPTICON_CACHE": str(cache_root),
             "PANOPTICON_TEST_COMMAND_LOG": str(command_log),
             "PANOPTICON_TEST_DOCKER_REMOVED": str(docker_removed),
+            "PANOPTICON_TEST_TMUX_ALIVE": str(tmux_alive),
             "PATH": f"{fake_bin}{os.pathsep}{environment['PATH']}",
         }
     )
@@ -229,8 +243,10 @@ printf 'tmux:%s\\n' "$*" >> "$PANOPTICON_TEST_COMMAND_LOG"
         )
         assert result.returncode == 0, result.stderr
         assert _snapshot_files(retained_paths) == before
+        assert not tmux_alive.exists()
 
     commands = command_log.read_text().splitlines()
     assert commands.count("docker:ps --all --quiet --filter label=panopticon.task") == 2
     assert commands.count("docker:rm --force container-one container-two") == 1
     assert commands.count("tmux:-L panopticon kill-server") == 2
+    assert len(commands) == 5

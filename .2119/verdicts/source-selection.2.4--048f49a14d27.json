@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.2.4--048f49a14d27",
+  "requirementId": "source-selection.2.4",
+  "hash": "048f49a14d27",
+  "verdict": "pass",
+  "summary": "Selecting a bundle through select_source must print 'fixed snapshot' in the confirmation output; the bundle cannot be a cwd suggestion so confirmation is the only selection output, and omitting the description fails.",
+  "timestamp": "2026-09-12T09:22:35.700Z"
+}

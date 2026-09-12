@@ -49,6 +49,7 @@ from panopticon.core.models import (
 )
 from panopticon.core.store import AlreadyExists, NotFound, StoreError
 from panopticon.core.workflow import IllegalTransition, InvalidWorkflow, ResponsibilitiesNotMet
+from panopticon.taskservice.operator_auth import operator_token as load_operator_token
 from panopticon.taskservice.service import (
     AlreadyClaimed,
     NotAuthorized,
@@ -281,6 +282,8 @@ class TaskSummaryOut(BaseModel):
     state: str
     turn: Actor
     blocked: bool
+    launch_paused: bool = False
+    launch_pause_reason: str | None = None
     attention: bool
     memo: str | None
     initial_prompt: str | None
@@ -320,6 +323,8 @@ class TaskOut(BaseModel):
     state: str
     turn: Actor
     blocked: bool
+    launch_paused: bool = False
+    launch_pause_reason: str | None = None
     attention: bool
     memo: (
         str | None
@@ -374,6 +379,14 @@ class TaskOut(BaseModel):
 class RunnerOut(BaseModel):
     id: str  # runner_id (the runner's own identifier, e.g. "local" or a hostname alias)
     host: str | None  # hostname the runner registered with; None if not provided
+    instance_id: str | None = None  # non-secret integrated-runtime identity
+
+
+class RuntimeIdentityOut(BaseModel):
+    service: str
+    api_revision: int
+    version: str
+    instance_id: str | None
 
 
 class RepoIn(BaseModel):
@@ -402,6 +415,7 @@ class RepoOut(BaseModel):
     name: str
     git_url: str
     default_base: str
+    launch_paused: bool = False
     env_file: str | None = None
     image_layer_file: str | None = None
     capabilities: dict[str, Any] = Field(default_factory=dict)
@@ -651,6 +665,7 @@ class LifecycleIn(BaseModel):
     runner_id: str
     phase: LifecyclePhase
     detail: str | None = None
+    pause_launch: bool = False
 
 
 class RegistrationOut(BaseModel):
@@ -714,10 +729,14 @@ def create_app(
     *,
     auth_file: str | None = None,
     auth_mode: str | None = None,
+    instance_id: str | None = None,
     secrets_dir: str | Path | None = None,
     browser_origins: list[str] | None = None,
 ) -> FastAPI:
-    operator_token = os.environ.get("PANOPTICON_OPERATOR_TOKEN")
+    operator_token = load_operator_token(secrets_dir=secrets_dir)
+    resolved_instance_id = (
+        instance_id if instance_id is not None else os.environ.get("PANOPTICON_INSTANCE_ID")
+    )
     # MCP over streamable HTTP, mounted at /mcp on the same control plane (operations=tools,
     # artifacts=resources). Its path is set to "/" so the mount point *is* the endpoint (/mcp).
     # The session manager must run for the app's lifetime, so its context is driven by the
@@ -1131,7 +1150,9 @@ def create_app(
             task, dependencies_blocking=await service.dependencies_blocking(task)
         ).value
         lifecycle = service.lifecycle(task.id)
-        out.lifecycle_detail = lifecycle.detail if lifecycle is not None else None
+        out.lifecycle_detail = (
+            lifecycle.detail if lifecycle is not None else task.launch_pause_reason
+        )
         if task.claimed_by is not None:
             out.runner_host = service.runner_host(task.claimed_by)
         return out
@@ -1147,7 +1168,9 @@ def create_app(
             dependencies_blocking=service.dependencies_blocking_in_snapshot(task, tasks_by_id),
         ).value
         lifecycle = service.lifecycle(task.id)
-        out.lifecycle_detail = lifecycle.detail if lifecycle is not None else None
+        out.lifecycle_detail = (
+            lifecycle.detail if lifecycle is not None else task.launch_pause_reason
+        )
         if task.claimed_by is not None:
             out.runner_host = service.runner_host(task.claimed_by)
         out.has_artifacts = has_artifacts
@@ -1165,6 +1188,10 @@ def create_app(
 
     @app.exception_handler(SessionConflict)
     async def _session_conflict(_: Request, exc: SessionConflict) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": redact_configured_tokens(str(exc))})
+
+    @app.exception_handler(NotReady)
+    async def _not_ready(_: Request, exc: NotReady) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": redact_configured_tokens(str(exc))})
 
     @app.exception_handler(IllegalTransition)
@@ -1212,6 +1239,17 @@ def create_app(
     @app.head("/healthz")
     async def healthz_head() -> JSONResponse:
         return health_response(include_body=False)
+
+    @app.get("/identity")
+    async def runtime_identity() -> RuntimeIdentityOut:
+        """Authenticated proof of the API contract and integrated runtime instance."""
+
+        return RuntimeIdentityOut(
+            service="panopticon-task-service",
+            api_revision=1,
+            version=__version__,
+            instance_id=resolved_instance_id,
+        )
 
     @app.get("/workflows")
     async def list_workflows() -> list[WorkflowInfo]:
@@ -1273,6 +1311,18 @@ def create_app(
         except ValueError as exc:  # e.g. attempting to change the id
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return RepoOut.model_validate(repo)
+
+    @app.post("/repos/{repo_id}/setup/begin")
+    async def begin_repo_setup(repo_id: str) -> RepoOut:
+        return RepoOut.model_validate(await service.begin_repo_setup(repo_id))
+
+    @app.post("/repos/{repo_id}/setup/finish")
+    async def finish_repo_setup(repo_id: str) -> RepoOut:
+        return RepoOut.model_validate(await service.finish_repo_setup(repo_id))
+
+    @app.post("/tasks/{task_id}/retry")
+    async def retry_task(task_id: str) -> TaskOut:
+        return await _task_out(await service.retry_task(task_id))
 
     @app.delete("/repos/{repo_id}", status_code=204)
     async def delete_repo(repo_id: str) -> Response:
@@ -1699,7 +1749,9 @@ def create_app(
 
     @app.put("/tasks/{task_id}/lifecycle")
     async def report_lifecycle(task_id: str, body: LifecycleIn) -> TaskOut:
-        await service.report_lifecycle(task_id, body.runner_id, body.phase, body.detail)
+        await service.report_lifecycle(
+            task_id, body.runner_id, body.phase, body.detail, pause_launch=body.pause_launch
+        )
         return await _task_out(await service.get_task(task_id))
 
     @app.delete("/tasks/{task_id}/lifecycle")
@@ -1720,6 +1772,7 @@ def create_app(
         runner_id: str,
         request: Request,
         host: str | None = Query(default=None),
+        instance_id: str | None = Query(default=None),
     ) -> StreamingResponse:
         """The host-liveness connection: a runner holds this stream open for its whole lifetime.
 
@@ -1731,7 +1784,7 @@ def create_app(
         transient blip self-heals. The optional ``host`` query param records the runner's hostname
         so the terminal supervisor can ssh-attach to its tasks.
         """
-        reg = await service.register_runner(runner_id, host=host)
+        reg = await service.register_runner(runner_id, host=host, instance_id=instance_id)
 
         async def hold() -> AsyncIterator[bytes]:
             try:
@@ -1747,14 +1800,20 @@ def create_app(
     @app.get("/runners")
     async def list_runners() -> list[RunnerOut]:
         """The runners currently holding a host-liveness connection (sorted by id, for stable reads)."""
-        return [RunnerOut(id=r.runner_id, host=r.host) for r in service.live_runner_registrations()]
+        return [
+            RunnerOut(id=r.runner_id, host=r.host, instance_id=r.instance_id)
+            for r in service.live_runner_registrations()
+        ]
 
     @app.get("/runners/{runner_id}")
     async def get_runner(runner_id: str) -> RunnerOut:
         """The registration details for a single live runner, or 404 if not connected."""
         if runner_id not in service.live_runners():
             raise HTTPException(status_code=404, detail=f"runner {runner_id!r} is not connected")
-        return RunnerOut(id=runner_id, host=service.runner_host(runner_id))
+        registration = next(
+            reg for reg in service.live_runner_registrations() if reg.runner_id == runner_id
+        )
+        return RunnerOut(id=runner_id, host=registration.host, instance_id=registration.instance_id)
 
     @app.post("/runners/{runner_id}/reclaim")
     async def reclaim(runner_id: str) -> list[TaskOut]:

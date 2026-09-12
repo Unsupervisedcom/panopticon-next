@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.3.7--c90e2beb52d7",
+  "requirementId": "runtime-readiness.3.7",
+  "hash": "c90e2beb52d7",
+  "verdict": "pass",
+  "summary": "Read-only guard events, integrated subprocess traps and real inert-session survival reject stopping sessions during the guard; healthy and incompatible live-state fixtures also remain unchanged.",
+  "timestamp": "2026-09-12T09:34:31.179Z"
+}

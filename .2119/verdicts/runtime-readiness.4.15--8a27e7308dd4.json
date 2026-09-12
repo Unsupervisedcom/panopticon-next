@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.15--8a27e7308dd4",
+  "requirementId": "runtime-readiness.4.15",
+  "hash": "8a27e7308dd4",
+  "verdict": "pass",
+  "summary": "Real repair wrappers assert repository and pending-task holds and a rejected competing claim at each file write and binding update. Success releases only the repository hold; write/update failures retain it and pending tasks remain held.",
+  "timestamp": "2026-09-12T09:34:35.537Z"
+}

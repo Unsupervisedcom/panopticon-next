@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.1.1--b7c7dbb27032",
+  "requirementId": "REQ-030.1.1",
+  "hash": "b7c7dbb27032",
+  "verdict": "pass",
+  "summary": "Fresh and existing real tmux servers verify mouse on, including repairing mouse off; emitted container, shell, stack, and dashboard session commands load the shared defaults before creation.",
+  "timestamp": "2026-09-12T09:13:39.586Z"
+}

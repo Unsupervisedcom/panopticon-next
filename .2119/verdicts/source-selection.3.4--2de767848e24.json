@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.3.4--2de767848e24",
+  "requirementId": "source-selection.3.4",
+  "hash": "2de767848e24",
+  "verdict": "pass",
+  "summary": "A real checkout is equivalent to its symlink alias and relative spelling but not to a sibling checkout named widget.git, proving canonical-path comparison without .git stripping",
+  "timestamp": "2026-09-12T09:32:43.874Z"
+}

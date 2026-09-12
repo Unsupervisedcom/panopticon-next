@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.1.9--630b088367b3",
+  "requirementId": "runtime-readiness.1.9",
+  "hash": "630b088367b3",
+  "verdict": "pass",
+  "summary": "A real task service is launched through the resolved session-environment argv with no --port flag and a stale PANOPTICON_PORT=8000 in the parent process, and an authenticated /identity with the resolved instance_id is served on the URL-selected port, so a launcher that failed to derive or pin the port would time out or answer on 8000; the default container callback port is asserted from the URL in both the unit and real tests; the integrated child-environment test proves _start_sessions emits the same pinned port.",
+  "timestamp": "2026-09-12T10:04:54.520Z"
+}

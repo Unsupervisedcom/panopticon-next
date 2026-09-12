@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.3--e39deb0dd2f2",
+  "requirementId": "runtime-readiness.2.3",
+  "hash": "e39deb0dd2f2",
+  "verdict": "pass",
+  "summary": "A nonmatching service kind must raise the distinct different-service failure with an address-selection remedy. Health-shaped data is also rejected; accepting the wrong kind fails those assertions.",
+  "timestamp": "2026-09-12T09:34:23.810Z"
+}

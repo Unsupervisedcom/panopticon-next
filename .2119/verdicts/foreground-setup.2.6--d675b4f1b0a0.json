@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.6--d675b4f1b0a0",
+  "requirementId": "foreground-setup.2.6",
+  "hash": "d675b4f1b0a0",
+  "verdict": "pass",
+  "summary": "Second repo bound to the same shared file retains that reference and the file content is unchanged after the first repo's replacement.",
+  "timestamp": "2026-09-12T09:07:01.543Z"
+}

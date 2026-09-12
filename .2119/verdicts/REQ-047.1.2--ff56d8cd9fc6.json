@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.1.2--ff56d8cd9fc6",
+  "requirementId": "REQ-047.1.2",
+  "hash": "ff56d8cd9fc6",
+  "verdict": "pass",
+  "summary": "A complete SSE event whose data suffix is a configured-token prefix followed by the blank line is asserted to be emitted unchanged with empty pending both at the chunk-function level and as the first body message through the real ASGI wrapper with more_body=True, so any implementation that withholds the tail is rejected.",
+  "timestamp": "2026-09-12T09:58:29.943Z"
+}

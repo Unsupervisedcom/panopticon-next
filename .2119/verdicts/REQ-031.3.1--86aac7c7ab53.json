@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.3.1--86aac7c7ab53",
+  "requirementId": "REQ-031.3.1",
+  "hash": "86aac7c7ab53",
+  "verdict": "pass",
+  "summary": "Spawner and host-to-spawner wiring defer an unreachable container task without claim, spawn, or lifecycle reports, then claim when reachability returns; claiming during deferral fails.",
+  "timestamp": "2026-09-12T08:29:50.079Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.8--78aed63777be",
+  "requirementId": "runtime-readiness.2.8",
+  "hash": "78aed63777be",
+  "verdict": "pass",
+  "summary": "The guard accepts a valid intended identity carrying a different package version, and readiness succeeds with synthetic diagnostic versions. Requiring package-version equality would reject these fixtures.",
+  "timestamp": "2026-09-12T09:34:26.606Z"
+}

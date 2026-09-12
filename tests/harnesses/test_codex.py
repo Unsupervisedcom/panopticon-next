@@ -18,7 +18,12 @@ import pytest
 
 from panopticon.core.models import Skill
 from panopticon.harnesses import INTERRUPT_PROMPT, BootstrapContext, LaunchContext
-from panopticon.harnesses.codex import CODEX_VERSION, CodexHarness, render_config
+from panopticon.harnesses.codex import (
+    CODEX_VERSION,
+    RECONCILE_AUTH_ENV,
+    CodexHarness,
+    render_config,
+)
 
 HARNESS = CodexHarness()
 
@@ -496,3 +501,114 @@ def test_image_layer_installs_the_pinned_release_for_both_architectures() -> Non
 
 def test_env_points_codex_at_the_per_task_config_dir(tmp_path: Path) -> None:
     assert HARNESS.env(_ctx(tmp_path)) == {"CODEX_HOME": str(tmp_path / ".codex")}
+
+
+@pytest.mark.parametrize("previous", ["apikey", "subscription", "dangling"])
+def test_explicit_repair_replaces_auth_leaf_and_preserves_sessions_and_shared_auth(
+    tmp_path: Path, previous: str
+) -> None:
+    config = tmp_path / ".codex"
+    config.mkdir()
+    sessions = config / "sessions"
+    sessions.mkdir()
+    history = sessions / "history.jsonl"
+    history.write_text("existing session history")
+    shared = tmp_path / "shared.json"
+    shared.write_text('{"tokens": {"access_token": "old-test"}}')
+    original = shared.read_bytes()
+    auth = config / "auth.json"
+    if previous == "apikey":
+        auth.write_text('{"OPENAI_API_KEY": "old-test"}')
+    else:
+        auth.symlink_to(shared if previous == "subscription" else tmp_path / "absent.json")
+    HARNESS.bootstrap(
+        _bootstrap_ctx(
+            tmp_path, environ={RECONCILE_AUTH_ENV: "1", "CODEX_API_KEY": "replacement-test"}
+        )
+    )
+    assert not auth.is_symlink()
+    assert json.loads(auth.read_text()) == {
+        "auth_mode": "apikey",
+        "OPENAI_API_KEY": "replacement-test",
+    }
+    assert auth.stat().st_mode & 0o777 == 0o600
+    assert shared.read_bytes() == original
+    assert history.read_text() == "existing session history"
+    assert list(config.glob(".auth-*")) == []
+
+
+def test_explicit_repair_rebinds_subscription_without_modifying_old_shared_auth(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / ".codex"
+    config.mkdir()
+    old = tmp_path / "old.json"
+    old.write_text("old shared auth")
+    auth = config / "auth.json"
+    auth.symlink_to(old)
+    new = tmp_path / "new"
+    new.mkdir()
+    (new / "auth.json").write_text("new shared auth")
+    HARNESS.bootstrap(
+        _bootstrap_ctx(
+            tmp_path,
+            environ={
+                RECONCILE_AUTH_ENV: "1",
+                "PANOPTICON_CREDENTIALS": str(new),
+                "CODEX_API_KEY": "ignored-test",
+            },
+        )
+    )
+    assert auth.is_symlink()
+    assert auth.resolve() == new / "auth.json"
+    assert old.read_text() == "old shared auth"
+    assert auth.read_text() == "new shared auth"
+
+
+def test_explicit_access_token_repair_removes_only_old_auth_link(tmp_path: Path) -> None:
+    config = tmp_path / ".codex"
+    config.mkdir()
+    shared = tmp_path / "shared.json"
+    shared.write_text("untouched")
+    auth = config / "auth.json"
+    auth.symlink_to(shared)
+    HARNESS.bootstrap(
+        _bootstrap_ctx(
+            tmp_path, environ={RECONCILE_AUTH_ENV: "1", "CODEX_ACCESS_TOKEN": "workspace-test"}
+        )
+    )
+    assert not auth.exists() and not auth.is_symlink()
+    assert shared.read_text() == "untouched"
+
+
+def test_explicit_repair_failure_preserves_existing_auth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / ".codex"
+    config.mkdir()
+    auth = config / "auth.json"
+    auth.write_text("old auth")
+
+    def fail_replace(*args: object) -> None:
+        raise OSError("replacement failed")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+    with pytest.raises(OSError, match="replacement failed"):
+        HARNESS.bootstrap(
+            _bootstrap_ctx(tmp_path, environ={RECONCILE_AUTH_ENV: "1", "CODEX_API_KEY": "new-test"})
+        )
+    assert auth.read_text() == "old auth"
+    assert list(config.glob(".auth-*")) == []
+
+
+@pytest.mark.parametrize("extra", [{}, {"PANOPTICON_CREDENTIALS": "/nonexistent-credential-test"}])
+def test_explicit_repair_missing_transport_cannot_fall_back_to_old_auth(
+    tmp_path: Path, extra: dict[str, str]
+) -> None:
+    config = tmp_path / ".codex"
+    config.mkdir()
+    auth = config / "auth.json"
+    auth.write_text("old auth")
+    with pytest.raises(ValueError, match="repair repository setup"):
+        HARNESS.bootstrap(_bootstrap_ctx(tmp_path, environ={RECONCILE_AUTH_ENV: "1", **extra}))
+    assert auth.read_text() == "old auth"

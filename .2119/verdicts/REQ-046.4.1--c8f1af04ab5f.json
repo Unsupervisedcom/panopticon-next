@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-046.4.1--c8f1af04ab5f",
+  "requirementId": "REQ-046.4.1",
+  "hash": "c8f1af04ab5f",
+  "verdict": "pass",
+  "summary": "AST test admits only a single return of a platform-equality conditional over constants (no calls, attributes, subscripts, decorators, or defaults), rejecting any selector that reads environment, filesystem, Docker, or network; behavioral tests trap every non-tmux subprocess call and fake docker presence while still expecting the static per-platform host.",
+  "timestamp": "2026-09-12T09:58:26.907Z"
+}

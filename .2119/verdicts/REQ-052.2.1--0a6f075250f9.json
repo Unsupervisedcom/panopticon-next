@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-052.2.1--0a6f075250f9",
+  "requirementId": "REQ-052.2.1",
+  "hash": "0a6f075250f9",
+  "verdict": "pass",
+  "summary": "Real ImageBuilder build selection and installer byte replacement are backed by a Docker-gated rebuilt-image import of revised source; stale installed content or rebuilding without delivering new source fails.",
+  "timestamp": "2026-09-12T08:29:44.385Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.3.5--ed990c1a97f8",
+  "requirementId": "source-selection.3.5",
+  "hash": "ed990c1a97f8",
+  "verdict": "pass",
+  "summary": "A real bundle matches its symlink alias but not a byte-identical copy at first or second.bundle, so the suffix is retained and content is not used for identity",
+  "timestamp": "2026-09-12T09:32:44.969Z"
+}

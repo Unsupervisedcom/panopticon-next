@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.1.3--a826c36f33dd",
+  "requirementId": "REQ-027.1.3",
+  "hash": "a826c36f33dd",
+  "verdict": "pass",
+  "summary": "Past and future finite deadlines are written and reread unchanged through the real service; rejecting past values or expiring them on read fails.",
+  "timestamp": "2026-09-12T08:29:42.117Z"
+}

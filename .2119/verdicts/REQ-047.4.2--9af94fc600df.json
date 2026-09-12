@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.4.2--9af94fc600df",
+  "requirementId": "REQ-047.4.2",
+  "hash": "9af94fc600df",
+  "verdict": "pass",
+  "summary": "Directory 0700 and both log files 0600 asserted via stat after startup; symlinked state root, symlinked service log, symlinked runner log, symlinked intermediate parent, and a log symlink swapped after validation each raise before any new-session call, with the symlink targets asserted untouched, so follow-then-write implementations fail.",
+  "timestamp": "2026-09-12T09:58:37.983Z"
+}

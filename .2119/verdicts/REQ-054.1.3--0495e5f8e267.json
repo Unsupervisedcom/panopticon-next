@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.1.3--0495e5f8e267",
+  "requirementId": "REQ-054.1.3",
+  "hash": "0495e5f8e267",
+  "verdict": "pass",
+  "summary": "test_version_reports_installed_distribution asserts SystemExit code 0 and stdout exactly 'panopticon <importlib.metadata version>'; a hardcoded/drifting version, extra text, or nonzero exit all fail; live journey cross-checks pipx show version against CLI output.",
+  "timestamp": "2026-09-12T09:21:15.376Z"
+}

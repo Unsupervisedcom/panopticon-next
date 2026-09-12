@@ -118,7 +118,7 @@ from panopticon.harnesses import DEFAULT_HARNESS, HARNESSES
 from panopticon.sessionservice.local_runner import session_name
 from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
 from panopticon.terminal.attach import task_context_label
-from panopticon.terminal.setup_repo_task import create_setup_repo_task
+from panopticon.terminal.foreground_suspend import run_suspended
 
 
 def _make_sort_key(
@@ -509,6 +509,7 @@ _STATUS_COLORS = {
     "awaiting": "yellow",
     "down": "red",
     "failed": "red",
+    "paused": "yellow",
     "disconnected": "red",
 }
 
@@ -799,7 +800,7 @@ class ChoiceScreen(_OptionListModal[str]):
     """A modal list picker: select an option (Enter) or cancel (Escape); dismisses the choice."""
 
     CSS = """
-    ChoiceScreen { align: center middle; }
+    ChoiceScreen, RepoChoiceScreen { align: center middle; }
     #choice-box { width: 48; height: auto; max-height: 80%; padding: 1 2; border: round $accent; background: $surface; }
     """
     BOX_ID = "choice-box"
@@ -2441,11 +2442,12 @@ class ReposScreen(_TableScreen):
     ]
     TABLE_ID = "repos"
     TITLE = "repos — n: new   e: edit   s: setup   esc: close"
-    COLUMNS = ("id", "name", "git_url", "default_base", "priv")
+    COLUMNS = ("id", "name", "git_url", "default_base", "priv", "setup")
     LAYERED_SETTINGS_SURFACE = "repos"
 
     def _refresh(self) -> None:
         table = self.query_one("#repos", DataTable)
+        selected = self._current
         table.clear()
         self._repos = {str(r["id"]): r for r in self._client.list_repos()}
         for repo in self._repos.values():
@@ -2456,8 +2458,11 @@ class ReposScreen(_TableScreen):
                 repo["git_url"],
                 repo["default_base"],
                 priv,
+                "held — s to resume" if repo.get("launch_paused") else "–",
                 key=str(repo["id"]),
             )
+        if selected in self._repos:
+            table.move_cursor(row=list(self._repos).index(selected))
 
     def action_new_repo(self) -> None:
         # Returns an error to show inline (the form stays open, keeping the user's input) or None
@@ -2549,22 +2554,28 @@ class ReposScreen(_TableScreen):
         )
 
     def action_setup_repo(self) -> None:
-        """`s`: run host-side setup for the highlighted repo — create a `setup-repo` task.
-
-        The `setup-repo` workflow is hidden from the pickers, so this is how it's launched: one
-        task, seeded with a memo, on the repo under the cursor."""
+        """Configure the selected repository in the foreground, then return to this screen."""
         if self._current is None:
             self.notify("Highlight a repo first.", severity="warning")
             return
-        repo_id = self._current
-        name = str(self._repos[repo_id].get("name", repo_id))
+        from panopticon.terminal.setup import configure_repo
+
         try:
-            create_setup_repo_task(self._client, repo_id, name)
-        except httpx.HTTPStatusError as exc:
-            self.notify(f"Can't create setup-repo task: {_detail(exc)}", severity="error")
+            repo_id = self._current
+            complete = run_suspended(self.app, lambda: configure_repo(self._client, repo_id))
+        except (OSError, ValueError, RuntimeError, httpx.HTTPError) as exc:
+            self._refresh()
+            detail = _detail(exc) if isinstance(exc, httpx.HTTPStatusError) else str(exc)
+            self.notify(f"Setup needs attention: {detail}", severity="error")
             return
-        self.notify(f"Created setup-repo task for {name}.")
-        self.dismiss(None)  # back to the task view, where the new task shows up
+        except (EOFError, KeyboardInterrupt):
+            self._refresh()
+            self.notify(
+                "Setup paused. Saved steps are retained; press s to resume this repository."
+            )
+            return
+        self._refresh()
+        self.notify("Setup complete." if complete else "Setup incomplete; reopen to resume.")
 
 
 def _detail(exc: httpx.HTTPStatusError) -> str:
@@ -3297,14 +3308,25 @@ class Dashboard(App[None]):
         if task_id is None:
             return
         task = self._tasks.get(task_id)
-        if not task or not self._respawn_task(task):
-            self.notify("Task isn't claimed by a runner — nothing to respawn.", severity="warning")
+        try:
+            retried = task is not None and self._respawn_task(task)
+        except httpx.HTTPStatusError as exc:
+            self.notify(f"Cannot retry: {_detail(exc)}", severity="warning")
+            return
+        if not retried:
+            self.notify(
+                "Task is waiting to launch; check its status or run setup for its repository.",
+                severity="warning",
+            )
             return
         self.notify("Respawning: the runner will stop and restart the container.")
         self.action_refresh()
 
     def _respawn_task(self, task: JsonObj) -> bool:
         """Release one claimed task through the path shared by single and bulk respawn."""
+        if task.get("launch_paused"):
+            self._client.retry_task(str(task["id"]))
+            return True
         if not task.get("claimed_by"):
             return False
         self._client.release(str(task["id"]))
@@ -3356,7 +3378,20 @@ class Dashboard(App[None]):
             return
         task = self._tasks.get(self._current)
         if task is None or task.get("container_status") not in _ATTACHABLE_STATUSES:
-            self.notify("No running session for this task.", severity="warning")
+            detail = task.get("lifecycle_detail") if task else None
+            message = "No running session for this task."
+            if detail:
+                message += f"\n{detail}\nPress d for details."
+                runner_host = task.get("runner_host") if task else None
+                if runner_host:
+                    message += (
+                        f" For setup on {runner_host}, open its dashboard and press g, then s."
+                    )
+                else:
+                    message += " Press g to open repos, then s for setup."
+                if task and task.get("container_status") in {"failed", "paused"}:
+                    message += " After resolving the problem, press R to retry this task."
+            self.notify(message, severity="warning", timeout=12 if detail else None, markup=False)
             return
         runner_host = task.get("runner_host")
         session = session_name(self._current)

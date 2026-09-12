@@ -6,7 +6,7 @@ auth flow — plus that the docker daemon is actually reachable (a present clien
 daemon fails every spawn). It prints a ``✓``/``✗`` line per check and returns a non-zero exit
 code when a required prerequisite is missing, so a fresh install can self-diagnose.
 
-Deliberately scoped to binaries — exactly one registered harness CLI is required. The aggregate
+Host agent CLIs are optional: foreground setup can accept a token without them. The aggregate
 harness check is reported first, with every registered harness nested beneath it. It does not
 inspect credential/config readiness
 (the secrets env-file, ``CLAUDE_CODE_OAUTH_TOKEN``, ``GH_TOKEN``), the task-service port, or the
@@ -154,7 +154,8 @@ def run_checks(
             "harness CLI",
             bool(installed),
             f"available: {', '.join(installed)}" if installed else "none installed",
-            hint="Install at least one of the agent harness CLIs listed above.",
+            hint="Install an agent CLI for native login, or configure a token with `panopticon setup`.",
+            required=False,
         )
     )
     results.extend(harness_results)

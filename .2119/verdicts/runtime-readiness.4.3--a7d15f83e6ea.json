@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.3--a7d15f83e6ea",
+  "requirementId": "runtime-readiness.4.3",
+  "hash": "a7d15f83e6ea",
+  "verdict": "pass",
+  "summary": "A registration with the intended id but a stale, missing, or foreign instance id is refused immediately without sleeping, both with fake transport and against a real service where the runner registered under a different instance, and repository repair is blocked in that state; only a registration carrying the resolved identity satisfies readiness.",
+  "timestamp": "2026-09-12T09:57:53.488Z"
+}

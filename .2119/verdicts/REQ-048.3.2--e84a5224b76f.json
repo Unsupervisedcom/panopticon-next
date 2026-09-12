@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.3.2--e84a5224b76f",
+  "requirementId": "REQ-048.3.2",
+  "hash": "e84a5224b76f",
+  "verdict": "fail",
+  "summary": "The authentication-processing plaintext test leaves caplog at its default warning level, so INFO or DEBUG logging of a capability can escape detection. Enable capture at DEBUG before authenticated requests and inspect logs after both successful and rejected authentication.",
+  "timestamp": "2026-09-12T09:14:21.169Z"
+}

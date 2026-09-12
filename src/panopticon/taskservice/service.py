@@ -167,6 +167,7 @@ class RunnerRegistration:
     runner_id: str
     registered_at: str
     host: str | None = None  # the runner's hostname or operator alias (M5: remote attach)
+    instance_id: str | None = None  # integrated-runtime identity; absent for legacy/manual runners
 
 
 class TaskService:
@@ -551,6 +552,7 @@ class TaskService:
             "runner_type": workflow.runner_type,
             "script": workflow.shell_script(),
             "clone_repo": workflow.clone_repo,
+            "retain_completed_workspace": workflow.retain_completed_workspace,
             "workdir": workflow.shell_workdir,
         }
 
@@ -621,6 +623,38 @@ class TaskService:
         artifacts: dict[str, str] | None = None,
         depends_on_task_ids: list[str] | None = None,
     ) -> Task:
+        """Create work under the same admission lock used by setup and task claims."""
+        async with self._dependency_lock:
+            return await self._create_task_locked(
+                repo_id,
+                workflow_name,
+                memo=memo,
+                governor_task_id=governor_task_id,
+                initial_prompt=initial_prompt,
+                harness=harness,
+                starting_model=starting_model,
+                artifacts=artifacts,
+                depends_on_task_ids=depends_on_task_ids,
+            )
+
+    async def _create_task_locked(
+        self,
+        repo_id: str,
+        workflow_name: str,
+        *,
+        memo: str | None = None,
+        governor_task_id: str | None = None,
+        initial_prompt: str | None = None,
+        harness: str | None = None,
+        starting_model: str | None = None,
+        artifacts: dict[str, str] | None = None,
+        depends_on_task_ids: list[str] | None = None,
+    ) -> Task:
+        """Validate and persist a task while the caller holds ``_dependency_lock``.
+
+        Review-entry effects already hold this lock through the authoring transition. They use
+        this same creation boundary without reacquiring the non-reentrant lock.
+        """
         repo = await self.get_repo(repo_id)  # ensure exists (raises NotFound)
         # ADR-0014 stack 2 lands before the review workflow itself on some branches, so its stable
         # name is the marker here. Stack 3 can rebase this coupling onto a workflow declaration if
@@ -659,13 +693,13 @@ class TaskService:
         task.governor_task_id = governor_task_id
         task.created_at = now
         task.updated_at = now  # creation time = first mutation
+        task.launch_paused = repo.launch_paused
+        if task.launch_paused:
+            task.launch_pause_reason = "Setup paused this task; retry it after setup."
         if depends_on_task_ids:
-            async with self._dependency_lock:
-                await self._validate_dependencies(task.id, depends_on_task_ids)
-                task.depends_on_task_ids = list(depends_on_task_ids)
-                await self._store.create_task(task)
-        else:
-            await self._store.create_task(task)
+            await self._validate_dependencies(task.id, depends_on_task_ids)
+            task.depends_on_task_ids = list(depends_on_task_ids)
+        await self._store.create_task(task)
         _log.info("task %s: created (workflow=%s, repo=%s)", task.id, workflow_name, repo_id)
         for name, content in (artifacts or {}).items():
             await self.put_artifact(task.id, name, content.encode())
@@ -946,7 +980,7 @@ class TaskService:
             )
 
         try:
-            await self.create_task(
+            await self._create_task_locked(
                 task.repo_id,
                 "review",
                 governor_task_id=task.id,
@@ -1178,6 +1212,66 @@ class TaskService:
 
     # -- claim (a runner owns the task; the spawn gate, ADR 0008) --------------------------
 
+    async def begin_repo_setup(self, repo_id: str) -> Repo:
+        """Close admission and preserve pending work before changing a credential binding.
+
+        Claims and task creation share this lock. The store commits the repository gate and
+        existing task holds together, so a crash cannot leave partially paused work runnable.
+        Reopening setup is idempotent; no running login or coding task is terminated.
+        """
+        async with self._dependency_lock:
+            await self.get_repo(repo_id)
+            tasks = [
+                task
+                for task in await self.list_tasks()
+                if task.repo_id == repo_id and not self._task_is_terminal(task)
+            ]
+            pending = []
+            for task in tasks:
+                if self.registrations(task.id):
+                    continue
+                lifecycle = self.lifecycle(task.id)
+                if (
+                    task.claimed_by
+                    and not task.launch_paused
+                    and (lifecycle is None or lifecycle.phase is not LifecyclePhase.FAILED)
+                ):
+                    raise NotReady(
+                        f"Task {task.id} is claimed by runner {task.claimed_by} without a live "
+                        "registration or a recorded launch failure. Setup cannot tell whether "
+                        "that launch is still active. Wait for it to settle; if the claim is stale, "
+                        "confirm the task is stopped and use dashboard R to release/retry it, "
+                        "then resume repository setup."
+                    )
+                pending.append(task.id)
+            await self._store.set_repo_launch_pause(repo_id, True, pending)
+        return await self.get_repo(repo_id)
+
+    async def finish_repo_setup(self, repo_id: str) -> Repo:
+        """Reopen admission without releasing any task's individual execution hold."""
+        async with self._dependency_lock:
+            await self._store.set_repo_launch_pause(repo_id, False)
+        return await self.get_repo(repo_id)
+
+    async def retry_task(self, task_id: str) -> Task:
+        """Explicitly retry one stopped task; no repair operation starts a backlog."""
+        async with self._dependency_lock:
+            task = await self.get_task(task_id)
+            if (await self.get_repo(task.repo_id)).launch_paused:
+                raise NotReady("Finish repository setup before retrying this task.")
+            if self._task_is_terminal(task) or self.registrations(task_id):
+                raise NotReady("Only a nonterminal task without a live session can be retried.")
+            lifecycle = self.lifecycle(task_id)
+            if (
+                task.claimed_by
+                and not task.launch_paused
+                and (lifecycle is None or lifecycle.phase is not LifecyclePhase.FAILED)
+            ):
+                raise NotReady("Wait for this task's current launch to settle before retrying.")
+            await self._store.set_task_launch_pause(task_id, False, None, release_claim=True)
+            self.clear_lifecycle(task_id)
+        return await self.get_task(task_id)
+
     async def claim(self, task_id: str, runner_id: str) -> Task:
         """Claim an unclaimed task for ``runner_id`` (a session service claims before spawning).
 
@@ -1191,6 +1285,12 @@ class TaskService:
             task = await self.get_task(task_id)
             if task.claimed_by not in (None, runner_id):
                 raise AlreadyClaimed(f"task {task_id!r} is already claimed by {task.claimed_by!r}")
+            if task.launch_paused or (
+                task.claimed_by is None and (await self.get_repo(task.repo_id)).launch_paused
+            ):
+                raise NotReady(
+                    "Task launch is paused; finish setup and explicitly retry this task."
+                )
             if task.claimed_by is None and task.provisioned_by not in (None, runner_id):
                 migration = task.migration
                 if migration is None:
@@ -1419,10 +1519,23 @@ class TaskService:
     # into the displayed :class:`ContainerStatus` by :meth:`container_status`.
 
     async def report_lifecycle(
-        self, task_id: str, runner_id: str, phase: LifecyclePhase, detail: str | None = None
+        self,
+        task_id: str,
+        runner_id: str,
+        phase: LifecyclePhase,
+        detail: str | None = None,
+        *,
+        pause_launch: bool = False,
     ) -> ContainerLifecycle:
         """Record the runner's latest spawn phase for a task (an upsert; the newest wins)."""
-        await self.get_task(task_id)  # ensure the task exists
+        if pause_launch:
+            async with self._dependency_lock:
+                task = await self.get_task(task_id)
+                if phase is not LifecyclePhase.FAILED or task.claimed_by != runner_id:
+                    raise NotReady("Only the claiming runner may pause a failed launch.")
+                await self._store.set_task_launch_pause(task_id, True, detail)
+        else:
+            await self.get_task(task_id)  # ensure the task exists
         lifecycle = ContainerLifecycle(
             task_id=task_id, runner_id=runner_id, phase=phase, detail=detail, at=self._clock()
         )
@@ -1450,6 +1563,7 @@ class TaskService:
         return compose_container_status(
             terminal=self._task_is_terminal(task),
             dependencies_blocking=dependencies_blocking,
+            launch_paused=task.launch_paused,
             claimed=task.claimed_by is not None,
             registered=bool(self.registrations(task.id)),
             runner_live=task.claimed_by in self.live_runners(),
@@ -1466,10 +1580,14 @@ class TaskService:
     # an operator (or a future supervisor) can release its claims so a healthy host respawns them.
 
     async def register_runner(
-        self, runner_id: str, *, host: str | None = None
+        self, runner_id: str, *, host: str | None = None, instance_id: str | None = None
     ) -> RunnerRegistration:
         reg = RunnerRegistration(
-            id=self._id(), runner_id=runner_id, registered_at=self._clock(), host=host
+            id=self._id(),
+            runner_id=runner_id,
+            registered_at=self._clock(),
+            host=host,
+            instance_id=instance_id,
         )
         self._runner_registrations[reg.id] = reg
         self._notify_change()  # a runner (re)connecting can flip its tasks disconnected → …

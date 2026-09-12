@@ -403,7 +403,7 @@ def test_ensure_dashboard_session_loads_every_shipped_default_via_dash_f(
     assert tmux_new[:3] == ["tmux", "-L", "panopticon"]
     assert tmux_new[3] == "-f"
     config_path = Path(tmux_new[4])
-    assert tmux_new[5] == "new-session"
+    assert tmux_new.index("source-file") < tmux_new.index("new-session")
     assert config_path.read_text() == server_default_config_text(clipboard=None)
     assert tmux_new[-3:] == ["python", "-m", "panopticon.terminal"]
 

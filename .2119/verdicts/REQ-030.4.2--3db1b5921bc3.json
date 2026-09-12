@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.2--3db1b5921bc3",
+  "requirementId": "REQ-030.4.2",
+  "hash": "3db1b5921bc3",
+  "verdict": "pass",
+  "summary": "Darwin without pbcopy returns no tool both with an empty PATH inventory and with all Linux clipboard candidates present, rejecting cross-platform fallback.",
+  "timestamp": "2026-09-12T09:13:45.486Z"
+}

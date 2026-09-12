@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import inspect
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -79,6 +80,18 @@ class _AlternateOrchestrator(Workflow):
     initial = Coordinating
 
 
+class _AlternateCredentialSetup(Workflow):
+    name = "alternate-credential-setup"
+    opt_in = True
+    configures_repo_credentials = True
+
+    class Running(InitialState):
+        label = "RUNNING"
+        transitions = (Complete,)
+
+    initial = Running
+
+
 class _PlannedScopedWorkflow(Workflow):
     name = "planned-scoped"
 
@@ -99,6 +112,17 @@ def _bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_runtime_identity_is_authenticated_fleet_read(tmp_path: Path) -> None:
+    # 2119: runtime-readiness.2.1
+    # 2119: runtime-readiness.2.2
+    with _client(tmp_path, read=[READ_TOKEN]) as client:
+        unauthenticated = client.get("/identity")
+        assert (unauthenticated.status_code, unauthenticated.json()) == (401, GENERIC_FAILURE)
+        assert client.get("/identity", headers=_bearer(READ_TOKEN)).status_code == 200
+        policy = client.app.state.credential_scope_policy
+        assert policy.classification_for_rest("GET", "/identity") is AuthorizationClass.FLEET_READ
+
+
 def _wire_response(response: object) -> tuple[int, dict[str, str], bytes]:
     return response.status_code, dict(response.headers), response.content  # type: ignore[attr-defined]
 
@@ -111,6 +135,7 @@ def _service(tmp_path: Path) -> TaskService:
             "spike": Spike(),
             "orchestrator": Orchestrator(),
             "alternate-orchestrator": _AlternateOrchestrator(),
+            "alternate-credential-setup": _AlternateCredentialSetup(),
             "planned-scoped": _PlannedScopedWorkflow(),
             "scoped": _ScopedWorkflow(),
             "setup-repo": SetupRepo(),
@@ -130,6 +155,7 @@ def _reloaded_service(tmp_path: Path) -> TaskService:
             "spike": Spike(),
             "orchestrator": Orchestrator(),
             "alternate-orchestrator": _AlternateOrchestrator(),
+            "alternate-credential-setup": _AlternateCredentialSetup(),
             "planned-scoped": _PlannedScopedWorkflow(),
             "scoped": _ScopedWorkflow(),
             "setup-repo": SetupRepo(),
@@ -1173,7 +1199,10 @@ def test_sibling_and_missing_targets_have_identical_scope_denials(
     [
         ("post", "/repos", {"id": "r3", "name": "x/r3", "git_url": "https://x/r3"}),
         ("patch", "/repos/r1", {"name": "stolen"}),
+        ("post", "/repos/r1/setup/begin", None),
+        ("post", "/repos/r1/setup/finish", None),
         ("get", "/workflow-files", None),
+        ("post", "/tasks/{id}/retry", None),
         ("put", "/tasks/{id}/claim", {"runner_id": "runner"}),
         ("delete", "/tasks/{id}/claim", None),
         (
@@ -1229,8 +1258,11 @@ def test_fleet_administration_route_inventory_is_complete_and_task_denied(tmp_pa
     # 2119: REQ-048.6.2
     expected = {
         ("POST", "/repos"),
+        ("POST", "/repos/{repo_id}/setup/begin"),
+        ("POST", "/repos/{repo_id}/setup/finish"),
         ("DELETE", "/repos/{repo_id}"),
         ("GET", "/workflow-files"),
+        ("POST", "/tasks/{task_id}/retry"),
         ("PUT", "/tasks/{task_id}/claim"),
         ("DELETE", "/tasks/{task_id}/claim"),
         ("PUT", "/tasks/{task_id}/provisioning"),
@@ -1266,6 +1298,7 @@ def test_fleet_administration_route_inventory_is_complete_and_task_denied(tmp_pa
                     and entry != ("PATCH", "/repos/{repo_id}")
                 )
                 or entry[1] == "/workflow-files"
+                or entry == ("POST", "/tasks/{task_id}/retry")
                 or entry[1].endswith(
                     ("/claim", "/provisioning", "/migration", "/lifecycle", "/governor", "/snooze")
                 )
@@ -1472,7 +1505,23 @@ def test_every_task_targeted_rest_route_rejects_sibling_and_missing_targets_iden
             ("PUT", "/tasks/{task_id}/session/input/{delivery_id}"),
             ("PUT", "/tasks/{task_id}/session/transcript"),
         }
-        expected = (task_routes - runner_session_surfaces) | {
+        operator_only_task_surfaces = {("POST", "/tasks/{task_id}/retry")}
+        assert operator_only_task_surfaces <= task_routes
+        assert operator_only_task_surfaces <= (
+            client.app.state.credential_scope_policy.fleet_administration_rest_surfaces()
+        )
+        retry_responses = [
+            client.post(
+                f"/tasks/{target}/retry",
+                headers=headers,
+            )
+            for target in (sibling["id"], "missing")
+        ]
+        assert [(response.status_code, response.json()) for response in retry_responses] == [
+            (403, SCOPE_FAILURE),
+            (403, SCOPE_FAILURE),
+        ]
+        expected = (task_routes - runner_session_surfaces - operator_only_task_surfaces) | {
             ("DELETE", "/registrations/{registration_id}")
         }
         assert surfaces.task_targeted_rest == expected
@@ -3366,10 +3415,17 @@ def test_active_setup_repo_task_can_only_set_its_own_repo_credential_dir(
         for path, headers, body in (
             ("/repos/r2", setup_headers, {"credential_dir": "other.d"}),
             ("/repos/r1", setup_headers, {"name": "stolen"}),
+            (
+                "/repos/r1",
+                setup_headers,
+                {"credential_dir": "other.d", "name": "stolen"},
+            ),
             ("/repos/r1", setup_headers, {"credential_dir": None}),
             ("/repos/r1", setup_headers, {"credential_dir": ""}),
             ("/repos/r1", setup_headers, {"credential_dir": "   "}),
             ("/repos/r1", setup_headers, {"credential_dir": "."}),
+            ("/repos/r1", setup_headers, {"credential_dir": "/absolute.d"}),
+            ("/repos/r1", setup_headers, {"credential_dir": "../other.d"}),
             ("/repos/r1", setup_headers, {"credential_dir": "nested/dir"}),
             ("/repos/r1", regular_headers, {"credential_dir": "other.d"}),
         ):
@@ -3389,6 +3445,21 @@ def test_active_setup_repo_task_can_only_set_its_own_repo_credential_dir(
         repo = client.get("/repos/r1", headers=_bearer(WRITE_TOKEN)).json()
         assert repo["name"] == "acme/one"
         assert repo["credential_dir"] == "openai.d"
+
+        enabled = client.patch(
+            "/repos/r1",
+            headers=_bearer(WRITE_TOKEN),
+            json={"enabled_workflows": ["alternate-credential-setup"]},
+        )
+        assert enabled.status_code == 200, enabled.text
+        alternate = _create_task(client, workflow="alternate-credential-setup")
+        alternate_patch = client.patch(
+            "/repos/r1",
+            headers=_bearer(_task_token(alternate["id"])),
+            json={"credential_dir": "other.d"},
+        )
+        assert alternate_patch.status_code == 200, alternate_patch.text
+        assert alternate_patch.json()["credential_dir"] == "other.d"
 
         policy = client.app.state.credential_scope_policy
         assert policy.classification_for_rest("PATCH", "/repos/{repo_id}") == (
@@ -3426,7 +3497,7 @@ def test_runner_injects_only_the_subject_task_capability(
     mounted_files: dict[str, str] = {}
     mounted_targets: list[tuple[str, str, bool]] = []
     shared_client_headers: list[str] = []
-    caplog.set_level(1)
+    caplog.set_level(logging.DEBUG)
 
     def run(args: list[str], **_: object) -> str:
         calls.append(args)

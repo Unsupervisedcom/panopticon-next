@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.13--02f9fd9b5142",
+  "requirementId": "foreground-setup.2.13",
+  "hash": "02f9fd9b5142",
+  "verdict": "pass",
+  "summary": "Ambient forge and provider keys never enter saved values or output; Codex login env omits OPENAI_API_KEY and the personal auth.json is untouched.",
+  "timestamp": "2026-09-12T09:07:08.608Z"
+}

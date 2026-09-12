@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.4.2--067f8e1c1719",
+  "requirementId": "REQ-012.4.2",
+  "hash": "067f8e1c1719",
+  "verdict": "pass",
+  "summary": "Repository-derived, workflow-derived, and explicit task pairs are reread after both defaults change; recomputing either stored launch value fails.",
+  "timestamp": "2026-09-12T08:29:30.695Z"
+}

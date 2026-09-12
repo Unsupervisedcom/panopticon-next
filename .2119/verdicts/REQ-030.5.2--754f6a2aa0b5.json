@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.5.2--754f6a2aa0b5",
+  "requirementId": "REQ-030.5.2",
+  "hash": "754f6a2aa0b5",
+  "verdict": "fail",
+  "summary": "The operator-config test hard-codes -f into its own tmux invocation instead of using production session construction. Removing production -f while retaining source-file could load operator config and leave this test green; exercise new_session_argv with the marker control.",
+  "timestamp": "2026-09-12T09:13:48.579Z"
+}

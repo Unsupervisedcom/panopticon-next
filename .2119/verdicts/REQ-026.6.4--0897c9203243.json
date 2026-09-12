@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.6.4--0897c9203243",
+  "requirementId": "REQ-026.6.4",
+  "hash": "0897c9203243",
+  "verdict": "pass",
+  "summary": "Turn-to-user writes preserve both true and false attention values; always clearing or always setting attention fails.",
+  "timestamp": "2026-09-12T08:29:39.871Z"
+}

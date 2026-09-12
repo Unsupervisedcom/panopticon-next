@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.6.2--ecc0f67a5646",
+  "requirementId": "source-selection.6.2",
+  "hash": "ecc0f67a5646",
+  "verdict": "pass",
+  "summary": "Rerunning setup_repo with a new default harness against a repo with explicit harness, model, env_file and credential_dir must leave those bindings untouched (only enabled_workflows updated), so overriding them on rerun fails; the added unannotated legacy-source scan test does not alter this evidence.",
+  "timestamp": "2026-09-12T09:24:26.763Z"
+}

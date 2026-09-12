@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.1--765f809663a4",
+  "requirementId": "task-auth-readiness.3.1",
+  "hash": "765f809663a4",
+  "verdict": "pass",
+  "summary": "Empty repo.env with every host credential set is missing for all harnesses; latch test shows no tasks dir or launch before the check.",
+  "timestamp": "2026-09-12T09:07:44.146Z"
+}

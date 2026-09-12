@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.5.2--4661fdceabc2",
+  "requirementId": "REQ-032.5.2",
+  "hash": "4661fdceabc2",
+  "verdict": "fail",
+  "summary": "The expected interrupt prompt is imported from production as INTERRUPT_PROMPT, so changing its text changes both actual and expected values. Pin the previous prompt text independently and verify agent-turn append plus user-turn omission.",
+  "timestamp": "2026-09-12T09:10:02.579Z"
+}

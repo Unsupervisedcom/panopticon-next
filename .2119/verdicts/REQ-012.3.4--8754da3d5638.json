@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.3.4--8754da3d5638",
+  "requirementId": "REQ-012.3.4",
+  "hash": "8754da3d5638",
+  "verdict": "pass",
+  "summary": "An explicit harness equal to the selected workflow harness with no model override must retain that pair's model; unconditional model clearing fails.",
+  "timestamp": "2026-09-12T08:29:29.538Z"
+}

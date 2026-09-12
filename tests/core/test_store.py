@@ -487,6 +487,8 @@ def test_rows_and_domain_models_stay_in_sync(domain: type) -> None:
 def _fully_populated_task() -> Task:
     """A task touching every field of Task/HistoryEntry/Responsibility with a non-default value."""
     return Task(
+        launch_paused=True,
+        launch_pause_reason="Connect the selected harness.",
         id="t-full",
         repo_id="r1",
         workflow="gated",

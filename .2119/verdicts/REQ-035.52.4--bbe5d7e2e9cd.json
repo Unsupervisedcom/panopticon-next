@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.52.4--bbe5d7e2e9cd",
+  "requirementId": "REQ-035.52.4",
+  "hash": "bbe5d7e2e9cd",
+  "verdict": "pass",
+  "summary": "Disabled-mode loopback bind is verified on darwin/linux/win32 for both an unset and an empty PANOPTICON_HOST; the emitted service command must carry exactly one --host of 127.0.0.1, so a platform default of 0.0.0.0 leaking through on linux/win32 or an empty override being passed as --host '' both fail; tmux is stubbed but the real command builder runs.",
+  "timestamp": "2026-09-12T10:04:53.507Z"
+}

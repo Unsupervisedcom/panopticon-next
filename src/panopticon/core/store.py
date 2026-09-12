@@ -121,6 +121,20 @@ class Store(ABC):
         :class:`IntegrityError` when any persisted task references it."""
         await self._delete_repo(repo_id)
 
+    async def set_repo_launch_pause(
+        self, repo_id: str, paused: bool, task_ids: Sequence[str] = ()
+    ) -> None:
+        """Atomically change repository admission and pause the selected task launches."""
+        await self._set_repo_launch_pause(repo_id, paused, task_ids)
+        self._bump_version()
+
+    async def set_task_launch_pause(
+        self, task_id: str, paused: bool, reason: str | None, *, release_claim: bool = False
+    ) -> None:
+        """Update execution facts without overwriting concurrent content changes."""
+        await self._set_task_launch_pause(task_id, paused, reason, release_claim=release_claim)
+        self._bump_version()
+
     # -- tasks (public façade; create/save also enforce the integrity rules) ------
 
     async def create_task(self, task: Task) -> None:
@@ -198,6 +212,18 @@ class Store(ABC):
     @abstractmethod
     async def _delete_repo(self, repo_id: str) -> None:
         """Delete an unreferenced repo, atomically refusing when tasks reference it."""
+
+    @abstractmethod
+    async def _set_repo_launch_pause(
+        self, repo_id: str, paused: bool, task_ids: Sequence[str]
+    ) -> None:
+        """Update repository admission and selected task holds in one transaction."""
+
+    @abstractmethod
+    async def _set_task_launch_pause(
+        self, task_id: str, paused: bool, reason: str | None, *, release_claim: bool
+    ) -> None:
+        """Update only task execution hold fields and optionally release its claim."""
 
     @abstractmethod
     async def _create_task(self, task: Task) -> None:

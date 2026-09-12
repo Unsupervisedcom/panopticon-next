@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.3.2--c999d1901330",
+  "requirementId": "runtime-readiness.3.2",
+  "hash": "c999d1901330",
+  "verdict": "pass",
+  "summary": "Connection refusal with session absence must return SERVICE_ABSENT; the otherwise identical case with session presence must fail. Reversing the guard decision at the session-presence boundary is detected.",
+  "timestamp": "2026-09-12T09:34:28.378Z"
+}

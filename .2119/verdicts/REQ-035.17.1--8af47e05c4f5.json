@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.17.1--8af47e05c4f5",
+  "requirementId": "REQ-035.17.1",
+  "hash": "8af47e05c4f5",
+  "verdict": "pass",
+  "summary": "No-env-file Docker and shell spawns expose separate snapshots; real client headers and executed shell liveness/library commands consume them. Assertions reject missing authentication, repo-env dependence and token substitution.",
+  "timestamp": "2026-09-12T09:13:50.268Z"
+}

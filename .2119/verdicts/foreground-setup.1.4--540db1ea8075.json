@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.1.4--540db1ea8075",
+  "requirementId": "foreground-setup.1.4",
+  "hash": "540db1ea8075",
+  "verdict": "pass",
+  "summary": "With only the bootstrap credential present, configure_connection must prompt exactly once for the Claude token and leave the bootstrap bytes unchanged; a second configure_connection must return the saved connection with a secret_fn that raises if called, so treating bootstrap as complete or failing to derive the saved step both fail.",
+  "timestamp": "2026-09-12T09:21:30.716Z"
+}

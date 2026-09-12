@@ -1,242 +1,52 @@
-"""First-time setup helpers for ``panopticon quickstart``.
-
-Detects and confirms the repo's default harness, registers the repo quickstart is run in with the
-task service (idempotent — deduped on the remote URL), writes a secrets template when absent, and
-creates a harness-aware ``setup-repo`` task the console attaches to for auth setup.
-"""
+"""Repository registration and workflow selection for foreground quickstart."""
 
 from __future__ import annotations
-
-import os
-import shutil
-import stat
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
-from pathlib import Path
 
 import httpx
 
 from panopticon.client import TaskServiceClient
-from panopticon.harnesses import DEFAULT_HARNESS, HARNESSES
-from panopticon.harnesses.base import Harness
-from panopticon.terminal.setup_repo_task import SETUP_REPO_WORKFLOW, create_setup_repo_task
-
-_FALLBACK_GIT_URL = "https://github.com/Unsupervisedcom/panopticon.git"
-
-#: Task states past which a setup-repo task is done — used to decide whether to reuse one.
-_TERMINAL_STATES = {"COMPLETE", "DROPPED"}
+from panopticon.terminal.source_selection import (
+    RepositorySource as RepositorySource,
+)
+from panopticon.terminal.source_selection import (
+    detect_git_url as detect_git_url,
+)
+from panopticon.terminal.source_selection import (
+    is_github_source as is_github_source,
+)
+from panopticon.terminal.source_selection import (
+    repo_id_candidates as repo_id_candidates,
+)
+from panopticon.terminal.source_selection import (
+    repo_id_from_url as repo_id_from_url,
+)
+from panopticon.terminal.source_selection import (
+    resolve_source as resolve_source,
+)
+from panopticon.terminal.source_selection import (
+    select_source as select_source,
+)
+from panopticon.terminal.source_selection import (
+    source_name as source_name,
+)
+from panopticon.terminal.source_selection import (
+    sources_equivalent as sources_equivalent,
+)
 
 #: The opt-in coding workflows quickstart enables for a repo (kept in sync with the workflow
-#: classes' ``name`` ClassVars): the forge lifecycle for hosted remotes, the forge-free one for
-#: local-only repos.
+#: classes' ``name`` ClassVars): the forge lifecycle for supported GitHub sources, the forge-free
+#: one for every other source.
 _FORGE_WORKFLOWS = ("github-self-reviewed", "github-peer-reviewed")
 _LOCAL_WORKFLOWS = ("local-git-self-reviewed",)
-
-#: URL schemes that mean a networked (hosted-forge) remote rather than a local path.
-_FORGE_SCHEMES = ("https://", "http://", "ssh://", "git://", "ftp://", "ftps://")
-
-
-@dataclass(frozen=True)
-class HarnessDetection:
-    """Host readiness for one registered harness, as shown by quickstart's tiny picker."""
-
-    name: str
-    installed: bool
-    authenticated: bool
-    install_hint: str
-
-    @property
-    def status(self) -> str:
-        if self.authenticated:
-            return "authed"
-        if self.installed:
-            return "installed"
-        return f"not installed — {self.install_hint}"
-
-
-def detect_harnesses(
-    *,
-    harnesses: Mapping[str, Harness] = HARNESSES,
-    environ: Mapping[str, str] = os.environ,
-    home: Path | None = None,
-    which: Callable[[str], str | None] = shutil.which,
-) -> list[HarnessDetection]:
-    """Probe every registered harness locally: CLI presence plus its own auth check.
-
-    A harness is called ``authenticated`` only when both pieces are ready. Credentials for an
-    uninstalled CLI are still probed (the adapter owns that logic), but do not make it runnable.
-    """
-    resolved_home = home or Path.home()
-    detected = []
-    for harness in harnesses.values():
-        installed = which(harness.host_binary) is not None
-        auth_ready = harness.missing_auth(environ, home=resolved_home) is None
-        authenticated = installed and auth_ready
-        detected.append(
-            HarnessDetection(harness.name, installed, authenticated, harness.install_hint)
-        )
-    return detected
-
-
-def recommended_harness(detected: list[HarnessDetection]) -> str:
-    """Best runnable choice: authenticated, then installed, then the Claude fallback."""
-    for harness in detected:
-        if harness.authenticated:
-            return harness.name
-    for harness in detected:
-        if harness.installed:
-            return harness.name
-    return DEFAULT_HARNESS
-
-
-def choose_harness(
-    detected: list[HarnessDetection], *, input_fn: Callable[[str], str] = input
-) -> str:
-    """Print detection evidence, then confirm one candidate or pick among several."""
-    recommended = recommended_harness(detected)
-    candidates = [harness for harness in detected if harness.installed]
-    print("Detected agent harnesses:")
-    for harness in detected:
-        suffix = " (recommended)" if harness.name == recommended and candidates else ""
-        print(f"  {harness.name}: {harness.status}{suffix}")
-
-    if not candidates:
-        claude = next((h for h in detected if h.name == DEFAULT_HARNESS), None)
-        hint = claude.install_hint if claude is not None else "Install the Claude Code CLI."
-        print(f"No agent harness CLI is installed. {hint}")
-        return DEFAULT_HARNESS
-    if len(candidates) == 1:
-        choice = candidates[0].name
-        input_fn(f"Use {choice} as this repo's default harness? Press Enter to continue. ")
-        return choice
-
-    numbered = {str(index): harness.name for index, harness in enumerate(candidates, start=1)}
-    print("Choose the repo default:")
-    for number, harness in zip(numbered, candidates, strict=True):
-        suffix = " (recommended)" if harness.name == recommended else ""
-        print(f"  {number}) {harness.name} — {harness.status}{suffix}")
-    default_number = next(number for number, name in numbered.items() if name == recommended)
-    while True:
-        answer = input_fn(f"Harness [{default_number}]: ").strip()
-        if not answer:
-            return recommended
-        if answer in numbered:
-            return numbered[answer]
-        print(f"Enter a number from 1 to {len(numbered)}.")
-
-
-def harness_environment(env_file: str) -> dict[str, str]:
-    """Environment visible to auth probes, including active values in quickstart's env-file."""
-    from panopticon.core.dirs import secrets_file_path
-
-    environ = dict(os.environ)
-    path = secrets_file_path(env_file)
-    if path is None:
-        return environ
-    try:
-        lines = Path(path).read_text().splitlines()
-    except OSError:
-        return environ
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        name, value = stripped.split("=", 1)
-        name = name.strip()
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1]
-        if name:
-            environ[name] = value
-    return environ
-
-
-def _secrets_template() -> str:
-    """The secrets-file template, read from the packaged ``panopticon.env.template`` data file."""
-    import importlib.resources
-
-    ref = importlib.resources.files("panopticon.terminal") / "panopticon.env.template"
-    return ref.read_text()
-
-
-def detect_git_url() -> str:
-    """Return the origin URL for the repository in the current working directory."""
-    import subprocess
-
-    try:
-        subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        raise RuntimeError(
-            "quickstart must run inside a Git repository; change into the repository you want "
-            "Panopticon to manage and try again"
-        ) from exc
-
-    try:
-        result = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        url = result.stdout.strip()
-        if url:
-            return url
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
-    raise RuntimeError(
-        "the current Git repository has no `origin` URL; add an `origin` remote for the "
-        "repository you want Panopticon to manage and try again"
-    )
-
-
-def _normalize_url(git_url: str) -> str:
-    """Canonical form for comparing remote URLs: trimmed, no trailing ``.git`` or ``/``."""
-    url = git_url.strip().rstrip("/")
-    if url.endswith(".git"):
-        url = url[: -len(".git")]
-    return url
-
-
-def repo_id_from_url(git_url: str) -> str:
-    """Derive a repo id/name from a git URL — its last path segment without the ``.git`` suffix.
-
-    ``https://github.com/Unsupervisedcom/panopticon.git`` → ``panopticon``;
-    ``git@github.com:acme/Widget.git`` → ``widget``. Falls back to ``repo`` if the URL yields
-    nothing usable.
-    """
-    tail = _normalize_url(git_url).replace(":", "/").rstrip("/").rsplit("/", 1)[-1]
-    return tail.lower() or "repo"
-
-
-def _is_forge_url(git_url: str) -> bool:
-    """True when ``git_url`` names a hosted-forge remote (network push/PR/CI), not a local path.
-
-    Recognizes URL-scheme remotes (``https://…``, ``ssh://…``, …) and scp-like ``user@host:path``
-    remotes; treats a bare filesystem path or a ``file://`` URL as local-only.
-    """
-    url = git_url.strip()
-    if url.lower().startswith("file://"):
-        return False
-    if url.lower().startswith(_FORGE_SCHEMES):
-        return True
-    # scp-like syntax: user@host:path — an '@' and a ':' before any '/'. A Windows drive path
-    # (``C:\…``) has the ':' but no '@', so it stays local.
-    at, colon, slash = url.find("@"), url.find(":"), url.find("/")
-    return at != -1 and colon > at and (slash == -1 or colon < slash)
 
 
 def choose_enabled_workflows(git_url: str) -> tuple[str, ...]:
     """The opt-in workflows quickstart enables for a repo, chosen from its remote URL.
 
-    A hosted-forge remote gets both GitHub lifecycles so a new evaluator can choose the shorter
-    self-reviewed path or a second-person review gate. A local-only repo gets the forge-free flow.
+    Supported github.com transports get both GitHub lifecycles. All other sources get the
+    forge-free flow.
     """
-    return _FORGE_WORKFLOWS if _is_forge_url(git_url) else _LOCAL_WORKFLOWS
+    return _FORGE_WORKFLOWS if is_github_source(git_url) else _LOCAL_WORKFLOWS
 
 
 def _ensure_workflows_enabled(
@@ -258,95 +68,10 @@ def _ensure_workflows_enabled(
     print(f"  → Enabled workflows for repo {repo_id!r}: {', '.join(workflows)}.")
 
 
-def ensure_secrets_file() -> str:
-    """Write the secrets template into the secrets dir (~/.config/panopticon/secrets/) if absent.
-
-    Returns the file's **name** relative to the secrets dir (``panopticon.env``) — what a repo's
-    ``env_file`` stores, so it resolves against whichever host runs the task (ADR 0007).
-    """
-    from panopticon.core.dirs import _secrets_dir
-
-    secrets_dir = _secrets_dir()
-    secrets_path = secrets_dir / "panopticon.env"
-    secrets_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    directory = secrets_dir.lstat()
-    current_uid = getattr(os, "geteuid", lambda: directory.st_uid)()
-    if (
-        secrets_dir.is_symlink()
-        or not stat.S_ISDIR(directory.st_mode)
-        or directory.st_uid != current_uid
-        or directory.st_mode & 0o077
-    ):
-        raise ValueError(
-            f"secrets directory is unsafe: {secrets_dir} must be an owner-only directory (0700)"
-        )
-    if os.path.lexists(secrets_path):
-        fd = -1
-        try:
-            fd = os.open(
-                secrets_path,
-                os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0),
-            )
-            existing = os.fstat(fd)
-            if (
-                not stat.S_ISREG(existing.st_mode)
-                or existing.st_uid != current_uid
-                or existing.st_mode & 0o077
-            ):
-                raise ValueError
-        except (OSError, ValueError) as exc:
-            raise ValueError(
-                f"secrets file is unsafe: {secrets_path} must be an owner-only regular file (0600)"
-            ) from exc
-        finally:
-            if fd >= 0:
-                os.close(fd)
-        print(f"Secrets file already exists: {secrets_path}")
-    else:
-        fd = os.open(
-            secrets_path,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-        )
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            os.fchmod(handle.fileno(), 0o600)
-            handle.write(_secrets_template())
-        print(f"Created secrets template: {secrets_path}")
-        print("  → The setup-repo task will add harness auth; add GH_TOKEN there or by hand.")
-    return secrets_path.name
-
-
-def wait_for_service(service_url: str, *, timeout: int = 30) -> None:
-    """Poll the task service until it responds or ``timeout`` seconds elapse."""
-    import time
-
-    import httpx as _httpx
-
-    deadline = time.monotonic() + timeout
-    while True:
-        try:
-            _httpx.get(f"{service_url}/healthz", timeout=1.0, trust_env=False).raise_for_status()
-            return
-        except Exception as err:
-            if time.monotonic() >= deadline:
-                raise RuntimeError(
-                    f"Task service at {service_url} did not respond within {timeout}s"
-                ) from err
-            time.sleep(1.0)
-
-
 def _find_existing_repo(client: TaskServiceClient, git_url: str) -> dict[str, object] | None:
-    """The already-registered repo for ``git_url``, matched by normalized remote **or** derived id.
-
-    Deduping on the remote URL alone misses a repo registered under a different spelling of the
-    same remote (e.g. ``git@github.com:acme/x.git`` vs ``https://github.com/acme/x``), and since the
-    id we'd create is derived from the URL, that mismatch would then collide on create. Matching the
-    derived id too reuses the existing repo instead of colliding.
-    """
-    target = _normalize_url(git_url)
-    want_id = repo_id_from_url(git_url)
+    """Return only an already-registered repository with an equivalent source."""
     for repo in client.list_repos():
-        if _normalize_url(str(repo.get("git_url", ""))) == target or repo.get("id") == want_id:
+        if sources_equivalent(str(repo.get("git_url", "")), git_url):
             return repo
     return None
 
@@ -354,20 +79,19 @@ def _find_existing_repo(client: TaskServiceClient, git_url: str) -> dict[str, ob
 def setup_repo(
     client: TaskServiceClient,
     git_url: str,
-    env_file: str,
+    env_file: str | None,
     *,
     default_harness: str | None = None,
 ) -> tuple[str, str]:
     """Register the repo quickstart is run in with the task service; return its ``(id, name)``.
 
-    Enables the opt-in coding workflows appropriate to the repo's remote — both GitHub lifecycles
-    for a hosted remote, or the forge-free ``local-git-self-reviewed`` workflow for a local-only
-    remote (see :func:`choose_enabled_workflows`).
+    Enables the opt-in coding workflows appropriate to the repo's source — both GitHub lifecycles
+    for supported github.com transports, or the forge-free ``local-git-self-reviewed`` workflow for
+    every other source (see :func:`choose_enabled_workflows`).
 
-    Idempotent: an already-registered repo (matched by remote URL or derived id, see
-    :func:`_find_existing_repo`) is reused rather than re-registered — and still has the workflow
-    ensured (merged in if absent) — and a create that races into a conflict falls back to the same
-    reuse. The name is used to seed the setup-repo task's memo.
+    Idempotent: an already-registered repo is reused only when its source is equivalent. Existing
+    credential and harness bindings are left untouched. A conflict refreshes repository state and
+    either finds an equivalent racing create or retries with a wider source-identity suffix.
     """
     workflows = choose_enabled_workflows(git_url)
     existing = _find_existing_repo(client, git_url)
@@ -375,59 +99,31 @@ def setup_repo(
         print(f"Repo already configured for {git_url!r} — skipping registration.")
         _ensure_workflows_enabled(client, existing, workflows)
         repo_id = str(existing["id"])
-        if default_harness is not None and existing.get("default_harness") != default_harness:
-            client.update_repo(repo_id, default_harness=default_harness)
-            print(f"  → Set the repo's default harness to {default_harness!r}.")
         return repo_id, str(existing.get("name") or repo_id)
-    repo_id = repo_id_from_url(git_url)
-    try:
-        client.create_repo(
-            repo_id,
-            repo_id,
-            git_url,
-            env_file=env_file,
-            enabled_workflows=list(workflows),
-            default_harness=default_harness,
-        )
-    except httpx.HTTPStatusError as err:
-        if err.response.status_code != 409:
-            raise
-        # A repo with this id already exists (a race after our dedup check) — reuse it, and still
-        # ensure the workflow is enabled on it.
-        print(f"Repo {repo_id!r} already exists — reusing it.")
-        raced = _find_existing_repo(client, git_url)
-        if raced is not None:
+    name = source_name(git_url)
+    for repo_id in repo_id_candidates(git_url):
+        try:
+            client.create_repo(
+                repo_id,
+                name,
+                git_url,
+                env_file=env_file,
+                enabled_workflows=list(workflows),
+                default_harness=default_harness,
+            )
+        except httpx.HTTPStatusError as err:
+            if err.response.status_code != 409:
+                raise
+            raced = _find_existing_repo(client, git_url)
+            if raced is None:
+                continue
+            raced_id = str(raced["id"])
+            print(f"Repo already configured for {git_url!r} — reusing {raced_id!r}.")
             _ensure_workflows_enabled(client, raced, workflows)
-        return repo_id, repo_id
-    print(f"Registered repo {repo_id!r} (git_url={git_url!r}).")
-    print(f"  → Secrets file: {env_file}")
-    print(f"  → Enabled workflows: {', '.join(workflows)}.")
-    return repo_id, repo_id
-
-
-def ensure_setup_repo_task(client: TaskServiceClient, repo_id: str, name: str) -> str | None:
-    """Return the id of a ``setup-repo`` task for ``repo_id`` to attach to, creating one if needed.
-
-    Reuses an existing **non-terminal** setup-repo task for the repo when there is one, so
-    re-running quickstart doesn't pile up orphaned ``RUNNING`` tasks; otherwise creates a fresh one
-    (seeded with the shared memo, see :func:`create_setup_repo_task`). The console attaches to the
-    returned task on open, dropping the operator into ``claude setup-token``. Best-effort: if the
-    task can't be created (e.g. the workflow isn't available on an older task service), it warns and
-    returns ``None`` so quickstart still opens the console.
-    """
-    try:
-        for task in client.list_tasks():
-            if (
-                task.get("repo_id") == repo_id
-                and task.get("workflow") == SETUP_REPO_WORKFLOW
-                and task.get("state") not in _TERMINAL_STATES
-            ):
-                print("Attaching to the running setup-repo task to configure harness auth.")
-                return str(task["id"])
-        task = create_setup_repo_task(client, repo_id, name)
-    except httpx.HTTPError as err:
-        print(f"Could not start a setup-repo task ({err}); opening the dashboard instead.")
-        print("  → Configure auth later by starting a setup-repo task from the repos screen.")
-        return None
-    print("Configuring the repo's harness auth — attach to complete setup-repo.")
-    return str(task["id"])
+            return raced_id, str(raced.get("name") or raced_id)
+        print(f"Registered repo {repo_id!r} (git_url={git_url!r}).")
+        if env_file is not None:
+            print(f"  → Secrets file: {env_file}")
+        print(f"  → Enabled workflows: {', '.join(workflows)}.")
+        return repo_id, name
+    raise RuntimeError(f"could not allocate a repository id for source {git_url!r}")

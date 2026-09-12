@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-005.4.1--77059d7a5d79",
+  "requirementId": "REQ-005.4.1",
+  "hash": "77059d7a5d79",
+  "verdict": "pass",
+  "summary": "Missing-parents, existing-root, existing-outfitter and rerun-with-existing-profiles cases each assert the profiles path is a 0700 directory and setup output is unchanged on rerun.",
+  "timestamp": "2026-09-12T09:06:33.089Z"
+}

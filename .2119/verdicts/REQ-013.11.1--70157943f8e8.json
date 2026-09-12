@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.11.1--70157943f8e8",
+  "requirementId": "REQ-013.11.1",
+  "hash": "70157943f8e8",
+  "verdict": "pass",
+  "summary": "Paired authoring workflows move to draft, working, complete, and dropped; exact task inventory assertions reject review creation outside REVIEW.",
+  "timestamp": "2026-09-12T09:09:55.987Z"
+}

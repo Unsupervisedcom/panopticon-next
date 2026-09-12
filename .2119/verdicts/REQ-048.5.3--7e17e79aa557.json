@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.5.3--7e17e79aa557",
+  "requirementId": "REQ-048.5.3",
+  "hash": "7e17e79aa557",
+  "verdict": "pass",
+  "summary": "Real registration create/list/delete effects are asserted; an ASGI stream remains open for ok and keepalive frames, while sibling registration and liveness operations fail. Only keepalive timing is replaced.",
+  "timestamp": "2026-09-12T09:14:24.998Z"
+}

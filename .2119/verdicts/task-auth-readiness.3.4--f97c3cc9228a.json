@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.4--f97c3cc9228a",
+  "requirementId": "task-auth-readiness.3.4",
+  "hash": "f97c3cc9228a",
+  "verdict": "pass",
+  "summary": "After writing credentials and updating the repo, a fresh runner's startup_reclaim, heal, and spawn_one all decline the failed task and spawnable_tasks is empty until retry_task; the service test proves the hold survives restart and finish_repo_setup still rejects a claim",
+  "timestamp": "2026-09-12T09:32:49.106Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.4.2--e7746ba64ef8",
+  "requirementId": "source-selection.4.2",
+  "hash": "e7746ba64ef8",
+  "verdict": "pass",
+  "summary": "Existing 'legacy-widget' stored as scp spelling must be returned for an https uppercase-owner selection and create_repo raises AssertionError if invoked, so failing to reuse fails.",
+  "timestamp": "2026-09-12T09:22:47.979Z"
+}

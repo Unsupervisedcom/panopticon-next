@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.3--cfa2eb2b68eb",
+  "requirementId": "REQ-030.4.3",
+  "hash": "cfa2eb2b68eb",
+  "verdict": "fail",
+  "summary": "The non-darwin contract is tested only with platform=linux. A linux-only branch would pass while violating other non-darwin platforms; add another platform with wl-copy and competing tools present.",
+  "timestamp": "2026-09-12T09:13:46.015Z"
+}

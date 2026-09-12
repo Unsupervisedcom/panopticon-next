@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.1.6--016a27133145",
+  "requirementId": "foreground-setup.1.6",
+  "hash": "016a27133145",
+  "verdict": "pass",
+  "summary": "Real doctor checks with tmux absent print the not-found line and install commands, return 1, and neither migrate nor sessions start.",
+  "timestamp": "2026-09-12T09:06:55.323Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.2.1--42f93feecdee",
+  "requirementId": "REQ-012.2.1",
+  "hash": "42f93feecdee",
+  "verdict": "pass",
+  "summary": "Real task creation with conflicting workflow and repository pairs asserts both workflow values; taking either losing repository value fails.",
+  "timestamp": "2026-09-12T08:29:26.242Z"
+}

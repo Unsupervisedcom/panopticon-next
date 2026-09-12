@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.7.1--22590399e386",
+  "requirementId": "REQ-013.7.1",
+  "hash": "22590399e386",
+  "verdict": "pass",
+  "summary": "Pairing rejection, disabled review workflow, and injected persistence failure each leave the reloaded author in REVIEW; rollback or abort would fail the assertions.",
+  "timestamp": "2026-09-12T09:09:53.883Z"
+}

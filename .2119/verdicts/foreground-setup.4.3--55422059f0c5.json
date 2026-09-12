@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.4.3--55422059f0c5",
+  "requirementId": "foreground-setup.4.3",
+  "hash": "55422059f0c5",
+  "verdict": "pass",
+  "summary": "A claimed setup-repo task with a registered live session makes configure_repo raise through the real service and store, leaving env file, repo binding, hold state, task state, and registration unchanged; the Textual event-loop repair test also annotated here is a happy-path check, not refusal evidence.",
+  "timestamp": "2026-09-12T09:57:22.174Z"
+}

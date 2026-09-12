@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.3--91e0a96d03c2",
+  "requirementId": "foreground-setup.2.3",
+  "hash": "91e0a96d03c2",
+  "verdict": "pass",
+  "summary": "Declining replacement keeps the complete binding byte-identical and unpaused, and keeps the harness key when only a forge token is added.",
+  "timestamp": "2026-09-12T09:06:58.453Z"
+}

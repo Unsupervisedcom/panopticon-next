@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.2--4e6bdc107524",
+  "requirementId": "runtime-readiness.4.2",
+  "hash": "4e6bdc107524",
+  "verdict": "pass",
+  "summary": "An inventory listing only another runner id is retried until the intended id appears at exactly one interval, an inventory never listing it fails at exactly the configured deadline, a real slow-drip /runners response cannot extend the bound, and the runner request budget shrinks by the identity request's elapsed time.",
+  "timestamp": "2026-09-12T09:57:52.445Z"
+}

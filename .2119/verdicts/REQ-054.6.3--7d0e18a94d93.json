@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.6.3--7d0e18a94d93",
+  "requirementId": "REQ-054.6.3",
+  "hash": "7d0e18a94d93",
+  "verdict": "pass",
+  "summary": "Config, repo config, credentials, DB, artifacts and cache snapshots (bytes, inode, mode, uid) are identical after both stops.",
+  "timestamp": "2026-09-12T09:06:48.252Z"
+}

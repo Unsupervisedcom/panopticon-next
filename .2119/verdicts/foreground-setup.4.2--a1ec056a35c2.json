@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.4.2--a1ec056a35c2",
+  "requirementId": "foreground-setup.4.2",
+  "hash": "a1ec056a35c2",
+  "verdict": "pass",
+  "summary": "After successful repair the pending task remains launch_paused until its own retry; the other task stays paused.",
+  "timestamp": "2026-09-12T09:07:19.919Z"
+}

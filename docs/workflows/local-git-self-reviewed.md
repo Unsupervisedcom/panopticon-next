@@ -2,8 +2,9 @@
 
 Keeps the work **entirely local**: no GitHub, no pull request, no CI, no remote merge
 queue. The agent commits to the task branch, you review the diff yourself, and the agent
-merges the branch into the base branch. Use it for repos where the change never needs to
-leave the machine.
+merges the branch into the base branch inside the task's checkout. Panopticon retains that
+checkout when the task completes. Use it for repos where the change never needs to leave the
+machine.
 
 ```
 PLANNING → ITERATING → MERGING → COMPLETE
@@ -24,7 +25,7 @@ picker.
 | **PLANNING** | The agent collects requirements and writes a `plan.md` artifact (read it from the dashboard: highlight the task and press `a`) plus a token estimate. | **You**, by invoking `advance` with your harness's syntax (see the [workflow guide](README.md)). |
 | **ITERATING** | The agent implements the plan and commits to the task branch. You self-review the diff (`git diff` / `git log` locally). | **You**: advancing to MERGING *is* your approval. |
 | **MERGING** | The agent merges the task branch into the repo's base branch. | **The agent**, which advances itself once the merge lands. |
-| **COMPLETE** | Terminal. The change is merged locally. | n/a |
+| **COMPLETE** | Terminal. The merged result remains in the task's retained checkout. | n/a |
 
 If the merge hits conflicts the agent can't resolve, it sends the task back to ITERATING
 with an explanation.
@@ -43,6 +44,27 @@ with an explanation.
   advances to complete.
 
 There's no `gh` tool and no PR/CI plumbing. That's the point of this workflow.
+
+## Retrieve and dispose of the result
+
+Select the completed task in the dashboard and press **`f`** to open its retained checkout.
+The task's `clone` field records the directory on the runner host. For a remote runner, retrieve
+the result from that host; the local dashboard does not copy remote checkouts automatically.
+
+The merge changes the task checkout. It does not update the source checkout you selected at setup,
+and it never changes an input bundle snapshot. Copy the retained repository to keep an independent
+result, or fetch its base branch into the repository where you want to integrate the change:
+
+```sh
+git -C /path/to/destination fetch /path/to/retained-task-checkout main
+git -C /path/to/destination show FETCH_HEAD
+```
+
+Substitute the task's actual base branch if it is not `main`, then review and integrate the fetched
+commit as appropriate. Once you have kept or integrated everything you need, explicitly delete
+the retained task directory with your file manager. Automatic cleanup will not recreate it.
+Retained checkouts occupy disk until you delete them. Dropping unfinished work still discards its
+checkout. Container shutdown and runtime credential cleanup happen normally in both cases.
 
 ## Related
 

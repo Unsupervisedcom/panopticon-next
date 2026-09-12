@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.1.1--57ae8fd5e3c8",
+  "requirementId": "REQ-048.1.1",
+  "hash": "57ae8fd5e3c8",
+  "verdict": "pass",
+  "summary": "The captured production Docker command designates exactly one read-only snapshot; every file mount and env-file is inspected for fleet tokens, and its JSON equals an independently derived capability for the spawned id.",
+  "timestamp": "2026-09-12T09:14:16.891Z"
+}

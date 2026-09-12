@@ -114,12 +114,36 @@ failures always return `401`, `WWW-Authenticate: Bearer`, and
 not exempt: once the process binds beyond localhost, a loopback bypass would also bypass local
 proxies and port forwards.
 
+## Operator migration authorization
+
+Cross-host migration requires a separate operator token in addition to fleet write access. When
+`PANOPTICON_OPERATOR_TOKEN` is explicitly supplied to integrated startup, Panopticon saves it in
+an owner-only `operator-auth.json` under the secrets directory and passes only that filename to
+its background processes. Fresh operator clients on the same host use the saved file. Ordinary
+task containers receive neither the operator token nor its file reference.
+
+`PANOPTICON_OPERATOR_TOKEN_FILE` selects another private filename in that directory. Manually
+launched services and clients still accept `PANOPTICON_OPERATOR_TOKEN` directly. No operator
+credential is generated when none was configured. To rotate it, stop the runtime deliberately,
+replace the private JSON file (`{"token": "…"}`, mode `0600`), and restart. Startup refuses to
+overwrite a different saved token or to enable operator authorization on a running service.
+
 ## Container authentication — giving tasks their agent credentials
 
-Each **harness** (the agent CLI a task runs) authenticates its own way. `panopticon quickstart`
-detects installed/authenticated harnesses, asks you to confirm or choose one, stores it as the
-repo's `default_harness`, then drops you into a harness-aware `setup-repo` task. The repo's
-`env_file` carries environment credentials; `credential_dir` carries shared rotating auth files.
+Each **harness** (the agent CLI a task runs) authenticates its own way. `panopticon setup` connects
+Claude, Codex, or Pi in the foreground and saves a reusable, host-local connection containing only
+that harness's credentials. It does not require Docker, tmux, or a running task service. A reusable
+connection has no repository or forge token and is never an implicit fallback for an existing
+repository. Pasting an API key or token needs no host agent CLI; install the selected CLI only
+when using its native browser login.
+
+`panopticon quickstart` connects or reuses an agent, selects a repository source, verifies the
+local runtime, and registers or reuses the repository before opening the dashboard. A new
+repository explicitly receives the selected connection; an existing explicit binding is preserved
+unless you choose replacement. Repository-specific credentials such as `GH_TOKEN` are collected
+separately. The repo's `env_file` carries environment credentials;
+`credential_dir` carries shared rotating auth files. Saved credentials establish that the task can
+receive them; the first real task verifies provider access.
 
 The Claude manual setup is below; [Codex / OpenAI](#codex--openai-gpt-56) and
 [Pi](#pi-earendil-workspi) follow. Claude authenticates from `CLAUDE_CODE_OAUTH_TOKEN` in the
@@ -156,26 +180,38 @@ survives concurrent tasks and respawns. There is no Claude `login` command; use 
 
 That's it — new task containers for that repo now authenticate from the token.
 
-## The `setup-repo` workflow
+## Foreground repository setup and recovery
 
-`panopticon quickstart` runs this workflow for you. To do it manually, start a **`setup-repo`** task
-from the repos modal — press `g`, highlight the repo, and press `s`. It runs on the operator host in
-tmux (no container or agent), reads the repo's `default_harness` from the task service, and dispatches:
+To repair a registered repository, press `g` in the dashboard, highlight the repository, and press
+`s`, or run:
 
-- **Claude:** the existing `claude setup-token` flow. A captured token is written to the repo
-  env-file as `CLAUDE_CODE_OAUTH_TOKEN`; an old active value is commented out and placeholder stubs
-  are removed. Capture failure falls back to copy instructions.
-- **Codex:** if `CODEX_API_KEY`, `OPENAI_API_KEY`, `CODEX_ACCESS_TOKEN`, or the repo credential
-  directory's `auth.json` already satisfies auth, it reports that and skips login. Otherwise it runs
-  interactive `codex login`, copies `~/.codex/auth.json` privately into the repo credential
-  directory, creates `secrets/openai.d/` and records `credential_dir: openai.d` when the repo had no
-  credential directory, and never prints token contents.
-- **Pi:** names every provider variable from the Pi adapter's `API_KEY_ENV_VARS`, asks which one to
-  store, reads its value with hidden input, and appends it privately to the repo env-file.
+```sh
+panopticon setup --repo <repo-id>
+```
 
-Every path converges on the same summary and final Enter-to-complete prompt. Outfitter is registered
-but has no approved setup-repo dispatch yet; the workflow says so and leaves its Pi-compatible auth
-for manual setup rather than inventing a path.
+Registered-repository setup is local-only: it first proves that the selected task service and
+runner are the intended local runtime. It then places the repository under an execution hold before
+changing credentials. Running tasks continue undisturbed. Pending tasks remain held after repair;
+retry only the task you want to start with `R` so a credential change cannot release the whole
+backlog.
+
+An existing repository's explicit harness, env-file, and credential-directory binding remains in
+effect unless you choose replacement. Replacement copies retained repository values into a new
+private env-file and changes the repository reference only after the private write succeeds. An
+incomplete explicit binding is reported as incomplete; setup does not silently substitute a saved
+connection. Keeping a complete binding leaves the repository and its pending tasks unchanged.
+Interrupted repair remains visible as held on the repository screen; press `s` to resume.
+Credentials are runner-local, so repeat setup on each host that will launch tasks.
+
+For Codex connections selected through foreground setup, retrying a task replaces its old
+credential file or link with the repository's current selection. Shared subscription credentials
+and session history are retained. Older bindings keep their existing persisted-login behavior
+until explicitly replaced through setup.
+
+The legacy `setup-repo` workflow remains available for explicit API and integration compatibility,
+and its existing task records remain visible. Quickstart and the repository screen no longer create
+that task. Foreground setup refuses to race a running legacy authentication session for the same
+repository; finish or exit that session, then run foreground setup again.
 
 ## Notes
 
@@ -186,10 +222,12 @@ for manual setup rather than inventing a path.
 - **`ANTHROPIC_API_KEY` overrides `CLAUDE_CODE_OAUTH_TOKEN`.** If a repo needs to burst past the
   subscription rate limit, put an `ANTHROPIC_API_KEY` in the same env-file — but don't set both
   unintentionally, since the API key wins.
-- **Already-running tasks** keep their old token until they respawn. After editing the env-file,
-  respawn a live task from the dashboard (`R`) to pick up the new value.
-- **Rotating/revoking.** To replace a token, mint a new one and overwrite the env-file line (or
-  re-run the `setup-repo` workflow, which comments out the old line and appends the new one).
+- **Already-running tasks** keep their credential snapshot. New and deliberately respawned tasks
+  use the replacement; foreground setup does not interrupt live work.
+- **Rotating/revoking.** To replace a Claude credential, run
+  `panopticon setup --repo <repo-id>`, select replacement, decline reuse of the saved connection,
+  and enter the new token. Foreground replacement creates a new private repository env-file and
+  leaves the prior file unchanged. Retry affected pending tasks individually after setup.
   Per-token revocation isn't available upstream (account-level "revoke all" can take time to
   propagate), so treat a leak as "mint a replacement + monitor usage in the Console," and keep the
   env-file tightly held.
@@ -202,8 +240,8 @@ for manual setup rather than inventing a path.
   add a network round trip, and its own flakiness, to every spawn); it catches a wrong prefix or an
   obviously truncated/placeholder value, and rules out **in-container `/login`** as a recovery path
   (no browser in the container, the pasted URL gets tmux linebreaks, and a per-task config volume
-  means a login there fixes exactly one session) — always fix the
-  env-file and respawn instead.
+  means a login there fixes exactly one session) — repair the repository in foreground setup and
+  retry the affected task instead.
 
 ## Codex / OpenAI (GPT-5.6)
 
@@ -230,13 +268,22 @@ OpenAI's Codex CLI in its container. Three credential tiers, in order of setup e
 
 3. **ChatGPT Plus/Pro subscription** (rotating tokens — needs the shared credential dir):
 
+   Run `panopticon setup`, choose Codex, and leave the API-key prompt empty to complete Codex
+   browser login in a new private directory. Quickstart explicitly binds that saved connection to
+   its selected repository. For an existing repository, run `panopticon setup --repo <repo-id>` and
+   choose replacement. A later Codex login creates another directory; repositories already bound
+   to the former directory keep using it until explicitly replaced.
+
+   For an advanced manually managed repository binding, create an isolated directory and make
+   Codex write file-based credentials directly into it:
+
    ```sh
-   # on the host, once per account:
-   codex login              # or: codex login --device-auth (headless)
-   mkdir -p ~/.config/panopticon/secrets/openai.d
-   cp ~/.codex/auth.json ~/.config/panopticon/secrets/openai.d/
-   chmod 0600 ~/.config/panopticon/secrets/openai.d/auth.json
-   # then set credential_dir to openai.d in the dashboard's repo form
+   mkdir -p ~/.config/panopticon/secrets/codex-manual.d
+   chmod 0700 ~/.config/panopticon/secrets/codex-manual.d
+   CODEX_HOME=~/.config/panopticon/secrets/codex-manual.d \
+     codex -c 'cli_auth_credentials_store="file"' login
+   chmod 0600 ~/.config/panopticon/secrets/codex-manual.d/auth.json
+   # then set credential_dir to codex-manual.d in the dashboard's repo form
    ```
 
    The runner mounts the dir **read-write and shared** into that repo's task containers; the
@@ -244,9 +291,9 @@ OpenAI's Codex CLI in its container. Three credential tiers, in order of setup e
    refresh tokens **rotate with reuse detection**, so every session must converge on one copy —
    codex reloads the file from disk before refreshing (and on 401) and writes refreshed tokens
    back through the symlink, so concurrent sessions on one host stay consistent. Do **not**
-   copy the same auth.json to a second host (OpenAI's documented constraint); log in per host,
-   or use an access token. If the chain is ever invalidated (re-login elsewhere, revocation),
-   tasks fail with a lifecycle detail naming the fix — re-run the login + copy above.
+   copy the same auth.json to a second host; log in per host, or use an access token. If the chain
+   is invalidated, run foreground setup on that host and explicitly replace each affected
+   repository binding.
 
 Pick the model per task via `starting_model` (e.g. `gpt-5.6-sol`, `gpt-5.6-terra`,
 `gpt-5.6-luna`), with an optional reasoning-effort suffix (`gpt-5.6-sol:high`); unset, codex

@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.1.3--5859252674ef",
+  "requirementId": "runtime-readiness.1.3",
+  "hash": "5859252674ef",
+  "verdict": "pass",
+  "summary": "Service, runner, and dashboard commands emitted by the real launchers are executed under a parent where every controlled name is stale; each child's controlled environment must equal the resolved set exactly, the sink of the real shell pipeline is kept, and the test inventory is pinned equal to the production control list so an added control cannot slip past.",
+  "timestamp": "2026-09-12T09:57:30.454Z"
+}

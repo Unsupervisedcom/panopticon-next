@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.5.5--eef5df0dee84",
+  "requirementId": "runtime-readiness.5.5",
+  "hash": "eef5df0dee84",
+  "verdict": "pass",
+  "summary": "Against a live service with a task claimed by another owner, compatible and incompatible readiness runs leave the full task snapshot including claimed_by identical and the recorded requests are only GET /identity and GET /runners, so any claim write would appear in both checks.",
+  "timestamp": "2026-09-12T09:58:11.576Z"
+}

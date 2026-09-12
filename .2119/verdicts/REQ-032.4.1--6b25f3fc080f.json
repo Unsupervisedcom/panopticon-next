@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.4.1--6b25f3fc080f",
+  "requirementId": "REQ-032.4.1",
+  "hash": "6b25f3fc080f",
+  "verdict": "pass",
+  "summary": "A real rollout with a long trailing body is wrapped with byte-consumption accounting; full-file read, readlines, or iteration beyond its first line raises while the expected resume id must still be returned.",
+  "timestamp": "2026-09-12T09:10:01.454Z"
+}

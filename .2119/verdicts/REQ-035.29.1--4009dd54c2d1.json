@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.29.1--4009dd54c2d1",
+  "requirementId": "REQ-035.29.1",
+  "hash": "4009dd54c2d1",
+  "verdict": "pass",
+  "summary": "Linux enforced default asserted as exactly one explicit --host 0.0.0.0 with PANOPTICON_HOST both unset and empty, extracted from inside the real env /bin/sh -c wrapper with non-tmux subprocess calls trapped; disabled-mode loopback and standalone uvicorn host=127.0.0.1 covered by separate tests; end-to-end start/host tests pin the full session argv.",
+  "timestamp": "2026-09-12T09:58:21.771Z"
+}

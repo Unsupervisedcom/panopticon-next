@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from panopticon.sessionservice.spawner import Spawner
+from panopticon.taskservice.auth import environment_token
+from panopticon.terminal import __main__ as cli
 from panopticon.terminal import console as terminal_console
 
 
@@ -41,15 +44,13 @@ def test_integrated_dashboard_pins_current_auth_environment(
 
     assert len(captured) == 1
     dashboard = captured[0]
-    assert dashboard[:7] == [
-        "env",
-        "-u",
+    for name in [
         "PANOPTICON_SERVICE_AUTH_FILE",
-        "-u",
         "PANOPTICON_SERVICE_AUTH_MODE",
-        "-u",
         "PANOPTICON_CONFIG",
-    ]
+    ]:
+        position = dashboard.index(name)
+        assert dashboard[position - 1] == "-u"
     assert "PANOPTICON_SERVICE_AUTH_FILE=current-auth.json" in dashboard
     assert "PANOPTICON_SERVICE_AUTH_MODE=enforced" in dashboard
     assert "PANOPTICON_CONFIG=/current/config" in dashboard
@@ -81,6 +82,65 @@ def test_integrated_dashboard_pins_current_auth_environment(
     assert "PANOPTICON_SERVICE_AUTH_FILE=only-current-auth.json" in mixed_dashboard
     assert not any(item.startswith("PANOPTICON_SERVICE_AUTH_MODE=") for item in mixed_dashboard)
     assert not any(item.startswith("PANOPTICON_CONFIG=") for item in mixed_dashboard)
+
+
+# 2119: REQ-035.31.1
+def test_generated_bootstrap_auth_reaches_final_service_runner_and_dashboard_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(tmp_path / "config"))
+    monkeypatch.delenv("PANOPTICON_SERVICE_AUTH_FILE", raising=False)
+    monkeypatch.delenv("PANOPTICON_SERVICE_AUTH_MODE", raising=False)
+
+    def missing_session(
+        command: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(command, 1)
+
+    cli._ensure_integrated_auth(run=missing_session)
+    reference = cli.os.environ["PANOPTICON_SERVICE_AUTH_FILE"]
+    secret = environment_token()
+    assert secret is not None
+
+    tmux_calls: list[list[str]] = []
+
+    def capture_session(
+        command: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[bytes]:
+        tmux_calls.append(command)
+        return subprocess.CompletedProcess(command, 1 if "has-session" in command else 0)
+
+    cli._start_sessions(run=capture_session)
+    emitted = [shlex.split(call[-1]) for call in tmux_calls if "new-session" in call]
+    dashboard: list[list[str]] = []
+    with monkeypatch.context() as local_patch:
+        local_patch.setattr(terminal_console, "wait_for_service", lambda _url: True)
+        local_patch.setattr(
+            terminal_console, "switch_file_path", lambda _socket: tmp_path / "switch"
+        )
+        local_patch.setattr(
+            terminal_console,
+            "ensure_dashboard_session",
+            lambda command, **_kwargs: dashboard.append(command),
+        )
+        local_patch.setattr(
+            terminal_console.subprocess,
+            "run",
+            lambda command, **_kwargs: subprocess.CompletedProcess(command, 0),
+        )
+        local_patch.setattr(
+            terminal_console,
+            "run_console",
+            lambda *, show_dashboard, **_kwargs: show_dashboard(),
+        )
+        terminal_console.run_console_local("http://127.0.0.1:8000")
+    emitted.extend(dashboard)
+
+    assert len(emitted) == 3
+    for command in emitted:
+        assert f"PANOPTICON_SERVICE_AUTH_FILE={reference}" in command
+        assert "PANOPTICON_SERVICE_AUTH_MODE=enforced" in command
+        assert secret not in " ".join(command)
 
 
 def test_spawner_validates_runner_credential_before_claiming() -> None:

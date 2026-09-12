@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-046.1.1--591675581146",
+  "requirementId": "REQ-046.1.1",
+  "hash": "591675581146",
+  "verdict": "pass",
+  "summary": "Darwin default asserted as exactly ['127.0.0.1'] host option with PANOPTICON_HOST unset and empty, parsed from the real quoted pipeline inside the env /bin/sh -c wrapper; a 0.0.0.0 or missing --host would fail the equality.",
+  "timestamp": "2026-09-12T09:58:23.813Z"
+}

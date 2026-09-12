@@ -327,7 +327,9 @@ def test_get_runners_returns_id_and_host(
 
     # Register a runner directly on the service (avoiding HTTP streaming in TestClient).
     reg = asyncio.run(svc.register_runner("host-1", host="box.example.com"))
-    assert client.live_runners() == [{"id": "host-1", "host": "box.example.com"}]
+    assert client.live_runners() == [
+        {"id": "host-1", "host": "box.example.com", "instance_id": None}
+    ]
 
     asyncio.run(svc.deregister_runner(reg.id))
     assert client.live_runners() == []  # gone after deregistration
@@ -341,7 +343,11 @@ def test_get_runner_by_id_returns_host(
     assert client.get_runner("host-1") is None  # not yet connected
 
     reg = asyncio.run(svc.register_runner("host-1", host="box.example.com"))
-    assert client.get_runner("host-1") == {"id": "host-1", "host": "box.example.com"}
+    assert client.get_runner("host-1") == {
+        "id": "host-1",
+        "host": "box.example.com",
+        "instance_id": None,
+    }
 
     asyncio.run(svc.deregister_runner(reg.id))
     assert client.get_runner("host-1") is None  # gone after deregistration

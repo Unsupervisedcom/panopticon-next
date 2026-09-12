@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.4.1--01a689a23106",
+  "requirementId": "REQ-047.4.1",
+  "hash": "01a689a23106",
+  "verdict": "pass",
+  "summary": "Parametrized PANOPTICON_STATE, XDG_STATE_HOME/panopticon, and HOME/.local/state/panopticon with HOME redirected and a decoy XDG value when PANOPTICON_STATE wins; the tee log path is parsed from inside the real env /bin/sh -c pipeline and its parent must equal the expected root, with a shared-tmp prefix explicitly rejected; real tmux run confirms output lands in that file.",
+  "timestamp": "2026-09-12T09:58:36.957Z"
+}

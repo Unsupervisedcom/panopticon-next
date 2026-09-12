@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.10--f23c4adc229f",
+  "requirementId": "runtime-readiness.4.10",
+  "hash": "f23c4adc229f",
+  "verdict": "pass",
+  "summary": "A live runner registered with a private host name is asserted absent from the missing-runner message and the real quickstart diagnosis must not contain the bearer credential; an in-memory mutant echoing registration hosts is caught. The child-environment test carrying this annotation does not exercise the error path.",
+  "timestamp": "2026-09-12T09:57:56.552Z"
+}

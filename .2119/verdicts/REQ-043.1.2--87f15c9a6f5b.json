@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-043.1.2--87f15c9a6f5b",
+  "requirementId": "REQ-043.1.2",
+  "hash": "87f15c9a6f5b",
+  "verdict": "pass",
+  "summary": "Real LocalRunner docker run fails with codes 1 and 125 before tmux creation, retains claim, and succeeds on ordinary heal; treating either code as permanently failed fails.",
+  "timestamp": "2026-09-12T08:29:54.391Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.2.1--9b2c692e7b5e",
+  "requirementId": "source-selection.2.1",
+  "hash": "9b2c692e7b5e",
+  "verdict": "pass",
+  "summary": "Worktree and bare repo both accepted (bare resolved path), an existing non-git directory raises 'invalid local Git checkout', and a missing path raises with the path; validation happens in resolve_source before any client call.",
+  "timestamp": "2026-09-12T09:22:32.764Z"
+}

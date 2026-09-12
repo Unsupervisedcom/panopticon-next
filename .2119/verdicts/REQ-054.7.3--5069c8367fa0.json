@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.3--5069c8367fa0",
+  "requirementId": "REQ-054.7.3",
+  "hash": "5069c8367fa0",
+  "verdict": "pass",
+  "summary": "test_walkthrough_has_ordered_success_checks_for_every_evaluation_stage splits on 'Success check:' and requires ten stage-specific checks in order (quickstart, fresh-shell 401, queued, live, attach/ctrl-b d, plan.md open, approval/iterating, PR diff, merging/complete, docker/tmux gone); removing or reordering any one fails.",
+  "timestamp": "2026-09-12T09:21:25.586Z"
+}
