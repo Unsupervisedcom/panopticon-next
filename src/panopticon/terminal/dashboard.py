@@ -3374,7 +3374,18 @@ class Dashboard(App[None]):
             return
         task = self._tasks.get(self._current)
         if task is None or task.get("container_status") not in _ATTACHABLE_STATUSES:
-            self.notify("No running session for this task.", severity="warning")
+            detail = task.get("lifecycle_detail") if task else None
+            message = "No running session for this task."
+            if detail:
+                message += f"\n{detail}\nPress d for details."
+                runner_host = task.get("runner_host") if task else None
+                if runner_host:
+                    message += f" Open repository setup on {runner_host}, where this task runs."
+                else:
+                    message += " Press g to open repos, then s for setup."
+                if task and task.get("container_status") == "failed":
+                    message += " After resolving the problem, press R to retry this task."
+            self.notify(message, severity="warning", timeout=12 if detail else 3, markup=False)
             return
         runner_host = task.get("runner_host")
         session = session_name(self._current)

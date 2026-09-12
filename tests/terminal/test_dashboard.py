@@ -1960,6 +1960,42 @@ async def test_pressing_t_with_no_running_session_does_not_signal() -> None:
         assert app.is_running
 
 
+@pytest.mark.parametrize(
+    "detail",
+    [
+        "Connect claude in foreground setup; no task credentials are configured.",
+        "Command ['docker', 'run'] failed: [missing image]",
+    ],
+)
+@pytest.mark.parametrize("runner_host", [None, "runner.example.invalid"])
+async def test_failed_attach_displays_reason_and_recovery_without_switching(
+    detail: str, runner_host: str | None
+) -> None:
+    from textual.widgets._toast import Toast
+
+    picked: list[tuple[str, str | None, str]] = []
+    task = {
+        **_TASK,
+        "container_status": "failed",
+        "lifecycle_detail": detail,
+        "runner_host": runner_host,
+    }
+    app = Dashboard(_FakeClient([task]), on_switch=lambda s, h, label: picked.append((s, h, label)))
+    async with app.run_test(size=(80, 24), notifications=True) as pilot:
+        await pilot.press("t")
+        await pilot.pause()
+        rendered = str(app.query_one(Toast).render())
+        assert detail in rendered
+        if runner_host:
+            assert f"setup on {runner_host}" in rendered
+            assert "Press g" not in rendered
+        else:
+            assert "Press g to open repos, then s for setup" in rendered
+        assert "press R to retry this task" in rendered
+        assert picked == []
+        assert app.is_running
+
+
 async def test_pressing_s_switches_to_the_service_session_when_one_exists() -> None:
     # `s` switches to the task-service tmux session via on_service (record + detach, like `t`),
     # and the dashboard stays alive; on_service returns True when a service session exists.
