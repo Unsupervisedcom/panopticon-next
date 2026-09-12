@@ -1,8 +1,0 @@
-{
-  "reviewId": "task-auth-readiness.1.3--fe0d27958cb1",
-  "requirementId": "task-auth-readiness.1.3",
-  "hash": "fe0d27958cb1",
-  "verdict": "pass",
-  "summary": "Claimed task with no registration and no or STARTING lifecycle makes begin raise with an actionable message and no repo or task hold change.",
-  "timestamp": "2026-09-12T09:07:33.473Z"
-}

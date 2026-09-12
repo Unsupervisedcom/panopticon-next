@@ -93,11 +93,13 @@ def test_begin_setup_admission_refusal_is_structured_conflict_without_mutation(
     tmp_path: Path,
 ) -> None:
     service, store = asyncio.run(_service(tmp_path))
+    pending = asyncio.run(service.create_task("repo", "spike"))
     task = asyncio.run(service.create_task("repo", "spike"))
     asyncio.run(service.claim(task.id, "possibly-active-runner"))
 
     with _client(tmp_path, service) as http:
         writer = _auth(WRITE_TOKEN)
+        pending_before = http.get(f"/tasks/{pending.id}", headers=writer).json()
         task_before = http.get(f"/tasks/{task.id}", headers=writer).json()
         repo_before = http.get("/repos/repo", headers=writer).json()
 
@@ -108,6 +110,7 @@ def test_begin_setup_admission_refusal_is_structured_conflict_without_mutation(
         assert task.id in detail
         assert "possibly-active-runner" in detail
         assert "cannot tell whether that launch is still active" in detail
+        assert http.get(f"/tasks/{pending.id}", headers=writer).json() == pending_before
         assert http.get(f"/tasks/{task.id}", headers=writer).json() == task_before
         assert http.get("/repos/repo", headers=writer).json() == repo_before
         assert task_before["claimed_by"] == "possibly-active-runner"
