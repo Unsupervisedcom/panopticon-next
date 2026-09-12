@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-022.1.1--aa2a6315adb4",
+  "requirementId": "REQ-022.1.1",
+  "hash": "aa2a6315adb4",
+  "verdict": "pass",
+  "summary": "Base-image acceptance runs gh --version and verifies gh auth token reads the injected fixture token without added layers; Dockerfile text checks alone are not the basis of this pass.",
+  "timestamp": "2026-09-12T08:29:42.690Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.4.6--fe6a35480745",
+  "requirementId": "foreground-setup.4.6",
+  "hash": "fe6a35480745",
+  "verdict": "pass",
+  "summary": "Offline task service makes configure_repo raise before the config directory is even created.",
+  "timestamp": "2026-09-12T09:07:24.231Z"
+}

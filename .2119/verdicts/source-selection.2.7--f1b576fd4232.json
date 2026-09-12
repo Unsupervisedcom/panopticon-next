@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.2.7--f1b576fd4232",
+  "requirementId": "source-selection.2.7",
+  "hash": "f1b576fd4232",
+  "verdict": "pass",
+  "summary": "Remote names come from the final nonempty component after a trailing slash, keep case, and drop exactly one .git so widget.git.git yields widget.git",
+  "timestamp": "2026-09-12T09:32:40.788Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.5.7--25fa09558af6",
+  "requirementId": "runtime-readiness.5.7",
+  "hash": "25fa09558af6",
+  "verdict": "pass",
+  "summary": "Readiness against a live service runs with subprocess.run, os.system, exec, posix_spawn, urlopen, and httpx send forbidden, socket.connect restricted to the service endpoint, the sole HTTP helper child audited via sys.addaudithook against non-service sockets and process execution, and the agent entrypoint recorded as never invoked.",
+  "timestamp": "2026-09-12T09:58:12.520Z"
+}

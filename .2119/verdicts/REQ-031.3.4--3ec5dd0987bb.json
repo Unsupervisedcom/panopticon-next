@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.3.4--3ec5dd0987bb",
+  "requirementId": "REQ-031.3.4",
+  "hash": "3ec5dd0987bb",
+  "verdict": "pass",
+  "summary": "Shell spawn uses a reachability probe that raises if consulted, and shell heal counts zero probes; applying the Docker gate to either shell path fails.",
+  "timestamp": "2026-09-12T08:29:51.716Z"
+}

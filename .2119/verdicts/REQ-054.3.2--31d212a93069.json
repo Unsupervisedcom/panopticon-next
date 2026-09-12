@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.3.2--31d212a93069",
+  "requirementId": "REQ-054.3.2",
+  "hash": "31d212a93069",
+  "verdict": "pass",
+  "summary": "Parametrized bare/start/host/quickstart entrypoints must reach the bootstrap; the real _ensure_integrated_auth with a has-session probe returning 0 must select the existing credential file, set enforced mode and leave the file byte- and inode-identical",
+  "timestamp": "2026-09-12T08:35:32.746Z"
+}

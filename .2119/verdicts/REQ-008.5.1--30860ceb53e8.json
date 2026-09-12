@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-008.5.1--30860ceb53e8",
+  "requirementId": "REQ-008.5.1",
+  "hash": "30860ceb53e8",
+  "verdict": "pass",
+  "summary": "Codex config wiring test pins UserPromptSubmit to the hook command; the gated set_turn test asserts the hook thread stays alive until the turn write returns and only then exits 0.",
+  "timestamp": "2026-09-12T09:06:34.107Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.2.3--9b777346fff3",
+  "requirementId": "REQ-048.2.3",
+  "hash": "9b777346fff3",
+  "verdict": "pass",
+  "summary": "Mutations cover version, subject, profile, MAC, component count, emptiness and padding; forged and valid-but-wrong subjects are denied with identical existing/missing-subject and target responses across REST and MCP authentication.",
+  "timestamp": "2026-09-12T09:14:19.555Z"
+}

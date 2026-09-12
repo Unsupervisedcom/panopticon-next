@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.5.3--7c877858c248",
+  "requirementId": "runtime-readiness.5.3",
+  "hash": "7c877858c248",
+  "verdict": "pass",
+  "summary": "Wrong-kind, legacy and incompatible identities produce diagnostic guard failures; real legacy, incompatible and inert startup cases return failure with diagnoses. Readiness also rejects an intended runner from another runtime.",
+  "timestamp": "2026-09-12T09:34:40.421Z"
+}

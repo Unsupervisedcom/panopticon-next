@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.1.1--58e06211d198",
+  "requirementId": "REQ-026.1.1",
+  "hash": "58e06211d198",
+  "verdict": "pass",
+  "summary": "Candidate filtering excludes single and mixed active dependencies, and real service claims recheck a dependency reopened after selection; admitting the almost-ready task fails.",
+  "timestamp": "2026-09-12T08:29:32.479Z"
+}

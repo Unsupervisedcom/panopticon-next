@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-015.1.1--98932064d01f",
+  "requirementId": "REQ-015.1.1",
+  "hash": "98932064d01f",
+  "verdict": "pass",
+  "summary": "Both fresh and resumed harness argv are checked for the explicit no-alt-screen switch; dropping the switch from either launch path fails.",
+  "timestamp": "2026-09-12T09:09:57.041Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.13--3ad25c6e49f9",
+  "requirementId": "runtime-readiness.4.13",
+  "hash": "3ad25c6e49f9",
+  "verdict": "pass",
+  "summary": "Quickstart records runtime success before registration, and a real ready service lacking the intended runner traps both registration and binding. Moving repository registration or reuse ahead of readiness fails these tests.",
+  "timestamp": "2026-09-12T09:34:34.357Z"
+}

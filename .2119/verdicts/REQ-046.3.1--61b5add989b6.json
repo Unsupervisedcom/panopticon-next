@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-046.3.1--61b5add989b6",
+  "requirementId": "REQ-046.3.1",
+  "hash": "61b5add989b6",
+  "verdict": "pass",
+  "summary": "Seven override values (IPv4, loopback-alias, ::1, uppercase uncompressed IPv6, one-char and mixed-case hostnames) across darwin/linux/win32 asserted byte-identical as the sole --host option, so normalization, lowercasing, or platform-specific ignoring is rejected; a shell-metacharacter host is also round-tripped through shlex.",
+  "timestamp": "2026-09-12T09:58:25.885Z"
+}

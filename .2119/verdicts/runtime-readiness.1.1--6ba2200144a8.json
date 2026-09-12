@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.1.1--6ba2200144a8",
+  "requirementId": "runtime-readiness.1.1",
+  "hash": "6ba2200144a8",
+  "verdict": "pass",
+  "summary": "Cold-start and reuse paths record exactly one resolve_runtime call ordered before the first identity probe and before any tmux has-session or new-session, on both reachable and unreachable branches, with the reuse path driven by a real authenticated service.",
+  "timestamp": "2026-09-12T09:57:23.211Z"
+}

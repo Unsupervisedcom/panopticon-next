@@ -1,0 +1,8 @@
+{
+  "reviewId": "skip-terminal-provisioner.2.1--5a663261435b",
+  "requirementId": "skip-terminal-provisioner.2.1",
+  "hash": "5a663261435b",
+  "verdict": "pass",
+  "summary": "After cleanup the recorded clone path persists with HEAD equal to the merge commit and the merged file content readable.",
+  "timestamp": "2026-09-12T09:07:25.260Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-052.1.1--17dd0d50a639",
+  "requirementId": "REQ-052.1.1",
+  "hash": "17dd0d50a639",
+  "verdict": "pass",
+  "summary": "Real fingerprint tests change every independently enumerated packaged path, rename identical bytes, mutate first/middle/last bytes, append bytes, and mutate each file of a multi-file tree while version and base assets stay fixed.",
+  "timestamp": "2026-09-12T08:29:43.815Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.4.8--3283d56d0d0c",
+  "requirementId": "source-selection.4.8",
+  "hash": "3283d56d0d0c",
+  "verdict": "pass",
+  "summary": "setup_repo(default_harness='codex') on an already-registered repo with default_harness 'claude' must produce an update containing only enabled_workflows; writing default_harness fails the exact-equality assertion.",
+  "timestamp": "2026-09-12T09:22:54.037Z"
+}

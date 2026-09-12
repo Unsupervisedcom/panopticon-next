@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.4.1--68b4b2b27b11",
+  "requirementId": "REQ-013.4.1",
+  "hash": "68b4b2b27b11",
+  "verdict": "pass",
+  "summary": "Real advance, free entry, and re-entry assert the current history contains exactly a pending review-addressed responsibility; pairing, disabled-workflow, and persistence failures exercise the regardless-of-success boundary.",
+  "timestamp": "2026-09-12T09:09:52.786Z"
+}

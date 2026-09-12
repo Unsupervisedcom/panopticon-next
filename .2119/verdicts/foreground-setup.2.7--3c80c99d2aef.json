@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.7--3c80c99d2aef",
+  "requirementId": "foreground-setup.2.7",
+  "hash": "3c80c99d2aef",
+  "verdict": "pass",
+  "summary": "Entered forge token appears in the repo env file and is asserted absent from the reusable connection file.",
+  "timestamp": "2026-09-12T09:07:02.484Z"
+}

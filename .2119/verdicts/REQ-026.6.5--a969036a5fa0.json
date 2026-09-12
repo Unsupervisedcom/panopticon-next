@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.6.5--a969036a5fa0",
+  "requirementId": "REQ-026.6.5",
+  "hash": "a969036a5fa0",
+  "verdict": "pass",
+  "summary": "Real turn-to-agent mutation clears a previously true attention marker, persists it, and advances the change version exactly once; retaining attention or performing two published mutations fails.",
+  "timestamp": "2026-09-12T08:29:40.434Z"
+}

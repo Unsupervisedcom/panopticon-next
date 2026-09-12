@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.2--21bc3876d3ca",
+  "requirementId": "foreground-setup.2.2",
+  "hash": "21bc3876d3ca",
+  "verdict": "pass",
+  "summary": "Connection applied only to the explicitly configured repo; the sibling repo sharing the old file keeps its reference, and an explicit incomplete binding with no replacement selection is not overwritten.",
+  "timestamp": "2026-09-12T09:06:57.406Z"
+}

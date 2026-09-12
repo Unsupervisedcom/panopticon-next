@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.3.1--1e02eac17f57",
+  "requirementId": "REQ-032.3.1",
+  "hash": "1e02eac17f57",
+  "verdict": "pass",
+  "summary": "Empty, invalid JSON, missing payload, and missing originator rollouts are newer than a valid interactive file; exact selected id and malformed-only fallback reject accepting or crashing on them.",
+  "timestamp": "2026-09-12T09:10:00.903Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.1--db23ed3c4d0e",
+  "requirementId": "runtime-readiness.2.1",
+  "hash": "db23ed3c4d0e",
+  "verdict": "pass",
+  "summary": "A real subprocess launched through the session environment under a stale parent instance id serves /identity with 401 unauthenticated and 200 authenticated, reporting the stable kind, revision 1, a non-empty version, and the launch-time identity; a live uvicorn service returns the exact identity dict without the auth secret, and the route is classified fleet-read.",
+  "timestamp": "2026-09-12T09:57:43.344Z"
+}

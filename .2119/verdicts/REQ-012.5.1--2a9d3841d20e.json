@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.5.1--2a9d3841d20e",
+  "requirementId": "REQ-012.5.1",
+  "hash": "2a9d3841d20e",
+  "verdict": "pass",
+  "summary": "Real repository create and patch reject model-without-harness, including clearing a configured harness, with a valid paired update as control.",
+  "timestamp": "2026-09-12T08:29:31.890Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.2.4--bd7aa701fc3a",
+  "requirementId": "task-auth-readiness.2.4",
+  "hash": "bd7aa701fc3a",
+  "verdict": "pass",
+  "summary": "A real Alembic upgrade starts from the pre-hold schema with existing repo/task rows and asserts both holds default disabled, no pause reason, and retained prompt; accidental default pausing fails.",
+  "timestamp": "2026-09-12T08:38:00.988Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-043.4.3--949897d5b94d",
+  "requirementId": "REQ-043.4.3",
+  "hash": "949897d5b94d",
+  "verdict": "pass",
+  "summary": "A nonzero-budget outage asserts no additional image checks/builds/spawns throughout repeated deferrals, then exactly one new charged respawn when Docker returns.",
+  "timestamp": "2026-09-12T08:29:58.853Z"
+}

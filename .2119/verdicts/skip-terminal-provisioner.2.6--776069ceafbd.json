@@ -1,0 +1,8 @@
+{
+  "reviewId": "skip-terminal-provisioner.2.6--776069ceafbd",
+  "requirementId": "skip-terminal-provisioner.2.6",
+  "hash": "776069ceafbd",
+  "verdict": "pass",
+  "summary": "After the retained checkout is removed, two further cleanup passes leave it absent.",
+  "timestamp": "2026-09-12T09:07:30.390Z"
+}

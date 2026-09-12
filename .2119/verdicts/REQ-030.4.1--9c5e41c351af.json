@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.1--9c5e41c351af",
+  "requirementId": "REQ-030.4.1",
+  "hash": "9c5e41c351af",
+  "verdict": "fail",
+  "summary": "Darwin positive cases expose only pbcopy. A resolver that prefers wl-copy or xclip when both coexist would still pass; add darwin cases with pbcopy and all competing tools present.",
+  "timestamp": "2026-09-12T09:13:44.962Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.1.7--80de7e5fde0e",
+  "requirementId": "task-auth-readiness.1.7",
+  "hash": "80de7e5fde0e",
+  "verdict": "pass",
+  "summary": "Persistent sqlite restart restores repo hold, task hold, claim and paused status, and resume/finish/retry work.",
+  "timestamp": "2026-09-12T09:07:37.595Z"
+}

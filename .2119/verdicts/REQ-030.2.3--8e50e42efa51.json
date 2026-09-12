@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.2.3--8e50e42efa51",
+  "requirementId": "REQ-030.2.3",
+  "hash": "8e50e42efa51",
+  "verdict": "fail",
+  "summary": "Tests inspect generated and installed select-word commands but never double-click text or observe the selected word. Add a real mouse-coordinate selection case that rejects selecting adjacent text or the whole line.",
+  "timestamp": "2026-09-12T09:13:42.212Z"
+}

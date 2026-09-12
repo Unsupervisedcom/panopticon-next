@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.2.3--5718673ec822",
+  "requirementId": "REQ-026.2.3",
+  "hash": "5718673ec822",
+  "verdict": "pass",
+  "summary": "Real task responses change from gated to queued after a custom workflow terminal transition and remain gated for DROPPED; stale or COMPLETE-only terminality fails.",
+  "timestamp": "2026-09-12T08:29:35.335Z"
+}

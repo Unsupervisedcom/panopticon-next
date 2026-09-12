@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.1.3--c35390e2db4f",
+  "requirementId": "REQ-030.1.3",
+  "hash": "c35390e2db4f",
+  "verdict": "pass",
+  "summary": "Generated config pins set-clipboard on and real tmux queries verify the effective session option, including an existing server seeded with clipboard off.",
+  "timestamp": "2026-09-12T09:13:40.587Z"
+}

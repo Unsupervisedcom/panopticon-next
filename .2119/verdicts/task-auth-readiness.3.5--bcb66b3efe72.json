@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.5--bcb66b3efe72",
+  "requirementId": "task-auth-readiness.3.5",
+  "hash": "bcb66b3efe72",
+  "verdict": "pass",
+  "summary": "Shell workflow spawns with a credential_check that would fail the test if invoked.",
+  "timestamp": "2026-09-12T09:07:48.792Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.4.5--ca76727352cc",
+  "requirementId": "source-selection.4.5",
+  "hash": "ca76727352cc",
+  "verdict": "pass",
+  "summary": "A first-candidate 409 with an unrelated stored repo retries with the second deterministic candidate and returns that id rather than the conflicting one, and exhausting every candidate raises an explicit allocation error",
+  "timestamp": "2026-09-12T09:32:46.949Z"
+}

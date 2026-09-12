@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.2.2--ed428c1c365d",
+  "requirementId": "source-selection.2.2",
+  "hash": "ed428c1c365d",
+  "verdict": "pass",
+  "summary": "Valid bundle accepted as kind 'bundle'; a text file named .bundle and a bundle with unmet prerequisites (HEAD~1..HEAD) both raise 'invalid Git bundle', which only a real git bundle verify against an empty repo rejects, so a name-only check would fail.",
+  "timestamp": "2026-09-12T09:22:33.742Z"
+}

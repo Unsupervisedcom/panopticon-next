@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.2.4--1716444ad1f5",
+  "requirementId": "REQ-048.2.4",
+  "hash": "1716444ad1f5",
+  "verdict": "pass",
+  "summary": "Repeated derivation for multiple subject/writer pairs yields a single value, and a fresh Python subprocess must reproduce it; per-call randomness and process-specific derivation fail.",
+  "timestamp": "2026-09-12T09:14:20.117Z"
+}

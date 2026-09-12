@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.11.2--ffa05d03462c",
+  "requirementId": "REQ-048.11.2",
+  "hash": "ffa05d03462c",
+  "verdict": "pass",
+  "summary": "Startup rejects wildcard, malformed, opaque, path, query, fragment and userinfo origins, including invalid entries mixed with a valid origin; exact explicit-port, localhost and IPv6 origins succeed.",
+  "timestamp": "2026-09-12T09:14:34.599Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.1.2--37316bf11ad9",
+  "requirementId": "REQ-026.1.2",
+  "hash": "37316bf11ad9",
+  "verdict": "pass",
+  "summary": "Candidate filtering excludes DROPPED alone or alongside COMPLETE, and service claim rechecks reject a dependency dropped after selection; treating all terminal states as success fails.",
+  "timestamp": "2026-09-12T08:29:33.044Z"
+}

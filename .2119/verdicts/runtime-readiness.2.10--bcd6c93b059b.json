@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.10--bcd6c93b059b",
+  "requirementId": "runtime-readiness.2.10",
+  "hash": "bcd6c93b059b",
+  "verdict": "pass",
+  "summary": "A real health-only legacy endpoint makes integrated startup fail while subprocess and migration traps reject stopping its session. The recorded request sequence remains solely GET /identity.",
+  "timestamp": "2026-09-12T09:34:19.876Z"
+}

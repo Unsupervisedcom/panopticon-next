@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.6.2--b3bfda60f756",
+  "requirementId": "REQ-054.6.2",
+  "hash": "b3bfda60f756",
+  "verdict": "pass",
+  "summary": "Fake tmux only clears the alive marker on kill-server for the panopticon socket; the test asserts the marker is gone after stop.",
+  "timestamp": "2026-09-12T09:06:47.262Z"
+}

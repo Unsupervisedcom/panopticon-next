@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.2.4--aa131d9cdeac",
+  "requirementId": "REQ-030.2.4",
+  "hash": "aa131d9cdeac",
+  "verdict": "fail",
+  "summary": "Installed double-click bindings are inspected for copy-pipe but no test observes clipboard output. Use known pane text and a capture tool to prove the double-clicked word, rather than empty or adjacent text, is copied.",
+  "timestamp": "2026-09-12T09:13:42.783Z"
+}

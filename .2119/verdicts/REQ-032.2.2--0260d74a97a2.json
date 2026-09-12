@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.2.2--0260d74a97a2",
+  "requirementId": "REQ-032.2.2",
+  "hash": "0260d74a97a2",
+  "verdict": "pass",
+  "summary": "Exec-only and malformed-only rollout directories both produce exact first-run argv without an exception, rejecting noninteractive resume and error fallback.",
+  "timestamp": "2026-09-12T09:10:00.353Z"
+}

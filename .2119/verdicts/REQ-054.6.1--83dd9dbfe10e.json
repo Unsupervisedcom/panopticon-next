@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.6.1--83dd9dbfe10e",
+  "requirementId": "REQ-054.6.1",
+  "hash": "83dd9dbfe10e",
+  "verdict": "pass",
+  "summary": "Stop must list containers by the panopticon.task label and force-remove the listed ids exactly once; skipping or narrowing the removal fails the command-log assertions.",
+  "timestamp": "2026-09-12T09:06:46.328Z"
+}

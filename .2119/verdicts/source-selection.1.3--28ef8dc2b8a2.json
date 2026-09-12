@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.1.3--28ef8dc2b8a2",
+  "requirementId": "source-selection.1.3",
+  "hash": "28ef8dc2b8a2",
+  "verdict": "pass",
+  "summary": "Origin-less checkout accepted via Enter must yield checkout.resolve(); a relative path through a symlink alias must resolve to the real checkout root with the real directory name, so an unresolved alias or relative path fails.",
+  "timestamp": "2026-09-12T09:22:29.744Z"
+}

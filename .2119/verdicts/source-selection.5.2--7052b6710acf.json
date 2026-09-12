@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.5.2--7052b6710acf",
+  "requirementId": "source-selection.5.2",
+  "hash": "7052b6710acf",
+  "verdict": "pass",
+  "summary": "Uppercase GITHUB.com is accepted while github.com.evil.example, prefixgithub.com, github.com@evil.example and github.com:443 must all yield only the local workflow, covering case-insensitivity and suffix/prefix/user-info/port rejection.",
+  "timestamp": "2026-09-12T09:22:56.081Z"
+}

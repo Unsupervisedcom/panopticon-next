@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.2.2--d44affa52b2b",
+  "requirementId": "REQ-030.2.2",
+  "hash": "d44affa52b2b",
+  "verdict": "fail",
+  "summary": "The copy-mode-vi test only compares binding text. No vi-mode drag-release input or captured clipboard output rejects an empty or wrong selection; exercise that mode through real tmux and compare bytes.",
+  "timestamp": "2026-09-12T09:13:41.615Z"
+}

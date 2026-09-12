@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.5--bd7aa00e0f9a",
+  "requirementId": "REQ-030.4.5",
+  "hash": "bd7aa00e0f9a",
+  "verdict": "fail",
+  "summary": "Only linux exercises the non-darwin xsel fallback. Add another non-darwin platform with only xsel and assert xsel --clipboard --input; a linux-only resolver currently survives.",
+  "timestamp": "2026-09-12T09:13:47.100Z"
+}

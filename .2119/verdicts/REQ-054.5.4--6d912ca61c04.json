@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.5.4--6d912ca61c04",
+  "requirementId": "REQ-054.5.4",
+  "hash": "6d912ca61c04",
+  "verdict": "pass",
+  "summary": "Replacement writes a distinct 0600 file while the previous file's bytes equal the pre-replacement snapshot.",
+  "timestamp": "2026-09-12T09:06:43.248Z"
+}

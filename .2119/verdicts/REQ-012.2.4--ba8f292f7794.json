@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.2.4--ba8f292f7794",
+  "requirementId": "REQ-012.2.4",
+  "hash": "ba8f292f7794",
+  "verdict": "pass",
+  "summary": "Changing the application default to codex before creation and reading the stored task rejects a null or hardcoded claude selection.",
+  "timestamp": "2026-09-12T08:29:27.338Z"
+}

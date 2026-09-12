@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.3.1--cd3bece22610",
+  "requirementId": "REQ-013.3.1",
+  "hash": "cd3bece22610",
+  "verdict": "pass",
+  "summary": "Two declared reviewer pairs are exercised through real service transitions; exact persisted harness and model comparisons reject author-pair inheritance, mismatched halves, and a hard-coded default.",
+  "timestamp": "2026-09-12T09:09:52.193Z"
+}

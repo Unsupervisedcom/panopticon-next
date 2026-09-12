@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.5--2ba8da2351c8",
+  "requirementId": "foreground-setup.2.5",
+  "hash": "2ba8da2351c8",
+  "verdict": "pass",
+  "summary": "New uniquely named file carries GH_TOKEN and a literal value containing '=', old shared file bytes unchanged; merge_env keeps comments and rejects multiline values.",
+  "timestamp": "2026-09-12T09:07:00.543Z"
+}

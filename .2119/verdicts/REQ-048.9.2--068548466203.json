@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.9.2--068548466203",
+  "requirementId": "REQ-048.9.2",
+  "hash": "068548466203",
+  "verdict": "pass",
+  "summary": "The complete registered REST method inventory checks read-token authentication before invalid path/query/body validation; mutations, liveness, runner input polling and every MCP tool/resource receive authentication-layer 401.",
+  "timestamp": "2026-09-12T09:14:32.002Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.4--d63f395edd0a",
+  "requirementId": "runtime-readiness.2.4",
+  "hash": "d63f395edd0a",
+  "verdict": "pass",
+  "summary": "Otherwise valid identity data with a different instance is rejected by the guard and readiness wait; a real incompatible service also makes integrated startup fail. Accepting a neighboring runtime is detected.",
+  "timestamp": "2026-09-12T09:34:24.368Z"
+}

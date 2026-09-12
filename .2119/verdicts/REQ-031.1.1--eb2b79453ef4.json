@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.1.1--eb2b79453ef4",
+  "requirementId": "REQ-031.1.1",
+  "hash": "eb2b79453ef4",
+  "verdict": "pass",
+  "summary": "Real Docker probe failures feed the start entry point and assert no migration, background-session startup, or console entry; continuing after docker info failure fails.",
+  "timestamp": "2026-09-12T08:29:47.295Z"
+}

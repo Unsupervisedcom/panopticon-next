@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.45.1--7ce8f416fadc",
+  "requirementId": "REQ-035.45.1",
+  "hash": "7ce8f416fadc",
+  "verdict": "pass",
+  "summary": "401 and 403 liveness exceptions must raise without sleeping/retrying, and a real liveness thread rejection is propagated out of host main; treating permanent rejection as transient fails.",
+  "timestamp": "2026-09-12T08:29:52.735Z"
+}

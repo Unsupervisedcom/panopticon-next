@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.2.1--294b9f27a114",
+  "requirementId": "REQ-013.2.1",
+  "hash": "294b9f27a114",
+  "verdict": "pass",
+  "summary": "The real persisted review worker is reloaded and its governor is compared with the author id, rejecting a missing governor or a different task id.",
+  "timestamp": "2026-09-12T09:09:51.673Z"
+}

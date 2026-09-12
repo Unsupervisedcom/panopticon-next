@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.3.6--c822f0ede90f",
+  "requirementId": "source-selection.3.6",
+  "hash": "c822f0ede90f",
+  "verdict": "pass",
+  "summary": "A GitLab remote matches only its whitespace-trimmed exact text; dropping .git or switching to scp transport is rejected as non-equivalent",
+  "timestamp": "2026-09-12T09:32:45.946Z"
+}

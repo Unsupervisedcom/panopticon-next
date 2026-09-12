@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.3.8--fddf4bc64c2d",
+  "requirementId": "runtime-readiness.3.8",
+  "hash": "fddf4bc64c2d",
+  "verdict": "pass",
+  "summary": "Integrated healthy, incompatible and legacy cases reject session creation or replacement, and the inert-session test rejects invoking startup. Restarting sessions during guard evaluation fails those checks.",
+  "timestamp": "2026-09-12T09:34:31.718Z"
+}

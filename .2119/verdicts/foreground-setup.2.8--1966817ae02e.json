@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.8--1966817ae02e",
+  "requirementId": "foreground-setup.2.8",
+  "hash": "1966817ae02e",
+  "verdict": "pass",
+  "summary": "Two repos explicitly selecting the Codex connection share one 0700 owner-writable credential_dir with distinct env files and stay configured after auth.json rotation.",
+  "timestamp": "2026-09-12T09:07:03.488Z"
+}

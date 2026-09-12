@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.1.1--ca6c90ce30a3",
+  "requirementId": "foreground-setup.1.1",
+  "hash": "ca6c90ce30a3",
+  "verdict": "pass",
+  "summary": "Real 'python -m panopticon.terminal setup' in a pty with PATH=/nonexistent, a fresh HOME and no service exits 0 and saves the pasted token to a private connection file; any Docker, tmux or service dependency would fail",
+  "timestamp": "2026-09-12T08:35:49.647Z"
+}

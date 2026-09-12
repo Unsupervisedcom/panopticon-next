@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.5.1--9caa6a2a4df4",
+  "requirementId": "REQ-054.5.1",
+  "hash": "9caa6a2a4df4",
+  "verdict": "pass",
+  "summary": "Secrets root is absent before setup and asserted afterwards as 0700 owned by the effective uid.",
+  "timestamp": "2026-09-12T09:06:40.039Z"
+}

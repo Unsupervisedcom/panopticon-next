@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.4.1--e77eb32169de",
+  "requirementId": "REQ-026.4.1",
+  "hash": "e77eb32169de",
+  "verdict": "pass",
+  "summary": "Real API rejects self and three-node cycles, and concurrent two/three-node updates use the real store with an interleaving wrapper; admitting direct, indirect, or racing cycles fails.",
+  "timestamp": "2026-09-12T08:29:37.038Z"
+}

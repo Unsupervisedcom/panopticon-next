@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.4.7--4062f8f3d4b5",
+  "requirementId": "source-selection.4.7",
+  "hash": "4062f8f3d4b5",
+  "verdict": "pass",
+  "summary": "Existing repo carries harness, model, env_file and credential_dir; setup_repo with a different default_harness must emit only an enabled_workflows update, so any rebinding of those fields fails.",
+  "timestamp": "2026-09-12T09:22:53.009Z"
+}

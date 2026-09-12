@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.5.1--0f62c9e88b66",
+  "requirementId": "REQ-030.5.1",
+  "hash": "0f62c9e88b66",
+  "verdict": "pass",
+  "summary": "Container and shell spawns with tmux_socket=None compare the complete emitted tmux command list, rejecting a config load, source-file, or default-setting command on the ambient socket.",
+  "timestamp": "2026-09-12T09:13:48.094Z"
+}

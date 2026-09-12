@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.1.3--23ca2fc2132d",
+  "requirementId": "REQ-031.1.3",
+  "hash": "23ca2fc2132d",
+  "verdict": "pass",
+  "summary": "Both real refusal paths and preflight helper assert complete remediation sentences naming daemon unreachability, macOS tools, and Linux systemctl; missing or negated advice fails.",
+  "timestamp": "2026-09-12T08:29:48.406Z"
+}

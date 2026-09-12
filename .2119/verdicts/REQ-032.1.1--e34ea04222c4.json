@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.1.1--e34ea04222c4",
+  "requirementId": "REQ-032.1.1",
+  "hash": "e34ea04222c4",
+  "verdict": "pass",
+  "summary": "Real rollout files drive exact resume argv containing the recorded interactive id; a newer exec rollout and an explicit expected argv reject selecting exec or using --last.",
+  "timestamp": "2026-09-12T09:09:57.636Z"
+}

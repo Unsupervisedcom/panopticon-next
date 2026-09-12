@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.31.1--df689a8b3d3f",
+  "requirementId": "REQ-035.31.1",
+  "hash": "df689a8b3d3f",
+  "verdict": "pass",
+  "summary": "All three emitted child commands are checked with present, absent and mixed auth controls; generated bootstrap credentials reach the commands, and real tmux children replace stale reference/mode/config values.",
+  "timestamp": "2026-09-12T09:13:50.807Z"
+}

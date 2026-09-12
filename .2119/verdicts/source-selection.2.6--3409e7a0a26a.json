@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.2.6--3409e7a0a26a",
+  "requirementId": "source-selection.2.6",
+  "hash": "3409e7a0a26a",
+  "verdict": "pass",
+  "summary": "Origin-less checkout name must equal its directory name and a symlink alias 'project-link' must yield the real directory name 'project', so deriving the name from the alias or path string fails.",
+  "timestamp": "2026-09-12T09:22:37.812Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.8--4b26d99e351a",
+  "requirementId": "REQ-054.7.8",
+  "hash": "4b26d99e351a",
+  "verdict": "pass",
+  "summary": "quickstart runs under pty.fork; t must move the sole tmux client to the task session and Ctrl-b d back to 'dashboard' while a monitor fails the run on any switch before the key (also after a NUL probe); dashboard pane_id and pane_pid are asserted equal before and after, so a restarted dashboard fails.",
+  "timestamp": "2026-09-12T09:21:28.601Z"
+}

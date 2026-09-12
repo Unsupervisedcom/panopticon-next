@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.5.1--397462661909",
+  "requirementId": "source-selection.5.1",
+  "hash": "397462661909",
+  "verdict": "pass",
+  "summary": "https, ssh:// and scp github.com spellings must return both GitHub workflows while http://, fragment, query, gitlab, file://, paths and bundles must return only the local workflow via exact tuple equality.",
+  "timestamp": "2026-09-12T09:22:55.086Z"
+}

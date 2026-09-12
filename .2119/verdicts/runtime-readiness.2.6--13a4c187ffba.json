@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.6--13a4c187ffba",
+  "requirementId": "runtime-readiness.2.6",
+  "hash": "13a4c187ffba",
+  "verdict": "pass",
+  "summary": "Healthy integer revision 1 succeeds, while revision 2, booleans, a numeric string, a float and null are rejected by both guard and wait. The nearest higher revision and type-confused equivalents cannot satisfy the contract.",
+  "timestamp": "2026-09-12T09:34:25.444Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.2.2--a35968ce3625",
+  "requirementId": "task-auth-readiness.2.2",
+  "hash": "a35968ce3625",
+  "verdict": "pass",
+  "summary": "Retry raises NotReady mentioning Finish while the repo is under repair.",
+  "timestamp": "2026-09-12T09:07:40.749Z"
+}

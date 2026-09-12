@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.2.5--73cbde8468df",
+  "requirementId": "REQ-030.2.5",
+  "hash": "73cbde8468df",
+  "verdict": "fail",
+  "summary": "No-tool evidence checks copy-selection-and-cancel strings but never reads tmux's paste buffer. Exercise drag release in both key tables and double-click with no tool, then assert exact buffer contents.",
+  "timestamp": "2026-09-12T09:13:43.308Z"
+}

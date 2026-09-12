@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.11--5c85c92af260",
+  "requirementId": "runtime-readiness.2.11",
+  "hash": "5c85c92af260",
+  "verdict": "pass",
+  "summary": "The real legacy endpoint test requires failed startup, only GET /identity, and no migration or subprocess action. Proceeding with migration or session mutation after the legacy response is rejected.",
+  "timestamp": "2026-09-12T09:34:20.444Z"
+}

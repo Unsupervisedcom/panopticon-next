@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.10.1--0c35fdc9f9db",
+  "requirementId": "REQ-048.10.1",
+  "hash": "0c35fdc9f9db",
+  "verdict": "pass",
+  "summary": "Each named query/cookie/JSON/header alias is rejected both alone and beside a valid bearer header; malformed bearer spelling and whitespace cases fail, while the exact allowed-origin bearer request succeeds.",
+  "timestamp": "2026-09-12T09:14:32.530Z"
+}
