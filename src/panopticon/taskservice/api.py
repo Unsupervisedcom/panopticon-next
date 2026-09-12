@@ -1190,6 +1190,10 @@ def create_app(
     async def _session_conflict(_: Request, exc: SessionConflict) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": redact_configured_tokens(str(exc))})
 
+    @app.exception_handler(NotReady)
+    async def _not_ready(_: Request, exc: NotReady) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": redact_configured_tokens(str(exc))})
+
     @app.exception_handler(IllegalTransition)
     async def _illegal(_: Request, exc: IllegalTransition) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": redact_configured_tokens(str(exc))})
