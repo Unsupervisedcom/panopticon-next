@@ -62,6 +62,26 @@ def test_current_checkout_is_suggested_and_can_be_replaced(tmp_path: Path) -> No
     assert selected.kind == "checkout"
 
 
+def test_current_checkout_suggestion_displays_remote_name_and_exact_source(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # 2119: 1.1
+    remote = "https://github.com/acme/friendly-widget.git"
+    checkout = _worktree(tmp_path / "working-copy", origin=remote)
+
+    selected = qs.select_source(cwd=checkout, input_fn=lambda _prompt: "")
+
+    assert selected.git_url == remote
+    assert selected.name == "friendly-widget"
+    assert capsys.readouterr().out.splitlines()[:5] == [
+        "Suggested repository: friendly-widget",
+        f"  Source: {remote}",
+        "Selected repository: friendly-widget",
+        f"  Source: {remote}",
+        "  Type: GitHub remote",
+    ]
+
+
 def test_checkout_without_origin_uses_canonical_path(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -264,7 +284,9 @@ def test_friendly_names_remove_only_one_terminal_suffix(tmp_path: Path) -> None:
     assert qs.resolve_source("https://example.test/acme/widget.git.git").name == "widget.git"
 
 
-def test_source_equivalence_is_bounded_by_source_kind(tmp_path: Path) -> None:
+def test_source_equivalence_is_bounded_by_source_kind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # 2119: 3.1
     # 2119: 3.2
     # 2119: 3.3
@@ -274,6 +296,12 @@ def test_source_equivalence_is_bounded_by_source_kind(tmp_path: Path) -> None:
     assert qs.sources_equivalent(
         " https://github.com/Acme/Widget.git/ ", "git@GITHUB.com:acme/widget"
     )
+    assert qs.sources_equivalent(
+        "ssh://git@GITHUB.com/Acme/Widget.git/", "https://github.com/acme/widget"
+    )
+    assert not qs.sources_equivalent(
+        "https://github.com/acme/widget.git.git", "https://github.com/acme/widget"
+    )
     assert not qs.sources_equivalent(
         "https://github.com/acme/widget.git", "https://github.com/other/widget.git"
     )
@@ -282,12 +310,23 @@ def test_source_equivalence_is_bounded_by_source_kind(tmp_path: Path) -> None:
     )
     local = _worktree(tmp_path / "widget")
     dot_git = _worktree(tmp_path / "widget.git")
+    local_alias = tmp_path / "widget-alias"
+    local_alias.symlink_to(local, target_is_directory=True)
+    monkeypatch.chdir(tmp_path)
     assert qs.sources_equivalent(f" {local} ", str(local.resolve()))
+    assert qs.sources_equivalent(local_alias.as_posix(), str(local.resolve()))
+    assert qs.sources_equivalent("widget-alias", str(local.resolve()))
     assert not qs.sources_equivalent(str(local), str(dot_git))
 
     first_bundle = _bundle(tmp_path / "first.bundle")
+    first_without_suffix = tmp_path / "first"
+    first_without_suffix.write_bytes(first_bundle.read_bytes())
+    bundle_alias = tmp_path / "first-alias"
+    bundle_alias.symlink_to(first_bundle)
     second_bundle = tmp_path / "second.bundle"
     second_bundle.write_bytes(first_bundle.read_bytes())
+    assert qs.sources_equivalent("first-alias", str(first_bundle.resolve()))
+    assert not qs.sources_equivalent(str(first_bundle), str(first_without_suffix))
     assert not qs.sources_equivalent(str(first_bundle), str(second_bundle))
 
 
@@ -321,6 +360,25 @@ def test_source_equivalence_rejects_host_owner_path_and_non_github_inference(
 ) -> None:
     # 2119: 3.3, 3.6
     assert not qs.sources_equivalent(first, second)
+
+
+def test_non_github_remote_equivalence_accepts_only_exact_trimmed_text() -> None:
+    # 2119: 3.6
+    source = "https://gitlab.com/acme/widget.git"
+
+    assert qs.sources_equivalent(f"  {source}  ", source)
+    assert not qs.sources_equivalent(source, "https://gitlab.com/acme/widget")
+    assert not qs.sources_equivalent(source, "git@gitlab.com:acme/widget.git")
+
+
+def test_unsupported_legacy_file_url_is_not_equivalent_but_remains_invalid_input() -> None:
+    legacy = "file://legacy-host/projects/widget.git"
+
+    assert not qs.sources_equivalent(legacy, legacy)
+    assert not qs.sources_equivalent(legacy, "/projects/widget.git")
+    assert not qs.sources_equivalent("/projects/widget.git", legacy)
+    with pytest.raises(RuntimeError, match="file URL has a remote host"):
+        qs.resolve_source(legacy)
 
 
 def test_same_basename_sources_get_distinct_stable_ids(tmp_path: Path) -> None:
@@ -401,6 +459,41 @@ def test_existing_equivalent_source_is_reused_without_rebinding() -> None:
         )
     ]
     assert unrelated == unrelated_before
+
+
+def test_existing_repo_scan_skips_unsupported_legacy_source() -> None:
+    selected = "https://github.com/acme/widget.git"
+    poisoned = {
+        "id": "legacy-file-url",
+        "name": "legacy",
+        "git_url": "file://legacy-host/projects/widget.git",
+    }
+    unrelated = {
+        "id": "unrelated",
+        "name": "other-widget",
+        "git_url": "https://github.com/other/widget.git",
+    }
+    current = {
+        "id": "current",
+        "name": "Current Widget",
+        "git_url": "git@github.com:acme/widget.git",
+        "enabled_workflows": ["github-self-reviewed", "github-peer-reviewed"],
+    }
+
+    class _Client:
+        def list_repos(self) -> list[dict[str, object]]:
+            return [poisoned, unrelated, current]
+
+        def create_repo(self, *args: Any, **kwargs: Any) -> None:
+            raise AssertionError("equivalent source must be reused")
+
+        def update_repo(self, *args: Any, **kwargs: Any) -> None:
+            raise AssertionError("fully configured source must not be mutated")
+
+    assert qs.setup_repo(_Client(), selected, None) == (  # type: ignore[arg-type]
+        "current",
+        "Current Widget",
+    )
 
 
 def test_same_basename_existing_repo_is_not_reused_or_mutated() -> None:
@@ -485,7 +578,7 @@ def test_unrelated_create_conflict_retries_distinct_id() -> None:
     repo_id, _ = qs.setup_repo(client, source, None)  # type: ignore[arg-type]
 
     assert client.ids == [client.ids[0], repo_id]
-    assert client.ids[0] != repo_id
+    assert client.ids == list(qs.repo_id_candidates(source)[:2])
 
 
 @pytest.mark.parametrize(

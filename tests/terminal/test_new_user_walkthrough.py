@@ -58,8 +58,11 @@ def test_walkthrough_uses_self_review_and_distinguishes_peer_review() -> None:
     # 2119: REQ-054.4.3
     assert "Select `github-self-reviewed`" in WALKTHROUGH_TEXT
     assert "the initiating operator approves the work" in WALKTHROUGH_TEXT
-    assert "`github-peer-reviewed`" in WALKTHROUGH_TEXT
-    assert "requires another person to approve the pull request" in WALKTHROUGH_TEXT
+    normalized = " ".join(WALKTHROUGH_TEXT.split())
+    assert (
+        "`github-peer-reviewed` is also available, but requires another person to approve the "
+        "pull request."
+    ) in normalized
 
 
 def test_walkthrough_names_the_real_advance_command_for_supported_evaluator_harnesses() -> None:

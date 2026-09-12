@@ -305,7 +305,15 @@ def sources_equivalent(left: str, right: str) -> bool:
     """Whether two stored source strings identify the same bounded source."""
     if not left.strip() or not right.strip():
         return False
-    return source_identity(left) == source_identity(right)
+    try:
+        left_identity = source_identity(left)
+        right_identity = source_identity(right)
+    except (OSError, RuntimeError, ValueError):
+        # Repository rows can predate the current source-validation contract. An
+        # unsupported stored spelling must not prevent setup from examining the
+        # remaining rows, and it is never safe to infer that spelling is equivalent.
+        return False
+    return left_identity == right_identity
 
 
 def _id_stem(source: str) -> str:

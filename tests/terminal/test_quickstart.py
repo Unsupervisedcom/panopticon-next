@@ -52,11 +52,22 @@ def test_detect_git_url_rejects_nonzero_exit(monkeypatch: pytest.MonkeyPatch) ->
 def test_detect_git_url_uses_canonical_path_for_repo_without_origin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from panopticon.terminal.source_selection import detect_current_source
+
     # 2119: REQ-054.2.1
     # 2119: REQ-054.2.3
-    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
-    monkeypatch.chdir(tmp_path)
-    assert qs.detect_git_url() == str(tmp_path.resolve())
+    checkout = tmp_path / "checkout"
+    subprocess.run(["git", "init", str(checkout)], check=True, capture_output=True)
+    subdirectory = checkout / "nested"
+    subdirectory.mkdir()
+    alias = tmp_path / "checkout-alias"
+    alias.symlink_to(checkout, target_is_directory=True)
+
+    monkeypatch.chdir(subdirectory)
+    assert qs.detect_git_url() == str(checkout.resolve())
+    detected_through_alias = detect_current_source(cwd=alias / "nested")
+    assert detected_through_alias is not None
+    assert detected_through_alias.git_url == str(checkout.resolve())
 
 
 @pytest.mark.parametrize(
@@ -253,6 +264,7 @@ def _http_status_error(status: int) -> httpx.HTTPStatusError:
 
 
 def test_setup_repo_recovers_from_create_conflict() -> None:
+    # 2119: source-selection.4.5
     # Repeated conflicts without an equivalent source fail explicitly instead of reusing an
     # unrelated repository.
     class _Conflict:
