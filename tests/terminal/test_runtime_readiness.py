@@ -598,13 +598,21 @@ def test_every_emitted_integrated_child_executes_with_the_resolved_environment(
     stale_parent["PATH"] = os.environ["PATH"]
     expected = dict(runtime.environment)
     for command in emitted:
-        executable = command.index(sys.executable)
-        probe = [
-            *command[:executable],
-            sys.executable,
-            "-c",
-            "import json,os; print(json.dumps(dict(os.environ), sort_keys=True))",
-        ]
+        script = "import json,os; print(json.dumps(dict(os.environ), sort_keys=True))"
+        if "/bin/sh" in command:
+            # Keep the emitted shell boundary, pipeline, and real logging process. Replace
+            # only the long-running service/runner module with a finite environment probe.
+            payload = command[-1]
+            producer, separator, sink = payload.partition("2>&1 | ")
+            assert separator and "panopticon.terminal.log_tee" in sink
+            assert "-m panopticon." in producer
+            probe = [
+                *command[:-1],
+                shlex.join([sys.executable, "-c", script]) + " 2>&1 | " + sink,
+            ]
+        else:
+            executable = command.index(sys.executable)
+            probe = [*command[:executable], sys.executable, "-c", script]
         result = subprocess.run(
             probe,
             env=stale_parent,
