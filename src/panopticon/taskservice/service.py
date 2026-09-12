@@ -622,6 +622,38 @@ class TaskService:
         artifacts: dict[str, str] | None = None,
         depends_on_task_ids: list[str] | None = None,
     ) -> Task:
+        """Create work under the same admission lock used by setup and task claims."""
+        async with self._dependency_lock:
+            return await self._create_task_locked(
+                repo_id,
+                workflow_name,
+                memo=memo,
+                governor_task_id=governor_task_id,
+                initial_prompt=initial_prompt,
+                harness=harness,
+                starting_model=starting_model,
+                artifacts=artifacts,
+                depends_on_task_ids=depends_on_task_ids,
+            )
+
+    async def _create_task_locked(
+        self,
+        repo_id: str,
+        workflow_name: str,
+        *,
+        memo: str | None = None,
+        governor_task_id: str | None = None,
+        initial_prompt: str | None = None,
+        harness: str | None = None,
+        starting_model: str | None = None,
+        artifacts: dict[str, str] | None = None,
+        depends_on_task_ids: list[str] | None = None,
+    ) -> Task:
+        """Validate and persist a task while the caller holds ``_dependency_lock``.
+
+        Review-entry effects already hold this lock through the authoring transition. They use
+        this same creation boundary without reacquiring the non-reentrant lock.
+        """
         repo = await self.get_repo(repo_id)  # ensure exists (raises NotFound)
         # ADR-0014 stack 2 lands before the review workflow itself on some branches, so its stable
         # name is the marker here. Stack 3 can rebase this coupling onto a workflow declaration if
@@ -660,14 +692,13 @@ class TaskService:
         task.governor_task_id = governor_task_id
         task.created_at = now
         task.updated_at = now  # creation time = first mutation
-        async with self._dependency_lock:
-            task.launch_paused = (await self.get_repo(repo_id)).launch_paused
-            if task.launch_paused:
-                task.launch_pause_reason = "Setup paused this task; retry it after setup."
-            if depends_on_task_ids:
-                await self._validate_dependencies(task.id, depends_on_task_ids)
-                task.depends_on_task_ids = list(depends_on_task_ids)
-            await self._store.create_task(task)
+        task.launch_paused = repo.launch_paused
+        if task.launch_paused:
+            task.launch_pause_reason = "Setup paused this task; retry it after setup."
+        if depends_on_task_ids:
+            await self._validate_dependencies(task.id, depends_on_task_ids)
+            task.depends_on_task_ids = list(depends_on_task_ids)
+        await self._store.create_task(task)
         _log.info("task %s: created (workflow=%s, repo=%s)", task.id, workflow_name, repo_id)
         for name, content in (artifacts or {}).items():
             await self.put_artifact(task.id, name, content.encode())
@@ -948,7 +979,7 @@ class TaskService:
             )
 
         try:
-            await self.create_task(
+            await self._create_task_locked(
                 task.repo_id,
                 "review",
                 governor_task_id=task.id,

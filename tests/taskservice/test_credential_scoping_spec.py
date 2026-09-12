@@ -1184,7 +1184,10 @@ def test_sibling_and_missing_targets_have_identical_scope_denials(
     [
         ("post", "/repos", {"id": "r3", "name": "x/r3", "git_url": "https://x/r3"}),
         ("patch", "/repos/r1", {"name": "stolen"}),
+        ("post", "/repos/r1/setup/begin", None),
+        ("post", "/repos/r1/setup/finish", None),
         ("get", "/workflow-files", None),
+        ("post", "/tasks/{id}/retry", None),
         ("put", "/tasks/{id}/claim", {"runner_id": "runner"}),
         ("delete", "/tasks/{id}/claim", None),
         (
@@ -1240,8 +1243,11 @@ def test_fleet_administration_route_inventory_is_complete_and_task_denied(tmp_pa
     # 2119: REQ-048.6.2
     expected = {
         ("POST", "/repos"),
+        ("POST", "/repos/{repo_id}/setup/begin"),
+        ("POST", "/repos/{repo_id}/setup/finish"),
         ("DELETE", "/repos/{repo_id}"),
         ("GET", "/workflow-files"),
+        ("POST", "/tasks/{task_id}/retry"),
         ("PUT", "/tasks/{task_id}/claim"),
         ("DELETE", "/tasks/{task_id}/claim"),
         ("PUT", "/tasks/{task_id}/provisioning"),
@@ -1277,6 +1283,7 @@ def test_fleet_administration_route_inventory_is_complete_and_task_denied(tmp_pa
                     and entry != ("PATCH", "/repos/{repo_id}")
                 )
                 or entry[1] == "/workflow-files"
+                or entry == ("POST", "/tasks/{task_id}/retry")
                 or entry[1].endswith(
                     ("/claim", "/provisioning", "/migration", "/lifecycle", "/governor", "/snooze")
                 )
@@ -1483,7 +1490,23 @@ def test_every_task_targeted_rest_route_rejects_sibling_and_missing_targets_iden
             ("PUT", "/tasks/{task_id}/session/input/{delivery_id}"),
             ("PUT", "/tasks/{task_id}/session/transcript"),
         }
-        expected = (task_routes - runner_session_surfaces) | {
+        operator_only_task_surfaces = {("POST", "/tasks/{task_id}/retry")}
+        assert operator_only_task_surfaces <= task_routes
+        assert operator_only_task_surfaces <= (
+            client.app.state.credential_scope_policy.fleet_administration_rest_surfaces()
+        )
+        retry_responses = [
+            client.post(
+                f"/tasks/{target}/retry",
+                headers=headers,
+            )
+            for target in (sibling["id"], "missing")
+        ]
+        assert [(response.status_code, response.json()) for response in retry_responses] == [
+            (403, SCOPE_FAILURE),
+            (403, SCOPE_FAILURE),
+        ]
+        expected = (task_routes - runner_session_surfaces - operator_only_task_surfaces) | {
             ("DELETE", "/registrations/{registration_id}")
         }
         assert surfaces.task_targeted_rest == expected

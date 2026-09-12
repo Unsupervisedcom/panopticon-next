@@ -11,7 +11,7 @@ import pytest
 from panopticon.core import Complete, InitialState, State, Workflow
 from panopticon.core.models import Repo, Status, Task
 from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
-from panopticon.taskservice.service import TaskService
+from panopticon.taskservice.service import NotReady, TaskService
 from panopticon.taskservice.store_sqlalchemy import SqlAlchemyStore
 from panopticon.workflows.review import Review as ReviewWorker
 
@@ -92,7 +92,7 @@ async def test_review_entry_creates_governed_worker_and_blocks_author(tmp_path: 
     )
     before_ids = {task.id for task in await service.list_tasks()}
 
-    await service.apply_operation(author.id, "advance")
+    await asyncio.wait_for(service.apply_operation(author.id, "advance"), timeout=3)
 
     tasks = await service.list_tasks()
     reviews = [task for task in tasks if task.workflow == "review"]
@@ -107,6 +107,33 @@ async def test_review_entry_creates_governed_worker_and_blocks_author(tmp_path: 
         (responsibility.key, responsibility.status)
         for responsibility in reloaded.current_entry.responsibilities
     ] == [("review-addressed", Status.PENDING)]
+
+
+# 2119: task-auth-readiness.1.5
+# 2119: task-auth-readiness.1.6
+@pytest.mark.parametrize("under_repair", [False, True])
+async def test_review_worker_creation_obeys_setup_admission_without_nested_lock(
+    tmp_path: Path, under_repair: bool
+) -> None:
+    service = await _make_service(tmp_path)
+    author = await service.create_task("r1", "paired-authoring", harness="claude")
+    if under_repair:
+        await service.begin_repo_setup("r1")
+
+    await asyncio.wait_for(service.apply_operation(author.id, "advance"), timeout=3)
+
+    reviews = [task for task in await service.list_tasks() if task.workflow == "review"]
+    assert len(reviews) == 1
+    review = reviews[0]
+    assert review.governor_task_id == author.id
+    assert review.launch_paused is under_repair
+    if under_repair:
+        await service.finish_repo_setup("r1")
+        assert (await service.get_task(review.id)).launch_paused
+        with pytest.raises(NotReady, match="paused"):
+            await service.claim(review.id, "runner")
+        await service.retry_task(review.id)
+    assert (await service.claim(review.id, "runner")).claimed_by == "runner"
 
 
 # 2119: REQ-013.6.1

@@ -140,6 +140,8 @@ def configure_repo(
             changes.update(
                 default_harness=connection.harness, credential_dir=connection.credential_dir
             )
+            if connection.harness != (repo.get("default_harness") or "claude"):
+                changes["default_model"] = None
         github = "github-self-reviewed" in choose_enabled_workflows(str(repo["git_url"]))
         if github and not values.get("GH_TOKEN", "").strip():
             print(

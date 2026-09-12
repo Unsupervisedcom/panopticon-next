@@ -170,3 +170,27 @@ def test_running_legacy_login_blocks_foreground_mutation(client: TaskServiceClie
     assert not client.get_repo("one")["launch_paused"]
     assert client.get_task(task["id"])["state"] == "RUNNING"
     assert client.list_registrations(task["id"])[0]["id"] == registration["id"]
+
+
+def test_changing_agent_drops_only_the_old_agent_model_default(client: TaskServiceClient) -> None:
+    write_private("old.env", "ANTHROPIC_API_KEY=keep-test\n")
+    client.create_repo(
+        "one",
+        "one",
+        "https://example.test/one",
+        env_file="old.env",
+        default_harness="claude",
+    )
+    client.update_repo("one", default_model="claude-test-model:high")
+    existing = client.create_task("one", "spike")
+    connection = connect("codex", secret_fn=lambda _: "new-codex-test")
+    assert configure_repo(client, "one", connection=connection, input_fn=lambda _: "y")
+    repo = client.get_repo("one")
+    assert repo["default_harness"] == "codex"
+    assert repo["default_model"] is None
+    created = client.create_task("one", "spike")
+    assert created["harness"] == "codex"
+    assert created["starting_model"] is None
+    preserved = client.get_task(existing["id"])
+    assert preserved["harness"] == "claude"
+    assert preserved["starting_model"] == "claude-test-model:high"
