@@ -47,8 +47,13 @@ def _service_command(
 
 
 def _host_options(command: str) -> list[str]:
-    launch = command.split(" 2>&1", maxsplit=1)[0]
+    wrapper = shlex.split(command)
+    assert wrapper[0] == "env"
+    assert wrapper[-3:-1] == ["/bin/sh", "-c"]
+    # The pipeline is one quoted shell argument after the shared environment boundary.
+    launch = wrapper[-1].split(" 2>&1", maxsplit=1)[0]
     argv = shlex.split(launch)
+    assert argv[1:3] == ["-m", "panopticon.taskservice"]
     return [argv[index + 1] for index, item in enumerate(argv) if item == "--host"]
 
 
