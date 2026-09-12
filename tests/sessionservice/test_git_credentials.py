@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -32,7 +33,7 @@ def _write_env(root: Path, name: str, content: str) -> Path:
 
 def _credential_helper_path(command: Sequence[str]) -> Path:
     setting = next(part for part in command if part.startswith("credential.helper=!"))
-    return Path(setting.removeprefix("credential.helper=!"))
+    return Path(shlex.split(setting.removeprefix("credential.helper=!"))[0])
 
 
 @pytest.mark.parametrize(
@@ -272,3 +273,29 @@ def test_uncredentialed_task_repo_gets_no_git_config_commands() -> None:
     )
 
     assert calls == []
+
+
+def test_real_git_credential_protocol_supports_temporary_paths_with_spaces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tempfile
+
+    temporary_root = tmp_path / "runtime files"
+    temporary_root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temporary_root))
+    transport = RepoGitTransport(
+        "git@github.com:example/private.git", "https://github.com/example/private.git", _TOKEN
+    )
+    with transport.git_command(["git", "credential", "fill"]) as command:
+        result = subprocess.run(
+            command,
+            input="protocol=https\nhost=github.com\npath=example/private.git\n\n",
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+        assert result.returncode == 0, result.stderr
+        assert f"password={_TOKEN}\n" in result.stdout
+        assert _TOKEN not in repr(command)
+    assert list(temporary_root.iterdir()) == []

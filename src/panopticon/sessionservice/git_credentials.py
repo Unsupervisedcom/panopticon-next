@@ -91,7 +91,7 @@ class RepoGitTransport:
                 "-c",
                 "credential.helper=",
                 "-c",
-                f"credential.helper=!{helper}",
+                f"credential.helper=!{shlex.quote(str(helper))}",
                 "-c",
                 f"credential.{credential_scope}.useHttpPath=true",
                 "-c",
