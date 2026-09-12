@@ -20,6 +20,7 @@ import httpx
 
 import panopticon
 from panopticon.taskservice.auth import environment_token
+from panopticon.taskservice.operator_auth import OPERATOR_AUTH_ENV, OPERATOR_AUTH_FILE
 from panopticon.terminal.session_environment import selected_session_environment
 
 SERVICE_KIND = "panopticon-task-service"
@@ -81,14 +82,10 @@ def _identity_material(
     state_dir: Path,
     database: str,
 ) -> dict[str, Any]:
-    tool_settings = {
+    stable_runtime_settings = {
         name: environment[name]
         for name in (
-            "PATH",
-            "PYTHONPATH",
-            "TMPDIR",
             "TMUX_TMPDIR",
-            "VIRTUAL_ENV",
             "DOCKER_API_VERSION",
             "DOCKER_CERT_PATH",
             "DOCKER_CONFIG",
@@ -96,14 +93,10 @@ def _identity_material(
             "DOCKER_DEFAULT_PLATFORM",
             "DOCKER_HOST",
             "DOCKER_TLS_VERIFY",
-            "PANOPTICON_2119_HONESTY_REVIEWER",
-            "PANOPTICON_2119_REVIEWER_1",
-            "PANOPTICON_2119_REVIEWER_2",
-            "PANOPTICON_BASE_IMAGE",
-            "PANOPTICON_NO_STAGE_ENTRY_WAKE",
-            "PANOPTICON_RUNTIME_ID",
-            "PANOPTICON_STAGE_ENTRY_WAKE_TIMEOUT",
-            "PANOPTICON_WORKFLOWS_PATH",
+            "PANOPTICON_CONTAINER_SERVICE_URL",
+            OPERATOR_AUTH_ENV,
+            "PANOPTICON_SERVICE_AUTH_MODE",
+            "PANOPTICON_SERVICE_AUTH_FILE",
         )
         if name in environment
     }
@@ -116,7 +109,7 @@ def _identity_material(
         "cache": str(cache_dir),
         "state": str(state_dir),
         "database": database,
-        "tools": tool_settings,
+        "runtime_settings": stable_runtime_settings,
     }
 
 
@@ -186,6 +179,13 @@ def resolve_runtime(
     container_service_url = environ.get("PANOPTICON_CONTAINER_SERVICE_URL", default_container_url)
     runner_id = environ.get("PANOPTICON_RUNNER_ID", DEFAULT_RUNNER_ID)
     database = environ.get("PANOPTICON_DB", f"sqlite:///{data_dir / 'panopticon.db'}")
+    operator_token_file = environ.get(OPERATOR_AUTH_ENV)
+    if (
+        operator_token_file
+        or environ.get("PANOPTICON_OPERATOR_TOKEN")
+        or (config_dir / "secrets" / OPERATOR_AUTH_FILE).exists()
+    ):
+        selected[OPERATOR_AUTH_ENV] = operator_token_file or OPERATOR_AUTH_FILE
     selected.update(
         {
             "HOME": str(home),
@@ -298,7 +298,8 @@ def _verified_identity(response: httpx.Response, runtime: RuntimeConfiguration) 
     if revision != RUNTIME_API_REVISION:
         raise RuntimeReadinessError(
             f"task-service runtime API revision {revision!r} is unsupported; this client supports "
-            f"revision {RUNTIME_API_REVISION}"
+            f"revision {RUNTIME_API_REVISION}. Preserve the current fleet and use matching "
+            "client and service versions"
         )
     if identity.get("instance_id") != runtime.instance_id:
         raise RuntimeReadinessError(
@@ -306,7 +307,10 @@ def _verified_identity(response: httpx.Response, runtime: RuntimeConfiguration) 
             "and use the matching installation or stop it deliberately"
         )
     if not isinstance(identity.get("version"), str):
-        raise RuntimeReadinessError("the service identity response has no valid package version")
+        raise RuntimeReadinessError(
+            "the service identity response is malformed because it has no valid package version; "
+            "check that PANOPTICON_SERVICE_URL points to a compatible Panopticon task service"
+        )
     return identity
 
 
@@ -333,6 +337,11 @@ def guard_before_migration(
     except httpx.TimeoutException as exc:
         raise RuntimeReadinessError(
             "the task service did not answer the migration safety probe; migration was not run"
+        ) from exc
+    except httpx.TransportError as exc:
+        raise RuntimeReadinessError(
+            "the task service connection failed during the migration safety probe; migration "
+            "was not run. Inspect the service log before retrying"
         ) from exc
     try:
         _verified_identity(response, runtime)
@@ -384,23 +393,36 @@ def wait_until_ready(
     service_verified = False
     identity: dict[str, Any] | None = None
     runners: list[dict[str, Any]] = []
-    wrong_instance = False
+    runner_log = Path(runtime.environment["PANOPTICON_STATE"]) / "runner.log"
+    attempted = False
     while True:
+        if attempted and monotonic() >= deadline:
+            break
+        attempted = True
         service_verified = False
         remaining = max(0.001, deadline - monotonic())
-        bounded_request_timeout = min(request_timeout, remaining)
         try:
-            response = request("/identity", bounded_request_timeout)
+            response = request("/identity", min(request_timeout, remaining))
             if response.status_code >= 500:
                 response.raise_for_status()
             identity = _verified_identity(response, runtime)
-            runners = _runner_registrations(request("/runners", bounded_request_timeout))
             service_verified = True
+            if monotonic() >= deadline:
+                break
+            remaining = max(0.001, deadline - monotonic())
+            runners = _runner_registrations(request("/runners", min(request_timeout, remaining)))
+            if monotonic() > deadline:
+                break
             selected = [runner for runner in runners if runner["id"] == runtime.runner_id]
             if any(runner.get("instance_id") == runtime.instance_id for runner in selected):
                 return identity
-            wrong_instance = bool(selected)
-        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError):
+            if selected:
+                raise RuntimeReadinessError(
+                    f"runner {runtime.runner_id!r} is connected from a different runtime; "
+                    f"preserve it and inspect {runner_log} before stopping or replacing it "
+                    "deliberately"
+                )
+        except (httpx.TransportError, httpx.HTTPStatusError):
             # Connection startup and transient server errors may settle before the bounded deadline.
             pass
         if monotonic() >= deadline:
@@ -412,14 +434,9 @@ def wait_until_ready(
             f"task service at {runtime.service_url} did not become ready within {timeout:g}s; "
             "inspect the service log"
         )
-    if wrong_instance:
-        raise RuntimeReadinessError(
-            f"runner {runtime.runner_id!r} is connected from a different runtime; preserve it and "
-            "inspect the runner log before stopping or replacing it deliberately"
-        )
     runner_ids = [str(runner["id"]) for runner in runners]
     others = ", ".join(sorted(runner_ids)) if runner_ids else "none"
     raise RuntimeReadinessError(
         f"runner {runtime.runner_id!r} did not connect within {timeout:g}s (other live runners: "
-        f"{others}); inspect the runner log"
+        f"{others}); inspect {runner_log}"
     )

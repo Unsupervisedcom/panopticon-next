@@ -61,7 +61,7 @@ def test_start_sessions_loads_shipped_tmux_defaults_via_dash_f_for_service_and_r
         assert tmux_new[:3] == ["tmux", "-L", "panopticon"]
         assert tmux_new[3] == "-f"
         config_path = Path(tmux_new[4])
-        assert tmux_new[5] == "new-session"
+        assert tmux_new.index("source-file") < tmux_new.index("new-session")
         assert config_path.read_text() == server_default_config_text(clipboard=None)
 
 
@@ -167,7 +167,7 @@ def test_quickstart_invokes_foreground_steps_without_auth_task(
             RepositorySource("https://example.test/repo", "repo", "remote"),
         )[1],
     )
-    monkeypatch.setattr(doctor, "run_checks", list)
+    monkeypatch.setattr(doctor, "run_checks", lambda **_kwargs: [])
     monkeypatch.setattr(doctor, "report", lambda _: (calls.append("doctor"), 0)[1])
     monkeypatch.setattr(
         cli, "_prepare_integrated_runtime", lambda *args: calls.append("runtime") or True
@@ -179,9 +179,9 @@ def test_quickstart_invokes_foreground_steps_without_auth_task(
         setup, "configure_repo", lambda *args, **kwargs: calls.append("bind") or True
     )
     monkeypatch.setattr(
-        qs,
-        "ensure_setup_repo_task",
-        lambda *args: pytest.fail("Authentication tasks are not onboarding"),
+        cli.TaskServiceClient,
+        "create_task",
+        lambda *args, **kwargs: pytest.fail("Authentication tasks are not onboarding"),
     )
     joined = {}
     monkeypatch.setattr(
@@ -194,7 +194,7 @@ def test_quickstart_invokes_foreground_steps_without_auth_task(
     assert "join" not in joined
 
 
-# 2119: REQ-054.2.4
+# 2119: REQ-054.2.1, REQ-054.2.4, source-selection.2.3
 @pytest.mark.parametrize("source", ["missing-checkout", "invalid.bundle"])
 def test_invalid_source_prevents_runtime_and_registration(
     source: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -224,6 +224,9 @@ def test_invalid_source_prevents_runtime_and_registration(
     monkeypatch.setattr(
         quickstart, "setup_repo", lambda *args, **kwargs: pytest.fail("invalid source registered")
     )
+    monkeypatch.setattr(
+        cli, "_make_client", lambda *args: pytest.fail("invalid source constructed a task client")
+    )
     assert cli.main(["quickstart"]) == 1
 
 
@@ -241,7 +244,7 @@ def test_quickstart_aborts_when_doctor_fails(monkeypatch: pytest.MonkeyPatch) ->
 
     calls: list[str] = []
 
-    monkeypatch.setattr(doctor, "run_checks", list)
+    monkeypatch.setattr(doctor, "run_checks", lambda **_kwargs: [])
     monkeypatch.setattr(doctor, "report", lambda results: 1)
     monkeypatch.setattr(cli, "_run_migrate", lambda: calls.append("migrate"))
     monkeypatch.setattr(cli, "_start_sessions", lambda: calls.append("sessions"))

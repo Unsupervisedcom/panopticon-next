@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -23,8 +24,12 @@ def test_install_docs_name_one_public_install_and_onboarding_command() -> None:
     install_command = "pipx install panopticon-next"
     onboarding_command = "panopticon quickstart"
     for document in (README, WALKTHROUGH):
-        assert install_command in document
-        assert onboarding_command in document
+        lines = [line.strip() for line in document.splitlines()]
+        lines += re.findall(r"(?<!`)`([^`\n]+)`(?!`)", document)
+        assert install_command in lines
+        assert onboarding_command in lines
+        assert document.index(install_command) < document.index(onboarding_command)
+        assert not re.search(r"pipx install panopticon-next[^\s`]", document)
         remaining = document.replace(install_command, "")
         remaining = remaining.replace(
             'pipx install "./panopticon_next-${PANOPTICON_RELEASE_VERSION}-py3-none-any.whl"',
@@ -41,7 +46,6 @@ def test_release_marker_cannot_consume_the_wheel_compatibility_tag() -> None:
 
 
 def test_ci_installs_the_wheel_and_runs_its_executable_outside_the_checkout() -> None:
-    # 2119: REQ-054.1.2
     smoke = CI.split("- name: Smoke-test clean wheel", 1)[1]
     assert "uv pip install --python .wheel-venv/bin/python dist/*.whl" in smoke
     assert "cd /tmp" in smoke
@@ -186,6 +190,8 @@ def test_repeated_stop_removes_runtime_and_preserves_stored_state(tmp_path: Path
     fake_bin.mkdir()
     command_log = tmp_path / "commands.log"
     docker_removed = tmp_path / "docker-removed"
+    tmux_alive = tmp_path / "tmux-alive"
+    tmux_alive.touch()
     docker = fake_bin / "docker"
     docker.write_text(
         """#!/bin/sh
@@ -202,6 +208,7 @@ fi
     tmux.write_text(
         """#!/bin/sh
 printf 'tmux:%s\\n' "$*" >> "$PANOPTICON_TEST_COMMAND_LOG"
+if [ "$3" = "kill-server" ]; then /bin/rm -f "$PANOPTICON_TEST_TMUX_ALIVE"; else exit 9; fi
 """
     )
     tmux.chmod(0o755)
@@ -214,6 +221,7 @@ printf 'tmux:%s\\n' "$*" >> "$PANOPTICON_TEST_COMMAND_LOG"
             "PANOPTICON_CACHE": str(cache_root),
             "PANOPTICON_TEST_COMMAND_LOG": str(command_log),
             "PANOPTICON_TEST_DOCKER_REMOVED": str(docker_removed),
+            "PANOPTICON_TEST_TMUX_ALIVE": str(tmux_alive),
             "PATH": f"{fake_bin}{os.pathsep}{environment['PATH']}",
         }
     )
@@ -232,8 +240,10 @@ printf 'tmux:%s\\n' "$*" >> "$PANOPTICON_TEST_COMMAND_LOG"
         )
         assert result.returncode == 0, result.stderr
         assert _snapshot_files(retained_paths) == before
+        assert not tmux_alive.exists()
 
     commands = command_log.read_text().splitlines()
     assert commands.count("docker:ps --all --quiet --filter label=panopticon.task") == 2
     assert commands.count("docker:rm --force container-one container-two") == 1
     assert commands.count("tmux:-L panopticon kill-server") == 2
+    assert len(commands) == 5

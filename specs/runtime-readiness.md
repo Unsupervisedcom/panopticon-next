@@ -16,8 +16,11 @@ API revision, rather than byte-for-byte package-version equality, determines whe
 can cooperate. The package version remains diagnostic evidence.
 
 The runtime identity is a digest of the resolved executable/install location, service address,
-data/config/cache/state locations, database target, and controlled tool settings. It contains
-no secret value or raw path. The service echoes this identity; equality proves that the responding
+data/config/cache/state locations, database target, tmux socket directory, Docker client settings,
+container callback address, and service-authentication references. Transient shell search paths,
+virtual-environment markers, and ordinary temporary directories remain explicit child inputs but
+do not distinguish otherwise compatible invocations. The identity contains no secret value. The
+service echoes this identity; equality proves that the responding
 process was launched for the intended local runtime rather than merely being some HTTP server whose
 health endpoint returns 200. Package upgrades within the same managed installation retain the same
 executable/install location; package version is deliberately excluded from the digest and reported

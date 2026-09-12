@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import inspect
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -79,6 +80,18 @@ class _AlternateOrchestrator(Workflow):
     initial = Coordinating
 
 
+class _AlternateCredentialSetup(Workflow):
+    name = "alternate-credential-setup"
+    opt_in = True
+    configures_repo_credentials = True
+
+    class Running(InitialState):
+        label = "RUNNING"
+        transitions = (Complete,)
+
+    initial = Running
+
+
 class _PlannedScopedWorkflow(Workflow):
     name = "planned-scoped"
 
@@ -122,6 +135,7 @@ def _service(tmp_path: Path) -> TaskService:
             "spike": Spike(),
             "orchestrator": Orchestrator(),
             "alternate-orchestrator": _AlternateOrchestrator(),
+            "alternate-credential-setup": _AlternateCredentialSetup(),
             "planned-scoped": _PlannedScopedWorkflow(),
             "scoped": _ScopedWorkflow(),
             "setup-repo": SetupRepo(),
@@ -141,6 +155,7 @@ def _reloaded_service(tmp_path: Path) -> TaskService:
             "spike": Spike(),
             "orchestrator": Orchestrator(),
             "alternate-orchestrator": _AlternateOrchestrator(),
+            "alternate-credential-setup": _AlternateCredentialSetup(),
             "planned-scoped": _PlannedScopedWorkflow(),
             "scoped": _ScopedWorkflow(),
             "setup-repo": SetupRepo(),
@@ -3400,10 +3415,17 @@ def test_active_setup_repo_task_can_only_set_its_own_repo_credential_dir(
         for path, headers, body in (
             ("/repos/r2", setup_headers, {"credential_dir": "other.d"}),
             ("/repos/r1", setup_headers, {"name": "stolen"}),
+            (
+                "/repos/r1",
+                setup_headers,
+                {"credential_dir": "other.d", "name": "stolen"},
+            ),
             ("/repos/r1", setup_headers, {"credential_dir": None}),
             ("/repos/r1", setup_headers, {"credential_dir": ""}),
             ("/repos/r1", setup_headers, {"credential_dir": "   "}),
             ("/repos/r1", setup_headers, {"credential_dir": "."}),
+            ("/repos/r1", setup_headers, {"credential_dir": "/absolute.d"}),
+            ("/repos/r1", setup_headers, {"credential_dir": "../other.d"}),
             ("/repos/r1", setup_headers, {"credential_dir": "nested/dir"}),
             ("/repos/r1", regular_headers, {"credential_dir": "other.d"}),
         ):
@@ -3423,6 +3445,21 @@ def test_active_setup_repo_task_can_only_set_its_own_repo_credential_dir(
         repo = client.get("/repos/r1", headers=_bearer(WRITE_TOKEN)).json()
         assert repo["name"] == "acme/one"
         assert repo["credential_dir"] == "openai.d"
+
+        enabled = client.patch(
+            "/repos/r1",
+            headers=_bearer(WRITE_TOKEN),
+            json={"enabled_workflows": ["alternate-credential-setup"]},
+        )
+        assert enabled.status_code == 200, enabled.text
+        alternate = _create_task(client, workflow="alternate-credential-setup")
+        alternate_patch = client.patch(
+            "/repos/r1",
+            headers=_bearer(_task_token(alternate["id"])),
+            json={"credential_dir": "other.d"},
+        )
+        assert alternate_patch.status_code == 200, alternate_patch.text
+        assert alternate_patch.json()["credential_dir"] == "other.d"
 
         policy = client.app.state.credential_scope_policy
         assert policy.classification_for_rest("PATCH", "/repos/{repo_id}") == (
@@ -3460,7 +3497,7 @@ def test_runner_injects_only_the_subject_task_capability(
     mounted_files: dict[str, str] = {}
     mounted_targets: list[tuple[str, str, bool]] = []
     shared_client_headers: list[str] = []
-    caplog.set_level(1)
+    caplog.set_level(logging.DEBUG)
 
     def run(args: list[str], **_: object) -> str:
         calls.append(args)

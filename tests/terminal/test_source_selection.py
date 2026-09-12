@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import socket
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -76,6 +78,23 @@ def test_checkout_without_origin_uses_canonical_path(
     assert str(checkout.resolve()) in output
 
 
+def test_relative_checkout_through_symlink_is_canonicalized(tmp_path: Path) -> None:
+    # 2119: 1.3, 3.4, 3.5
+    checkout = _worktree(tmp_path / "actual" / "project")
+    alias = tmp_path / "project-link"
+    alias.symlink_to(checkout, target_is_directory=True)
+    bundle = _bundle(tmp_path / "snapshot.bundle")
+    bundle_alias = tmp_path / "snapshot-link.bundle"
+    bundle_alias.symlink_to(bundle)
+
+    selected = qs.resolve_source("project-link", cwd=tmp_path)
+    selected_bundle = qs.resolve_source("snapshot-link.bundle", cwd=tmp_path)
+
+    assert selected.git_url == str(checkout.resolve())
+    assert selected.name == "project"
+    assert selected_bundle.git_url == str(bundle.resolve())
+
+
 def test_non_repo_cwd_requests_an_explicit_source(tmp_path: Path) -> None:
     # 2119: 1.4
     checkout = _worktree(tmp_path / "chosen")
@@ -119,6 +138,15 @@ def test_local_checkout_validation_accepts_worktree_and_bare_repo(tmp_path: Path
 
     assert qs.resolve_source(str(checkout)).kind == "checkout"
     assert qs.resolve_source(str(bare)).git_url == str(bare.resolve())
+
+
+def test_existing_non_git_directory_is_rejected(tmp_path: Path) -> None:
+    # 2119: 2.1
+    directory = tmp_path / "ordinary-directory"
+    directory.mkdir()
+
+    with pytest.raises(RuntimeError, match="invalid local Git checkout"):
+        qs.resolve_source(str(directory))
 
 
 def test_bundle_validation_and_snapshot_presentation(
@@ -186,6 +214,24 @@ def test_credential_bearing_remote_is_rejected_without_echo(
     assert "secret" not in output
 
 
+def test_credential_bearing_cwd_origin_suggests_safe_checkout_path_without_echo(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # 2119: 1.1, 2.2, 2.8
+    checkout = _worktree(
+        tmp_path / "private", origin="https://token:secret@github.com/acme/private.git"
+    )
+
+    selected = qs.select_source(cwd=checkout, input_fn=lambda _prompt: "")
+
+    assert selected.git_url == str(checkout.resolve())
+    assert selected.kind == "checkout"
+    output = capsys.readouterr().out
+    assert str(checkout.resolve()) in output
+    assert "token" not in output
+    assert "secret" not in output
+
+
 @pytest.mark.parametrize("invalid", ["missing", "invalid.bundle"])
 def test_invalid_local_source_fails_before_any_registration(tmp_path: Path, invalid: str) -> None:
     # 2119: 2.3
@@ -208,6 +254,14 @@ def test_invalid_local_source_fails_before_any_registration(tmp_path: Path, inva
 def test_remote_friendly_name(source: str, name: str) -> None:
     # 2119: 2.7
     assert qs.resolve_source(source).name == name
+
+
+def test_friendly_names_remove_only_one_terminal_suffix(tmp_path: Path) -> None:
+    # 2119: 2.5, 2.7
+    bundle = _bundle(tmp_path / "archive.bundle.bundle")
+
+    assert qs.resolve_source(str(bundle)).name == "archive.bundle"
+    assert qs.resolve_source("https://example.test/acme/widget.git.git").name == "widget.git"
 
 
 def test_source_equivalence_is_bounded_by_source_kind(tmp_path: Path) -> None:
@@ -235,6 +289,38 @@ def test_source_equivalence_is_bounded_by_source_kind(tmp_path: Path) -> None:
     second_bundle = tmp_path / "second.bundle"
     second_bundle.write_bytes(first_bundle.read_bytes())
     assert not qs.sources_equivalent(str(first_bundle), str(second_bundle))
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        (
+            "https://github.com/acme/widget.git",
+            "https://git.example/acme/widget.git",
+        ),
+        (
+            "https://github.com/acme/widget.git",
+            "https://github.com/other/widget.git",
+        ),
+        (
+            "https://github.com/acme/tools/widget.git",
+            "https://github.com/acme/other/widget.git",
+        ),
+        (
+            "https://gitlab.com/acme/widget.git",
+            "https://gitlab.com/acme/widget",
+        ),
+        (
+            "https://gitlab.com/acme/widget.git",
+            "git@gitlab.com:acme/widget.git",
+        ),
+    ],
+)
+def test_source_equivalence_rejects_host_owner_path_and_non_github_inference(
+    first: str, second: str
+) -> None:
+    # 2119: 3.3, 3.6
+    assert not qs.sources_equivalent(first, second)
 
 
 def test_same_basename_sources_get_distinct_stable_ids(tmp_path: Path) -> None:
@@ -268,13 +354,24 @@ def test_existing_equivalent_source_is_reused_without_rebinding() -> None:
         "env_file": "repo.env",
         "credential_dir": "repo-auth",
     }
+    unrelated = {
+        "id": "other-widget",
+        "name": "Widget",
+        "git_url": "https://github.com/other/widget.git",
+        "enabled_workflows": ["local-git-self-reviewed"],
+        "default_harness": "codex",
+        "default_model": "other-model",
+        "env_file": "other.env",
+        "credential_dir": "other-auth",
+    }
+    unrelated_before = dict(unrelated)
 
     class _Client:
         def __init__(self) -> None:
             self.updates: list[tuple[str, dict[str, object]]] = []
 
         def list_repos(self) -> list[dict[str, object]]:
-            return [existing]
+            return [unrelated, existing]
 
         def create_repo(self, *args: Any, **kwargs: Any) -> None:
             raise AssertionError("equivalent source must be reused")
@@ -303,6 +400,7 @@ def test_existing_equivalent_source_is_reused_without_rebinding() -> None:
             },
         )
     ]
+    assert unrelated == unrelated_before
 
 
 def test_same_basename_existing_repo_is_not_reused_or_mutated() -> None:
@@ -410,6 +508,7 @@ def test_only_supported_github_sources_enable_github_workflows(source: str) -> N
     "source",
     [
         "https://github.com.evil.example/acme/widget.git",
+        "https://prefixgithub.com/acme/widget.git",
         "https://github.com@evil.example/acme/widget.git",
         "https://github.com:443/acme/widget.git",
         "http://github.com/acme/widget.git",
@@ -427,8 +526,40 @@ def test_non_github_and_deceptive_sources_get_only_local_workflow(source: str) -
     assert qs.choose_enabled_workflows(source) == ("local-git-self-reviewed",)
 
 
-def test_source_selection_module_has_no_llm_dependency() -> None:
+def test_source_selection_module_has_no_llm_dependency_or_network_side_effect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # 2119: 6.3
-    source = (Path(qs.__file__).parent / "source_selection.py").read_text().lower()
-    assert "anthropic" not in source
-    assert "openai" not in source
+    source = (Path(qs.__file__).parent / "source_selection.py").read_text()
+    tree = ast.parse(source)
+    imports = {
+        alias.name.split(".", 1)[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    imports.update(
+        node.module.split(".", 1)[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    )
+    assert imports.isdisjoint({"anthropic", "openai"})
+
+    def reject_network(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("source selection must not open a network connection")
+
+    monkeypatch.setattr(socket, "create_connection", reject_network)
+    selected = qs.select_source(
+        cwd=tmp_path,
+        input_fn=lambda _prompt: "https://github.com/acme/widget.git",
+    )
+
+    class _Client:
+        def list_repos(self) -> list[dict[str, object]]:
+            return []
+
+        def create_repo(self, *_args: object, **_kwargs: object) -> None:
+            return None
+
+    assert selected.git_url == "https://github.com/acme/widget.git"
+    assert qs.setup_repo(_Client(), selected.git_url, None)[1] == "widget"  # type: ignore[arg-type]

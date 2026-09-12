@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from panopticon.core import Complete, InitialState, State, Workflow
 from panopticon.core.models import Actor, LifecyclePhase, Repo
 from panopticon.taskservice.api import create_app
 from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
@@ -20,12 +21,28 @@ from panopticon.workflows import Spike
 # 2119-spec: task-auth-readiness
 
 
+class ProgressedWork(Workflow):
+    name = "progressed-work"
+
+    class Planning(InitialState):
+        label = "PLANNING"
+        transitions = ("WORKING",)
+
+    class Working(State):
+        label = "WORKING"
+        transitions = (Complete,)
+
+    initial = Planning
+
+
 async def make_service(
     tmp_path: Path, *, persistent: bool = False
 ) -> tuple[TaskService, SqlAlchemyStore]:
     store = SqlAlchemyStore(f"sqlite:///{tmp_path / 'tasks.db'}" if persistent else "sqlite://")
     service = TaskService(
-        store, {"spike": Spike()}, FilesystemArtifactStore(tmp_path / "artifacts")
+        store,
+        {"spike": Spike(), "progressed-work": ProgressedWork()},
+        FilesystemArtifactStore(tmp_path / "artifacts"),
     )
     await service.init()
     if not await service.list_repos():
@@ -46,7 +63,11 @@ async def make_service(
 # 2119: 2.3
 async def test_repair_preserves_live_work_and_requires_individual_retry(tmp_path: Path) -> None:
     service, store = await make_service(tmp_path)
-    first = await service.create_task("repo", "spike", initial_prompt="Retain the requested work")
+    first = await service.create_task(
+        "repo", "progressed-work", initial_prompt="Retain the requested work"
+    )
+    first = await service.apply_operation(first.id, "advance", note="Plan accepted")
+    assert first.state == "WORKING" and len(first.history) == 2
     second = await service.create_task("repo", "spike")
     live = await service.create_task("repo", "spike")
     await service.claim(live.id, "runner")
@@ -60,7 +81,11 @@ async def test_repair_preserves_live_work_and_requires_individual_retry(tmp_path
             await service.claim(task.id, "runner")
         with pytest.raises(NotReady, match="Finish"):
             await service.retry_task(task.id)
-    await service.set_blocked(first.id, True)
+    for blocked in (True, False):
+        await service.set_blocked(first.id, blocked)
+        current = await service.get_task(first.id)
+        assert current.blocked is blocked
+        assert current.launch_paused
     await service.set_turn(first.id, Actor.AGENT)
     assert (await service.get_task(first.id)).launch_paused
     assert await service.get_task(live.id) == before
@@ -78,6 +103,8 @@ async def test_repair_preserves_live_work_and_requires_individual_retry(tmp_path
     )
     await service.claim(first.id, "runner")
     assert (await service.get_task(second.id)).launch_paused
+    assert (await service.get_task(live.id)).claimed_by == "runner"
+    assert registration in service.registrations(live.id)
     with pytest.raises(NotReady):
         await service.retry_task(live.id)
     await store.close()
@@ -176,6 +203,53 @@ async def test_retry_refuses_claim_before_first_lifecycle_report(tmp_path: Path)
     await store.close()
 
 
+# 2119: 2.1
+# 2119: 2.5
+@pytest.mark.parametrize(
+    "condition,allowed",
+    [
+        ("unclaimed", True),
+        ("paused", True),
+        ("failed", True),
+        ("terminal", False),
+        ("live", False),
+        ("repair", False),
+    ]
+    + [(phase.value, False) for phase in LifecyclePhase if phase is not LifecyclePhase.FAILED],
+)
+async def test_retry_admission_and_unrelated_claim_preservation(
+    tmp_path: Path, condition: str, allowed: bool
+) -> None:
+    service, store = await make_service(tmp_path)
+    task = await service.create_task("repo", "spike")
+    other = await service.create_task("repo", "spike")
+    await service.claim(other.id, "other-runner")
+    registration = await service.register(other.id, "other-container", "other-runner")
+    if condition in {"paused", "repair"}:
+        await service.begin_repo_setup("repo")
+        if condition == "paused":
+            await service.finish_repo_setup("repo")
+    elif condition == "terminal":
+        await service.set_state(task.id, "COMPLETE")
+    elif condition != "unclaimed":
+        await service.claim(task.id, "runner")
+        if condition == "live":
+            await service.register(task.id, "container", "runner")
+        else:
+            await service.report_lifecycle(task.id, "runner", LifecyclePhase(condition))
+    before = await service.get_task(task.id)
+    if allowed:
+        result = await service.retry_task(task.id)
+        assert result.claimed_by is None and not result.launch_paused
+    else:
+        with pytest.raises(NotReady):
+            await service.retry_task(task.id)
+        assert await service.get_task(task.id) == before
+    assert (await service.get_task(other.id)).claimed_by == "other-runner"
+    assert registration in service.registrations(other.id)
+    await store.close()
+
+
 # 2119: 4.1
 def test_repair_and_retry_require_fleet_write_authority(tmp_path: Path) -> None:
     service, store = asyncio.run(make_service(tmp_path))
@@ -214,3 +288,27 @@ def test_repair_and_retry_require_fleet_write_authority(tmp_path: Path) -> None:
         assert http.post("/repos/repo/setup/finish", headers=writer).status_code == 200
         assert http.post(f"/tasks/{task.id}/retry", headers=writer).status_code == 200
     asyncio.run(store.close())
+
+
+# 2119: 1.3
+@pytest.mark.parametrize("phase", [None, LifecyclePhase.STARTING])
+async def test_setup_refusal_explains_ambiguous_claim_and_safe_recovery(
+    tmp_path: Path, phase: LifecyclePhase | None
+) -> None:
+    service, store = await make_service(tmp_path)
+    task = await service.create_task("repo", "spike")
+    await service.claim(task.id, "possibly-disconnected-runner")
+    if phase is not None:
+        await service.report_lifecycle(task.id, "possibly-disconnected-runner", phase)
+    with pytest.raises(NotReady) as error:
+        await service.begin_repo_setup("repo")
+    detail = str(error.value)
+    assert task.id in detail and "possibly-disconnected-runner" in detail
+    assert "without a live registration or a recorded launch failure" in detail
+    assert "cannot tell whether that launch is still active" in detail
+    assert "confirm the task is stopped and use dashboard R" in detail
+    assert "resume repository setup" in detail
+    assert not (await service.get_repo("repo")).launch_paused
+    unchanged = await service.get_task(task.id)
+    assert unchanged.claimed_by == "possibly-disconnected-runner" and not unchanged.launch_paused
+    await store.close()

@@ -1,24 +1,10 @@
-"""First-time setup helpers for ``panopticon quickstart``.
-
-Detects and confirms the repo's default harness, selects and registers a repository source with the
-task service, writes a secrets template when absent, and retains legacy setup-task helpers.
-"""
+"""Repository registration and workflow selection for foreground quickstart."""
 
 from __future__ import annotations
-
-import os
-import shutil
-import stat
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
-from pathlib import Path
 
 import httpx
 
 from panopticon.client import TaskServiceClient
-from panopticon.harnesses import DEFAULT_HARNESS, HARNESSES
-from panopticon.harnesses.base import Harness
-from panopticon.terminal.setup_repo_task import SETUP_REPO_WORKFLOW, create_setup_repo_task
 from panopticon.terminal.source_selection import (
     RepositorySource as RepositorySource,
 )
@@ -47,139 +33,11 @@ from panopticon.terminal.source_selection import (
     sources_equivalent as sources_equivalent,
 )
 
-_FALLBACK_GIT_URL = "https://github.com/Unsupervisedcom/panopticon.git"
-
-#: Task states past which a setup-repo task is done — used to decide whether to reuse one.
-_TERMINAL_STATES = {"COMPLETE", "DROPPED"}
-
 #: The opt-in coding workflows quickstart enables for a repo (kept in sync with the workflow
 #: classes' ``name`` ClassVars): the forge lifecycle for supported GitHub sources, the forge-free
 #: one for every other source.
 _FORGE_WORKFLOWS = ("github-self-reviewed", "github-peer-reviewed")
 _LOCAL_WORKFLOWS = ("local-git-self-reviewed",)
-
-
-@dataclass(frozen=True)
-class HarnessDetection:
-    """Host readiness for one registered harness, as shown by quickstart's tiny picker."""
-
-    name: str
-    installed: bool
-    authenticated: bool
-    install_hint: str
-
-    @property
-    def status(self) -> str:
-        if self.authenticated:
-            return "authed"
-        if self.installed:
-            return "installed"
-        return f"not installed — {self.install_hint}"
-
-
-def detect_harnesses(
-    *,
-    harnesses: Mapping[str, Harness] = HARNESSES,
-    environ: Mapping[str, str] = os.environ,
-    home: Path | None = None,
-    which: Callable[[str], str | None] = shutil.which,
-) -> list[HarnessDetection]:
-    """Probe every registered harness locally: CLI presence plus its own auth check.
-
-    A harness is called ``authenticated`` only when both pieces are ready. Credentials for an
-    uninstalled CLI are still probed (the adapter owns that logic), but do not make it runnable.
-    """
-    resolved_home = home or Path.home()
-    detected = []
-    for harness in harnesses.values():
-        installed = which(harness.host_binary) is not None
-        auth_ready = harness.missing_auth(environ, home=resolved_home) is None
-        authenticated = installed and auth_ready
-        detected.append(
-            HarnessDetection(harness.name, installed, authenticated, harness.install_hint)
-        )
-    return detected
-
-
-def recommended_harness(detected: list[HarnessDetection]) -> str:
-    """Best runnable choice: authenticated, then installed, then the Claude fallback."""
-    for harness in detected:
-        if harness.authenticated:
-            return harness.name
-    for harness in detected:
-        if harness.installed:
-            return harness.name
-    return DEFAULT_HARNESS
-
-
-def choose_harness(
-    detected: list[HarnessDetection], *, input_fn: Callable[[str], str] = input
-) -> str:
-    """Print detection evidence, then confirm one candidate or pick among several."""
-    recommended = recommended_harness(detected)
-    candidates = [harness for harness in detected if harness.installed]
-    print("Detected agent harnesses:")
-    for harness in detected:
-        suffix = " (recommended)" if harness.name == recommended and candidates else ""
-        print(f"  {harness.name}: {harness.status}{suffix}")
-
-    if not candidates:
-        claude = next((h for h in detected if h.name == DEFAULT_HARNESS), None)
-        hint = claude.install_hint if claude is not None else "Install the Claude Code CLI."
-        print(f"No agent harness CLI is installed. {hint}")
-        return DEFAULT_HARNESS
-    if len(candidates) == 1:
-        choice = candidates[0].name
-        input_fn(f"Use {choice} as this repo's default harness? Press Enter to continue. ")
-        return choice
-
-    numbered = {str(index): harness.name for index, harness in enumerate(candidates, start=1)}
-    print("Choose the repo default:")
-    for number, harness in zip(numbered, candidates, strict=True):
-        suffix = " (recommended)" if harness.name == recommended else ""
-        print(f"  {number}) {harness.name} — {harness.status}{suffix}")
-    default_number = next(number for number, name in numbered.items() if name == recommended)
-    while True:
-        answer = input_fn(f"Harness [{default_number}]: ").strip()
-        if not answer:
-            return recommended
-        if answer in numbered:
-            return numbered[answer]
-        print(f"Enter a number from 1 to {len(numbered)}.")
-
-
-def harness_environment(env_file: str) -> dict[str, str]:
-    """Environment visible to auth probes, including active values in quickstart's env-file."""
-    from panopticon.core.dirs import secrets_file_path
-
-    environ = dict(os.environ)
-    path = secrets_file_path(env_file)
-    if path is None:
-        return environ
-    try:
-        lines = Path(path).read_text().splitlines()
-    except OSError:
-        return environ
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        name, value = stripped.split("=", 1)
-        name = name.strip()
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1]
-        if name:
-            environ[name] = value
-    return environ
-
-
-def _secrets_template() -> str:
-    """The secrets-file template, read from the packaged ``panopticon.env.template`` data file."""
-    import importlib.resources
-
-    ref = importlib.resources.files("panopticon.terminal") / "panopticon.env.template"
-    return ref.read_text()
 
 
 def choose_enabled_workflows(git_url: str) -> tuple[str, ...]:
@@ -208,83 +66,6 @@ def _ensure_workflows_enabled(
     repo_id = str(repo["id"])
     client.update_repo(repo_id, enabled_workflows=merged)
     print(f"  → Enabled workflows for repo {repo_id!r}: {', '.join(workflows)}.")
-
-
-def ensure_secrets_file() -> str:
-    """Write the secrets template into the secrets dir (~/.config/panopticon/secrets/) if absent.
-
-    Returns the file's **name** relative to the secrets dir (``panopticon.env``) — what a repo's
-    ``env_file`` stores, so it resolves against whichever host runs the task (ADR 0007).
-    """
-    from panopticon.core.dirs import _secrets_dir
-
-    secrets_dir = _secrets_dir()
-    secrets_path = secrets_dir / "panopticon.env"
-    secrets_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    directory = secrets_dir.lstat()
-    current_uid = getattr(os, "geteuid", lambda: directory.st_uid)()
-    if (
-        secrets_dir.is_symlink()
-        or not stat.S_ISDIR(directory.st_mode)
-        or directory.st_uid != current_uid
-        or directory.st_mode & 0o077
-    ):
-        raise ValueError(
-            f"secrets directory is unsafe: {secrets_dir} must be an owner-only directory (0700)"
-        )
-    if os.path.lexists(secrets_path):
-        fd = -1
-        try:
-            fd = os.open(
-                secrets_path,
-                os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0),
-            )
-            existing = os.fstat(fd)
-            if (
-                not stat.S_ISREG(existing.st_mode)
-                or existing.st_uid != current_uid
-                or existing.st_mode & 0o077
-            ):
-                raise ValueError
-        except (OSError, ValueError) as exc:
-            raise ValueError(
-                f"secrets file is unsafe: {secrets_path} must be an owner-only regular file (0600)"
-            ) from exc
-        finally:
-            if fd >= 0:
-                os.close(fd)
-        print(f"Secrets file already exists: {secrets_path}")
-    else:
-        fd = os.open(
-            secrets_path,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-        )
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            os.fchmod(handle.fileno(), 0o600)
-            handle.write(_secrets_template())
-        print(f"Created secrets template: {secrets_path}")
-        print("  → The setup-repo task will add harness auth; add GH_TOKEN there or by hand.")
-    return secrets_path.name
-
-
-def wait_for_service(service_url: str, *, timeout: int = 30) -> None:
-    """Poll the task service until it responds or ``timeout`` seconds elapse."""
-    import time
-
-    import httpx as _httpx
-
-    deadline = time.monotonic() + timeout
-    while True:
-        try:
-            _httpx.get(f"{service_url}/healthz", timeout=1.0, trust_env=False).raise_for_status()
-            return
-        except Exception as err:
-            if time.monotonic() >= deadline:
-                raise RuntimeError(
-                    f"Task service at {service_url} did not respond within {timeout}s"
-                ) from err
-            time.sleep(1.0)
 
 
 def _find_existing_repo(client: TaskServiceClient, git_url: str) -> dict[str, object] | None:
@@ -346,31 +127,3 @@ def setup_repo(
         print(f"  → Enabled workflows: {', '.join(workflows)}.")
         return repo_id, name
     raise RuntimeError(f"could not allocate a repository id for source {git_url!r}")
-
-
-def ensure_setup_repo_task(client: TaskServiceClient, repo_id: str, name: str) -> str | None:
-    """Return the id of a ``setup-repo`` task for ``repo_id`` to attach to, creating one if needed.
-
-    Reuses an existing **non-terminal** setup-repo task for the repo when there is one, so
-    re-running quickstart doesn't pile up orphaned ``RUNNING`` tasks; otherwise creates a fresh one
-    (seeded with the shared memo, see :func:`create_setup_repo_task`). The console attaches to the
-    returned task on open, dropping the operator into ``claude setup-token``. Best-effort: if the
-    task can't be created (e.g. the workflow isn't available on an older task service), it warns and
-    returns ``None`` so quickstart still opens the console.
-    """
-    try:
-        for task in client.list_tasks():
-            if (
-                task.get("repo_id") == repo_id
-                and task.get("workflow") == SETUP_REPO_WORKFLOW
-                and task.get("state") not in _TERMINAL_STATES
-            ):
-                print("Attaching to the running setup-repo task to configure harness auth.")
-                return str(task["id"])
-        task = create_setup_repo_task(client, repo_id, name)
-    except httpx.HTTPError as err:
-        print(f"Could not start a setup-repo task ({err}); opening the dashboard instead.")
-        print("  → Configure auth later by starting a setup-repo task from the repos screen.")
-        return None
-    print("Configuring the repo's harness auth — attach to complete setup-repo.")
-    return str(task["id"])

@@ -10,7 +10,6 @@ return the updated resource. LLM-free — agents reach the LLM only inside the c
 from __future__ import annotations
 
 import base64
-import os
 from collections.abc import Generator
 from typing import Any, cast
 
@@ -19,6 +18,7 @@ import httpx
 from panopticon.core.liveness import LIVENESS_READ_TIMEOUT_SECONDS
 from panopticon.core.models import Status
 from panopticon.taskservice.auth import environment_token
+from panopticon.taskservice.operator_auth import operator_token as load_operator_token
 
 JsonObj = dict[str, Any]
 
@@ -44,7 +44,7 @@ class TaskServiceClient:
         token = token if token is not None else environment_token()
         if token:
             self._http.headers["Authorization"] = f"Bearer {token}"
-        self._operator_token = operator_token or os.environ.get("PANOPTICON_OPERATOR_TOKEN")
+        self._operator_token = operator_token or load_operator_token()
 
     @property
     def service_url(self) -> str:

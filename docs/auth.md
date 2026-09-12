@@ -114,6 +114,20 @@ failures always return `401`, `WWW-Authenticate: Bearer`, and
 not exempt: once the process binds beyond localhost, a loopback bypass would also bypass local
 proxies and port forwards.
 
+## Operator migration authorization
+
+Cross-host migration requires a separate operator token in addition to fleet write access. When
+`PANOPTICON_OPERATOR_TOKEN` is explicitly supplied to integrated startup, Panopticon saves it in
+an owner-only `operator-auth.json` under the secrets directory and passes only that filename to
+its background processes. Fresh operator clients on the same host use the saved file. Ordinary
+task containers receive neither the operator token nor its file reference.
+
+`PANOPTICON_OPERATOR_TOKEN_FILE` selects another private filename in that directory. Manually
+launched services and clients still accept `PANOPTICON_OPERATOR_TOKEN` directly. No operator
+credential is generated when none was configured. To rotate it, stop the runtime deliberately,
+replace the private JSON file (`{"token": "…"}`, mode `0600`), and restart. Startup refuses to
+overwrite a different saved token or to enable operator authorization on a running service.
+
 ## Container authentication — giving tasks their agent credentials
 
 Each **harness** (the agent CLI a task runs) authenticates its own way. `panopticon setup` connects

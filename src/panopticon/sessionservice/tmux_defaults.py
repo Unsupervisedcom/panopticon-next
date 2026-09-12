@@ -6,12 +6,11 @@ to be first against a not-yet-running socket implicitly starts it. Separate ``tm
 set-option ...`` invocations do NOT work for this: tmux's ``exit-empty`` (on by default) tears the
 server back down the moment a client that leaves it with zero sessions disconnects, so nothing set
 by one bare command survives to the next — confirmed against a real tmux binary. The only reliable
-mechanism is tmux's ``-f <file>`` flag, honored **only** when a client's command is what starts a
-brand-new server (silently ignored once one is already running): every ``new-session`` call that
-might be the first to touch the socket must load :func:`write_default_config`'s file via ``-f``, so
-the defaults land atomically with that very session — including ``history-limit``, which binds to
-a pane at creation and is never applied retroactively, and so **must** be in place before that
-pane, not merely before the socket has *some* session on it. ``-f`` also replaces tmux's normal
+mechanism is tmux's ``-f <file>`` flag when a client's command starts a brand-new server, plus an
+explicit ``source-file`` in the same command sequence when a server already exists. Every
+``new-session`` call loads :func:`write_default_config`'s file before creating the pane — including
+``history-limit``, which binds to a pane at creation and is never applied retroactively. ``-f``
+also replaces tmux's normal
 ``~/.tmux.conf``/``/etc/tmux.conf`` search entirely (REQ-030.5.2), rather than merely selecting a
 different socket the way ``-L`` alone does — so an operator's personal tmux customizations never
 reach this socket's server, confirmed against a real tmux binary.
@@ -139,9 +138,8 @@ def defaults_argv(socket: str | None) -> list[str]:
     panopticon's shipped tmux defaults (REQ-030), regardless of which panopticon-owned process
     happens to touch it first — ``-f`` only takes effect when tmux is starting a brand-new server,
     so passing it unconditionally on every ``new-session`` is harmless (silently ignored once a
-    server already exists — including one left running from before this socket adopted these
-    defaults; restart it, e.g. ``make stop``, to pick them up) and is the only mechanism that
-    reliably applies for the first-touch case (see the module docstring). Empty without a
+    server already exists) and is the only mechanism that reliably applies for the first-touch
+    case. :func:`new_session_argv` also sources this file for an existing server. Empty without a
     dedicated socket (``socket=None``) — that means talking to the ambient default tmux server,
     which may be an operator's own, and these defaults must never reach it (REQ-030.5)."""
     if not socket:
@@ -152,4 +150,8 @@ def defaults_argv(socket: str | None) -> list[str]:
 def new_session_argv(socket: str | None, *args: str) -> list[str]:
     """Build the only supported panopticon-owned tmux session-creation command tail."""
 
-    return [*defaults_argv(socket), "new-session", *args]
+    defaults = defaults_argv(socket)
+    if not socket:
+        return ["new-session", *args]
+    config = defaults[1]
+    return [*defaults, "source-file", config, ";", "new-session", *args]

@@ -19,7 +19,12 @@ setup_and_launch:
       secrets in diagnostics or command arguments, mutations of other repositories, and tests
       that merely assert mocked implementation calls. Preserve the deterministic control plane.
       Check new onboarding no longer requires authentication-task attach/detach. Distinguish
-      credential presence from actual provider access. Require evidence for package installation
+      credential presence from actual provider access. Check that completed local work survives
+      cleanup, that scoped Git credentials reach the initial host clone and later task Git
+      operations, and that explicit credential repair replaces stale task auth without damaging
+      shared subscription files or session history. Preserve operator-only migration authorization
+      without putting secrets in child argv or ordinary task containers.
+      Require evidence for package installation
       and real terminal behavior; distinguish deterministic tests from opt-in live checks.
       Return prioritized concrete findings and unresolved verification gaps. Never claim release
       or multi-host acceptance from unit tests or a setup shell alone.
@@ -28,3 +33,6 @@ setup_and_launch:
       - path: specs/source-selection.md
       - path: specs/runtime-readiness.md
       - path: specs/task-auth-readiness.md
+      - path: specs/skip-terminal-provisioner.md
+      - path: specs/REQ-054-new-user-onboarding.md
+      - path: specs/REQ-037-safe-cross-host-task-migration.md

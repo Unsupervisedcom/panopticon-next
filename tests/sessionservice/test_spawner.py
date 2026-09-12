@@ -1998,3 +1998,55 @@ def test_spawner_pass_starts_dependent_when_dependency_reaches_a_custom_terminal
 
         assert spawner.spawn_one(ready[dependent_id]) == f"panopticon-{dependent_id}"
         assert client.get_task(dependent_id)["claimed_by"] == "host-1"
+
+
+# 2119: REQ-043.3.2
+@pytest.mark.parametrize("boundary", ["clone-preparation", "image-staging"])
+def test_non_runtime_failures_latch_exact_reason_without_retry(
+    monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    client, runner = _FakeClient(repo=_REPO, image_layer="RUN true"), _FakeRunner(session=False)
+    images = _FakeImageBuilder()
+    spawner = Spawner(
+        client,
+        runner,
+        runner_id="host-1",
+        cache=CloneCache(
+            "/cache", run=_no_op_run, exists=lambda _p: True, makedirs=lambda _p: None
+        ),
+        tasks_root="/tasks",
+        git=GitClones(run=_no_op_run),
+        images=images,
+        makedirs=lambda _p: None,
+        credential_check=lambda _task, _repo: None,
+    )
+    reason = f"{boundary}: cannot read required local input"
+
+    def fail(*_args, **_kwargs):
+        raise OSError(reason)
+
+    if boundary == "clone-preparation":
+        monkeypatch.setattr(spawner, "_prepare_task_dir", fail)
+    else:
+        monkeypatch.setattr(images, "build", fail)
+    task = {
+        "id": "t1",
+        "repo_id": "r1",
+        "workflow": "spike",
+        "state": "PLANNING",
+        "claimed_by": None,
+    }
+    with pytest.raises(OSError, match=reason):
+        spawner.spawn_one(task)
+    assert not runner.spawned
+    assert client.cleared == [] and client.releases == []
+    assert client.phases[-1] == ("t1", "failed", reason)
+    failed = {
+        **task,
+        "claimed_by": "host-1",
+        "container_status": "failed",
+        "lifecycle_phase": "failed",
+    }
+    assert spawner.heal(failed) is None
+    assert client.phases[-1] == ("t1", "failed", reason)
+    assert not runner.spawned

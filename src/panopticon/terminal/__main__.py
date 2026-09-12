@@ -282,7 +282,11 @@ def _prepare_integrated_runtime(service_url: str, command: str) -> bool:
     try:
         runtime = resolve_runtime(service_url)
         os.environ.update(runtime.environment)
-        if guard_before_migration(runtime) is MigrationDecision.SERVICE_ABSENT:
+        decision = guard_before_migration(runtime)
+        from panopticon.taskservice.operator_auth import persist_operator_token
+
+        persist_operator_token(allow_create=decision is MigrationDecision.SERVICE_ABSENT)
+        if decision is MigrationDecision.SERVICE_ABSENT:
             _run_migrate()
         if not _start_sessions_with_help(command):
             return False
@@ -291,6 +295,18 @@ def _prepare_integrated_runtime(service_url: str, command: str) -> bool:
     except (OSError, ValueError, RuntimeError, httpx.HTTPError) as exc:
         print(f"panopticon: {exc}")
         return False
+
+
+def _request_error_detail(exc: Exception) -> str:
+    """Preserve actionable service refusals in foreground command errors."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        try:
+            data = exc.response.json()
+            if isinstance(data, dict) and "detail" in data:
+                return str(data["detail"])
+        except ValueError:
+            pass
+    return str(exc)
 
 
 def main(
@@ -390,15 +406,21 @@ def main(
         try:
             if args.repo:
                 _select_existing_integrated_auth()
-                configure_repo(_make_client(args.service_url), args.repo)
+                if not configure_repo(_make_client(args.service_url), args.repo):
+                    return 1
             else:
                 configure_connection()
             return 0
         except (EOFError, KeyboardInterrupt):
-            print("\nSetup paused. Saved steps are retained; run `panopticon setup` to resume.")
+            resume = (
+                f"panopticon setup --repo {shlex.quote(args.repo)}"
+                if args.repo
+                else "panopticon setup"
+            )
+            print(f"\nSetup paused. Saved steps are retained; run `{resume}` to resume.")
             return 1
         except (OSError, ValueError, RuntimeError, httpx.HTTPError) as exc:
-            print(f"panopticon: {exc}")
+            print(f"panopticon: {_request_error_detail(exc)}")
             return 1
     elif args.command == "quickstart":
         from panopticon.terminal import doctor
@@ -428,7 +450,7 @@ def main(
             )
             return 1
         except (OSError, ValueError, RuntimeError, httpx.HTTPError) as exc:
-            print(f"panopticon: {exc}")
+            print(f"panopticon: {_request_error_detail(exc)}")
             return 1
         from panopticon.terminal.console import run_console_local
 

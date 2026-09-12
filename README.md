@@ -71,12 +71,10 @@ shells out to a few host tools. You need:
 - **tmux:** the dashboard, console supervisor, and task sessions run on a dedicated
   `tmux -L panopticon` server
 - **git:** the session service clones a per-task workspace for each agent
-- At least one registered **agent harness CLI** (`claude`, `codex`, `pi`, or `outfitter`):
-  quickstart detects installed choices and configures the selected default. Guided authentication
-  is available for all four; Outfitter uses Pi provider credentials and prepares its profile
-  directory. Use Claude or Codex for the first GitHub workflow below. Pi and Outfitter can run
-  compatible workflows, but their current adapters cannot execute workflow skills that require
-  Panopticon's MCP tools.
+
+Foreground setup offers Claude, Codex, or Pi. Pasting a token or API key requires no agent CLI
+on the host; install Claude Code or Codex locally only if you choose its native browser login.
+The task container supplies the agent CLI. Use Claude or Codex for the first GitHub walkthrough.
 
 `panopticon quickstart` checks these first; run `panopticon doctor` to re-check any time.
 

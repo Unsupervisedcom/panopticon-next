@@ -311,7 +311,7 @@ dispatch_harness_auth outfitter || echo unsupported
 
         lines = _sh(body).splitlines()
         assert len(lines) == 2
-        assert "Outfitter uses Pi credentials" in lines[0]
+        assert lines[0] == "Outfitter uses Pi credentials."
         assert lines[1] == "pi-auth-flow"
         profiles = credential_path / "outfitter" / "profiles"
         assert profiles.is_dir()
@@ -369,7 +369,7 @@ store_token() {{ echo stored:$1; }}
         pi_lines = _sh(f"{common}\nsetup_pi_auth").splitlines()
         outfitter_lines = _sh(f"{common}\ndispatch_harness_auth outfitter").splitlines()
 
-        assert "Outfitter uses Pi credentials" in outfitter_lines[0]
+        assert outfitter_lines[0] == "Outfitter uses Pi credentials."
         assert outfitter_lines[1:] == pi_lines
 
 

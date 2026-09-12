@@ -122,16 +122,19 @@ def test_fresh_no_arg_enters_quickstart_and_prints_tmux_install_help(
         lambda: RepositorySource("https://example.test/repo", "repo", "remote"),
     )
 
-    result = doctor.CheckResult(
-        "tmux",
-        False,
-        "not found on PATH",
-        hint="Install tmux (e.g. `brew install tmux` / `apt-get install --yes tmux`).",
-    )
+    real_checks = doctor.run_checks
+
+    def checks(**kwargs):
+        return real_checks(
+            which=lambda name: None if name == "tmux" else f"/test/{name}",
+            run=lambda _: 0,
+            **kwargs,
+        )
+
     with (
         patch("panopticon.terminal.__main__._has_bootstrap_credential", return_value=False),
         patch("panopticon.taskservice.auth.environment_token"),
-        patch("panopticon.terminal.doctor.run_checks", return_value=[result]),
+        patch("panopticon.terminal.doctor.run_checks", side_effect=checks),
         patch("panopticon.terminal.__main__._run_migrate") as mock_migrate,
         patch("panopticon.terminal.__main__._start_sessions") as mock_sessions,
     ):
@@ -274,6 +277,9 @@ def _assert_new_session_commands(calls: list[list[str]], state_root: Path) -> No
             "-L",
             "panopticon",
             *defaults,
+            "source-file",
+            defaults[1],
+            ";",
             "new-session",
             "-d",
             "-s",
@@ -458,3 +464,40 @@ def test_console_does_not_preflight_docker() -> None:
         assert main(["console"]) == 0
     mock_preflight.assert_not_called()
     mock_console.assert_called_once()
+
+
+@pytest.mark.parametrize("failure", ["cancel", "refusal", "incomplete"])
+def test_repository_setup_exit_and_diagnostic_support_resume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failure: str,
+) -> None:
+    import httpx
+
+    from panopticon.terminal import setup
+
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(tmp_path / "config"))
+    monkeypatch.setattr(
+        "panopticon.terminal.__main__._select_existing_integrated_auth", lambda: None
+    )
+
+    def configure(*args, **kwargs):
+        if failure == "cancel":
+            raise KeyboardInterrupt
+        if failure == "refusal":
+            request = httpx.Request("POST", "http://test/repos/one/setup")
+            response = httpx.Response(
+                409, json={"detail": "Release the stale task claim before repair."}, request=request
+            )
+            response.raise_for_status()
+        return False
+
+    monkeypatch.setattr(setup, "configure_repo", configure)
+    assert main(["setup", "--repo", "one"]) == 1
+    output = capsys.readouterr().out
+    if failure == "cancel":
+        assert "panopticon setup --repo one" in output
+    elif failure == "refusal":
+        assert "Release the stale task claim before repair." in output
+        assert "409 Conflict" not in output

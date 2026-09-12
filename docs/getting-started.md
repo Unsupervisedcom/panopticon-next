@@ -42,8 +42,9 @@ The local wheel path above also supports an independently checksummed evaluation
 [//]: # (x-release-please-start-version)
 Expected result: `panopticon --version` prints `panopticon 0.2.11` without requiring a source
 checkout, and `doctor` ends with `All prerequisites satisfied.` Do not continue until both checks
-pass. `doctor` checks Python 3.11+, Git, the Docker CLI and daemon, tmux, and at least one agent
-harness. Follow the corrective action printed beneath any failed check, then rerun it.
+pass. `doctor` checks Python 3.11+, Git, the Docker CLI and daemon, and tmux. Agent CLIs are
+reported for native browser login; pasting a token or API key does not require a host agent CLI.
+Follow the corrective action printed beneath any required failed check, then rerun it.
 [//]: # (x-release-please-end)
 
 The complete GitHub walkthrough below currently requires Claude or Codex. Pi and Outfitter can run

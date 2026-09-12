@@ -100,7 +100,7 @@ def test_missing_claude_passes_when_another_harness_cli_is_installed() -> None:
     assert doctor.report(results) == 0
 
 
-def test_no_harness_cli_fails_after_reporting_every_harness() -> None:
+def test_no_harness_cli_is_informational_after_reporting_every_harness() -> None:
     results = doctor.run_checks(
         which=_which_missing("claude", "codex", "pi", "outfitter"),
         run=_run_ok,
@@ -110,7 +110,7 @@ def test_no_harness_cli_fails_after_reporting_every_harness() -> None:
     by_name = _by_name(results)
     assert all(not by_name[name].ok for name in ("claude", "codex", "pi", "outfitter"))
     assert not by_name["harness CLI"].ok
-    assert doctor.report(results) == 1
+    assert doctor.report(results) == 0
 
 
 def test_docker_present_but_daemon_down_fails() -> None:
@@ -151,3 +151,14 @@ def test_check_binary_reports_the_resolved_path() -> None:
     result = doctor.check_binary("git", hint="x", which=lambda _name: "/opt/bin/git")
     assert result.ok
     assert "/opt/bin/git" in result.detail
+
+
+def test_foreground_token_connection_needs_no_host_agent_cli(capsys) -> None:
+    results = doctor.run_checks(
+        which=lambda name: f"/test/{name}" if name in {"git", "docker", "tmux"} else None,
+        run=lambda _: 0,
+    )
+    assert doctor.report(results) == 0
+    output = capsys.readouterr().out
+    assert "All prerequisites satisfied" in output
+    assert next(result for result in results if result.name == "harness CLI").required is False

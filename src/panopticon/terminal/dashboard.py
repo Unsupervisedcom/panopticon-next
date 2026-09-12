@@ -2441,7 +2441,7 @@ class ReposScreen(_TableScreen):
     ]
     TABLE_ID = "repos"
     TITLE = "repos — n: new   e: edit   s: setup   esc: close"
-    COLUMNS = ("id", "name", "git_url", "default_base", "priv")
+    COLUMNS = ("id", "name", "git_url", "default_base", "priv", "setup")
     LAYERED_SETTINGS_SURFACE = "repos"
 
     def _refresh(self) -> None:
@@ -2456,6 +2456,7 @@ class ReposScreen(_TableScreen):
                 repo["git_url"],
                 repo["default_base"],
                 priv,
+                "held — s to resume" if repo.get("launch_paused") else "–",
                 key=str(repo["id"]),
             )
 
@@ -2559,10 +2560,15 @@ class ReposScreen(_TableScreen):
             with self.app.suspend():
                 complete = configure_repo(self._client, self._current)
         except (OSError, ValueError, RuntimeError, httpx.HTTPError) as exc:
-            self.notify(f"Setup needs attention: {exc}", severity="error")
+            self._refresh()
+            detail = _detail(exc) if isinstance(exc, httpx.HTTPStatusError) else str(exc)
+            self.notify(f"Setup needs attention: {detail}", severity="error")
             return
         except (EOFError, KeyboardInterrupt):
-            self.notify("Setup paused. Saved steps are retained.")
+            self._refresh()
+            self.notify(
+                "Setup paused. Saved steps are retained; press s to resume this repository."
+            )
             return
         self._refresh()
         self.notify("Setup complete." if complete else "Setup incomplete; reopen to resume.")

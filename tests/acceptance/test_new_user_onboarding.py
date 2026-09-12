@@ -48,8 +48,8 @@ _RELEASE_VERSION = cast(
     str, tomllib.loads((_ROOT / "pyproject.toml").read_text())["project"]["version"]
 )
 _RELEASE_WHEEL = f"panopticon_next-{_RELEASE_VERSION}-py3-none-any.whl"
-_WALKTHROUGH_SHA256 = "4428fb21909a7b869255ca4c0dc95fe307d1a2a1a398780f9783a65d866d9eec"
-_ACCEPTANCE_SOURCE_AST_SHA256 = "e04f89b9cd465b49e660a7e7eae5639d207e7f572672562eb21528ecfb1e2e95"
+_WALKTHROUGH_SHA256 = "090d1ece1d1f030696ab433758c58e228707bdebac6e0b95c79bfb6ed6ba877e"
+_ACCEPTANCE_SOURCE_AST_SHA256 = "effb535a4b665ca062a198778ba8eab09b8e918055ec049938c0f758db05a36d"
 _OPT_IN = "I_AM_RUNNING_ON_A_DISPOSABLE_HOST"
 _REQUIRED = (
     "PANOPTICON_NEW_USER_ACCEPTANCE",
@@ -779,9 +779,24 @@ def _post_setup_direct_mutations(source: str) -> list[str]:
         else:
             normalized_body.append(module_node)
     normalized_tree = ast.Module(body=normalized_body, type_ignores=[])
-    source_digest = hashlib.sha256(
-        ast.dump(normalized_tree, include_attributes=False).encode()
-    ).hexdigest()
+
+    def stable_ast(value: Any) -> object:
+        if isinstance(value, ast.AST):
+            fields = []
+            for name in value._fields:
+                child = getattr(value, name)
+                # Python versions add optional AST fields such as ``type_params``. Omitting empty
+                # fields gives the same representation on versions before and after that addition,
+                # while any substantive value remains part of the digest.
+                if child is None or child == []:
+                    continue
+                fields.append((name, stable_ast(child)))
+            return (type(value).__name__, tuple(fields))
+        if isinstance(value, list):
+            return tuple(stable_ast(child) for child in value)
+        return value
+
+    source_digest = hashlib.sha256(repr(stable_ast(normalized_tree)).encode()).hexdigest()
     functions = [
         node
         for node in tree.body
@@ -797,7 +812,8 @@ def _post_setup_direct_mutations(source: str) -> list[str]:
         )
     if source_digest != _ACCEPTANCE_SOURCE_AST_SHA256:
         source_digest_violations.append(
-            "acceptance source changed; review the complete executable surface and update its pinned AST digest"
+            "acceptance source changed; review the complete executable surface and update its "
+            "pinned AST digest"
         )
     function = functions[0]
     setup_calls = [
@@ -3133,6 +3149,7 @@ def test_clean_host_acceptance_rejects_ambiguous_or_unsafe_configuration(
     assert _configuration(values) is None
 
 
+# 2119: REQ-054.1.2, REQ-054.1.3
 # 2119: REQ-054.7.1, REQ-054.7.2, REQ-054.7.6, REQ-054.7.7, REQ-054.7.8, REQ-054.7.9
 def test_new_user_completes_one_real_github_self_reviewed_task(tmp_path: Path) -> None:
     if _LIVE_CONFIGURATION is None:

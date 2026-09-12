@@ -28,6 +28,7 @@ from panopticon.harnesses import Harness, get_harness
 from panopticon.sessionservice.auth_readiness import missing_task_auth
 from panopticon.sessionservice.clones import CloneCache
 from panopticon.sessionservice.executions import WorkflowExecutions
+from panopticon.sessionservice.git_credentials import repo_git_transport
 from panopticon.sessionservice.images import ImageBuilder
 from panopticon.sessionservice.local_runner import CONTAINER_HOME, LocalRunner
 from panopticon.sessionservice.shell_runner import ShellRunner
@@ -283,6 +284,7 @@ class Spawner:
         )
         self._report(task_id, LifecyclePhase.PREPARING)
         if clone:
+            git_transport = repo_git_transport(repo)
             workspace = prepare_workspace(
                 task_id,
                 repo,
@@ -292,6 +294,7 @@ class Spawner:
                 makedirs=self._makedirs,
                 task=task,
                 runner_id=self._runner_id,
+                git_transport=git_transport,
             )
             owner = task.get("provisioned_by")
             if owner not in (None, self._runner_id):
@@ -303,7 +306,7 @@ class Spawner:
 
                 verify_canonical_workspace(
                     Path(workspace),
-                    expected_git_url=str(repo["git_url"]),
+                    expected_git_url=git_transport.operation_url,
                     expected_branch=str(task["branch"]),
                 )
                 prospective = dict(task)
@@ -628,11 +631,11 @@ class Spawner:
                 self._client.release(task["id"])
 
     def cleanup(self, task: JsonObj) -> None:
-        """Remove the per-task workspace once a terminal task's container has exited.
+        """Clean up terminal runtime resources and disposable task workspaces.
 
-        Self-gates on two conditions so calling this on every task each pass is safe:
-        the task must be terminal (COMPLETE/DROPPED). Reaching a terminal state ends the task, so
-        cleanup stops any still-running backend before deleting its workspace and runtime secrets.
+        The task must be terminal (COMPLETE/DROPPED). Cleanup stops any still-running backend
+        and removes runtime secrets. A workflow may retain completed workspaces as its result;
+        dropped workspaces are always disposable.
 
         Also releases a lingering claim (best-effort) before cleaning the workspace. In the
         normal flow the container agent releases its own claim on exit; this catches the case
@@ -658,6 +661,10 @@ class Spawner:
         if task.get("claimed_by") == self._runner_id:
             with contextlib.suppress(httpx.HTTPError):
                 self._client.release(task["id"])
+        if task["state"] == "COMPLETE" and task.get("workflow"):
+            execution = self._executions.spec(task["workflow"])
+            if execution.get("retain_completed_workspace", False):
+                return  # the checkout is the local result, not disposable runtime state
         cleanup_workspace(
             task["id"],
             self._tasks_root,

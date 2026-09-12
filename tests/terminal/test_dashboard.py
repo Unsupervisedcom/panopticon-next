@@ -7653,3 +7653,50 @@ async def test_deleting_a_shared_file_workflow_names_every_sibling(tmp_path) -> 
         box = app.screen.query_one("#delete-workflow-box")
         prompt = " ".join(str(label.render()) for label in box.query(Label))
         assert "2119-auto" in prompt and "2119-human" in prompt
+
+
+async def test_repo_setup_hold_is_visible_and_service_refusal_detail_reaches_operator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import contextlib
+
+    import httpx
+
+    from panopticon.terminal import setup
+
+    fake = _FakeClient(
+        [_TASK],
+        repos=[
+            {
+                "id": "r1",
+                "name": "Example",
+                "git_url": "https://example.test/r1",
+                "default_base": "main",
+                "launch_paused": True,
+            }
+        ],
+    )
+    app = Dashboard(fake)
+    notices = []
+    monkeypatch.setattr(app, "suspend", contextlib.nullcontext)
+
+    def refuse(*args, **kwargs):
+        request = httpx.Request("POST", "http://test/repos/r1/setup")
+        response = httpx.Response(
+            409, json={"detail": "Confirm the old runner has stopped."}, request=request
+        )
+        response.raise_for_status()
+
+    monkeypatch.setattr(setup, "configure_repo", refuse)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("g")
+        await pilot.pause()
+        screen = app.screen
+        table = screen.query_one("#repos", DataTable)
+        assert "held — s to resume" in table.get_row("r1")
+        monkeypatch.setattr(screen, "notify", lambda message, **kwargs: notices.append(message))
+        await pilot.press("s")
+        await pilot.pause()
+        assert "Confirm the old runner has stopped." in notices[-1]
+        assert "held — s to resume" in table.get_row("r1")

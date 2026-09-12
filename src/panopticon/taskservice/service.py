@@ -552,6 +552,7 @@ class TaskService:
             "runner_type": workflow.runner_type,
             "script": workflow.shell_script(),
             "clone_repo": workflow.clone_repo,
+            "retain_completed_workspace": workflow.retain_completed_workspace,
             "workdir": workflow.shell_workdir,
         }
 
@@ -1236,8 +1237,11 @@ class TaskService:
                     and (lifecycle is None or lifecycle.phase is not LifecyclePhase.FAILED)
                 ):
                     raise NotReady(
-                        f"Task {task.id} is still starting or recovering; wait for its launch "
-                        "to settle before setup."
+                        f"Task {task.id} is claimed by runner {task.claimed_by} without a live "
+                        "registration or a recorded launch failure. Setup cannot tell whether "
+                        "that launch is still active. Wait for it to settle; if the claim is stale, "
+                        "confirm the task is stopped and use dashboard R to release/retry it, "
+                        "then resume repository setup."
                     )
                 pending.append(task.id)
             await self._store.set_repo_launch_pause(repo_id, True, pending)

@@ -222,7 +222,12 @@ def detect_current_source(
     except (FileNotFoundError, subprocess.CalledProcessError):
         result = None
     if result is not None and result.stdout.strip():
-        return resolve_source(result.stdout.strip(), cwd=root, run=run)
+        try:
+            return resolve_source(result.stdout.strip(), cwd=root, run=run)
+        except RuntimeError:
+            # A legacy checkout may contain an unsafe credential-bearing origin. Keep setup usable
+            # without displaying that value by offering the checkout's canonical local path.
+            return RepositorySource(str(root), root.name, "checkout")
     return RepositorySource(str(root), root.name, "checkout")
 
 

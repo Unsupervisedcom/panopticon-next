@@ -49,6 +49,7 @@ from panopticon.core.models import (
 )
 from panopticon.core.store import AlreadyExists, NotFound, StoreError
 from panopticon.core.workflow import IllegalTransition, InvalidWorkflow, ResponsibilitiesNotMet
+from panopticon.taskservice.operator_auth import operator_token as load_operator_token
 from panopticon.taskservice.service import (
     AlreadyClaimed,
     NotAuthorized,
@@ -732,7 +733,7 @@ def create_app(
     secrets_dir: str | Path | None = None,
     browser_origins: list[str] | None = None,
 ) -> FastAPI:
-    operator_token = os.environ.get("PANOPTICON_OPERATOR_TOKEN")
+    operator_token = load_operator_token(secrets_dir=secrets_dir)
     resolved_instance_id = (
         instance_id if instance_id is not None else os.environ.get("PANOPTICON_INSTANCE_ID")
     )

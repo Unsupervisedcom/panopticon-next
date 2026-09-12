@@ -383,6 +383,8 @@ def test_set_dependencies_rejects_indirect_cycle_actionably_and_atomically(
     direct = client.put(f"/tasks/{task_a}/dependencies", json={"dep_ids": [task_a]})
     assert direct.status_code == 400
     assert "cycle" in direct.json()["detail"].lower()
+    assert task_a in direct.json()["detail"]
+    assert "edit the dependency set" in direct.json()["detail"].lower()
     assert client.get(f"/tasks/{task_a}").json()["depends_on_task_ids"] == [prior_dependency]
 
     missing = client.put(f"/tasks/{task_a}/dependencies", json={"dep_ids": ["missing-dependency"]})

@@ -31,6 +31,7 @@ class LocalGitSelfReviewed(PlannedWorkflow):
 
     name: ClassVar[str] = "local-git-self-reviewed"
     opt_in: ClassVar[bool] = True
+    retain_completed_workspace: ClassVar[bool] = True
     when_to_use: ClassVar[str] = (
         "Local commits only, no remote push or PR — use when the work stays in the local repo; "
         "you approve the diff and the agent merges the branch."
@@ -88,6 +89,9 @@ class LocalGitSelfReviewed(PlannedWorkflow):
                 "merge with fast-forward disabled (`git -C /workspace merge --no-ff "
                 "<task-branch>`). If there are merge conflicts, go back to coding "
                 "(`set_state ITERATING`) with an explanation of what conflicted. "
-                "Once merged successfully, advance to COMPLETE.",
+                "The merge is in this task's checkout, not in the original selected source. "
+                "Once merged successfully, advance to COMPLETE. Panopticon retains this checkout "
+                "as the result; the user can open it from the dashboard with `f`, copy or fetch "
+                "the result, and explicitly delete the retained directory when no longer needed.",
             ),
         )
