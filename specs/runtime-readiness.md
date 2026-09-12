@@ -112,8 +112,8 @@ separately.
 8. A missing-runner error SHOULD include the ids of other live runners when any are connected.
 9. A missing-runner error MUST direct the operator to the runner log.
 10. A missing-runner error MUST NOT expose secrets.
-11. Readiness checks MUST use bounded HTTP operations and an injected monotonic clock/sleeper in
-   deterministic tests.
+11. Each readiness HTTP operation MUST finish or fail within its supplied time budget, including
+    name resolution, connection setup, and response reading.
 12. Offline connection configuration MAY occur before service readiness because it does not mutate
     registered fleet state.
 13. Repository registration or reuse MUST occur only after service and runner readiness succeeds.
@@ -134,6 +134,9 @@ separately.
 7. Readiness evaluation MUST NOT invoke an LLM or make a real model call.
 
 ## Integration contract
+
+Deterministic timing tests inject a monotonic clock and sleeper. Real transport tests measure
+elapsed time against the configured budget and account for process scheduling tolerance.
 
 The terminal entrypoint calls the runtime migration guard immediately before its automatic
 migration. It migrates only when the guard reports `service_absent`; it skips migration when the
