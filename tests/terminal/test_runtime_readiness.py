@@ -17,6 +17,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from importlib.metadata import version
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -393,6 +394,9 @@ def test_service_origin_and_executable_change_runtime_identity() -> None:
         ("PANOPTICON_DB", "postgresql://user:password@database/panopticon"),
         ("PANOPTICON_CONTAINER_SERVICE_URL", "http://host:token@service:8000"),
         ("DOCKER_HOST", "tcp://docker.example:2376?access_token=secret"),
+        ("DOCKER_HOST", "tcp://docker.example:2376?api_key=secret"),
+        ("DOCKER_HOST", "tcp://docker.example:2376?apiKey=secret"),
+        ("DOCKER_HOST", "tcp://docker.example:2376?API-KEY=secret"),
     ],
 )
 def test_resolve_runtime_rejects_embedded_credentials_without_echoing_them(
@@ -1120,7 +1124,7 @@ def test_real_authenticated_readiness_preserves_fleet_state_and_invokes_no_agent
         assert identity == {
             "service": "panopticon-task-service",
             "api_revision": 1,
-            "version": identity["version"],
+            "version": version("panopticon-next"),
             "instance_id": live.runtime.instance_id,
         }
         assert readiness_requests == [("GET", "/identity"), ("GET", "/runners")]
@@ -1409,3 +1413,60 @@ def test_production_http_client_bounds_a_nonresponsive_peer() -> None:
         thread.join(timeout=2)
 
     assert 0.1 <= elapsed < 0.5
+
+
+# 2119: 2.6, 2.7
+@pytest.mark.parametrize("revision", [True, False, "1", 1.0, 2, None])
+@pytest.mark.parametrize("check", [guard_before_migration, wait_until_ready])
+def test_runtime_guard_rejects_noninteger_or_unsupported_api_revision(revision, check) -> None:
+    runtime = resolve_runtime("http://service", environ={"HOME": "/tmp", "PATH": "/bin"})
+    identity = _identity(runtime.instance_id)
+    identity["api_revision"] = revision
+    with pytest.raises(RuntimeReadinessError, match=r"revision .* is unsupported"):
+        check(runtime, get=lambda _path, _timeout: _response(200, identity))
+
+
+# 2119: 2.14
+@pytest.mark.parametrize("body", [b"{", b"not JSON"])
+def test_runtime_guard_diagnoses_malformed_json_identity(body: bytes) -> None:
+    runtime = resolve_runtime("http://service", environ={"HOME": "/tmp", "PATH": "/bin"})
+    response = httpx.Response(
+        200, content=body, request=httpx.Request("GET", "http://service/identity")
+    )
+    with pytest.raises(RuntimeReadinessError, match="identity response is malformed") as raised:
+        guard_before_migration(runtime, get=lambda _path, _timeout: response)
+    assert "configured address points to Panopticon" in str(raised.value)
+
+
+# 2119: 4.14
+@pytest.mark.parametrize("runner_state", ["missing", "wrong-instance"])
+def test_direct_repository_repair_requires_matching_live_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, runner_state: str
+) -> None:
+    from panopticon.client import TaskServiceClient
+    from panopticon.terminal import runtime as runtime_module
+    from panopticon.terminal import setup
+
+    with _live_authenticated_runtime(tmp_path, monkeypatch, register_runner=False) as live:
+        if runner_state == "wrong-instance":
+            asyncio.run(live.service.register_runner("local", instance_id="different-instance"))
+        real_wait = runtime_module.wait_until_ready
+        monkeypatch.setattr(
+            runtime_module,
+            "wait_until_ready",
+            lambda runtime, **_kwargs: real_wait(runtime, timeout=0.12, interval=0.02),
+        )
+        secrets = tmp_path / "config" / "secrets"
+        before_files = {p.name: p.read_bytes() for p in secrets.iterdir()}
+        monkeypatch.setattr(
+            setup, "write_private", lambda *_args: pytest.fail("credential write before readiness")
+        )
+        with httpx.Client(base_url=live.service_url, headers=live.headers, trust_env=False) as http:
+            client = TaskServiceClient(http)
+            before = (client.get_repo("repo"), client.list_tasks())
+            with pytest.raises(RuntimeReadinessError, match="runner 'local'"):
+                setup.configure_repo(
+                    client, "repo", input_fn=lambda _: pytest.fail("prompt before readiness")
+                )
+            assert (client.get_repo("repo"), client.list_tasks()) == before
+        assert {p.name: p.read_bytes() for p in secrets.iterdir()} == before_files

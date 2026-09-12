@@ -481,3 +481,67 @@ def test_restarted_runner_skips_unclaimed_and_nonfailed_held_snapshots(
             assert spawner.heal(task) is None
             spawner.mark_healing(task)
         spawner.startup_reclaim(snapshot)
+
+
+# 2119: 3.3, 3.4, 3.8
+@pytest.mark.parametrize("unsafe", ["symlink", "public-mode"])
+def test_unsafe_git_credential_file_holds_task_until_explicit_retry(
+    private_config: Path, monkeypatch: pytest.MonkeyPatch, unsafe: str
+) -> None:
+    from panopticon.sessionservice.git_credentials import GitCredentialError
+
+    target = private_config / "private.env"
+    target.write_text("ANTHROPIC_API_KEY=synthetic-provider\nGH_TOKEN=synthetic-repository\n")
+    target.chmod(0o600)
+    path = private_config / "repo.env"
+    if unsafe == "symlink":
+        path.symlink_to(target)
+    else:
+        path.write_bytes(target.read_bytes())
+        path.chmod(0o644)
+    service = TaskService(
+        SqlAlchemyStore(),
+        {"spike": Spike()},
+        FilesystemArtifactStore(private_config.parent / "artifacts"),
+    )
+    runner = SimpleNamespace(
+        delete_workspace_contents=lambda _path: None,
+        has_session=lambda _task: False,
+        is_running=lambda _task: False,
+    )
+    with TestClient(create_app(service)) as http:
+        client = TaskServiceClient(http)
+        client.create_repo(
+            "repo", "Example", "https://github.com/example/repo", env_file="repo.env"
+        )
+        task = client.create_task("repo", "spike", initial_prompt="Preserve my task")
+        spawner = Spawner(
+            client,
+            runner,
+            runner_id="runner",
+            cache=object(),
+            tasks_root=str(private_config.parent / "tasks"),
+        )  # type: ignore[arg-type]
+        with pytest.raises(GitCredentialError):
+            spawner.spawn_one(task)
+        failed = client.get_task(task["id"])
+        assert failed["launch_paused"]
+        assert "foreground setup" in failed["lifecycle_detail"]
+        assert not (private_config.parent / "tasks").exists()
+        path.unlink()
+        path.write_bytes(target.read_bytes())
+        path.chmod(0o600)
+        replacement = Spawner(
+            client,
+            runner,
+            runner_id="runner",
+            cache=object(),
+            tasks_root=str(private_config.parent / "tasks"),
+        )  # type: ignore[arg-type]
+        replacement.startup_reclaim([failed])
+        assert replacement.spawn_one(failed) is None
+        assert replacement.heal(failed) is None
+        assert client.get_task(task["id"])["launch_paused"]
+        retried = client.retry_task(task["id"])
+        assert not retried["launch_paused"]
+        assert retried["initial_prompt"] == "Preserve my task"

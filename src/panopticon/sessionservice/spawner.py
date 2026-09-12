@@ -28,7 +28,7 @@ from panopticon.harnesses import Harness, get_harness
 from panopticon.sessionservice.auth_readiness import missing_task_auth
 from panopticon.sessionservice.clones import CloneCache
 from panopticon.sessionservice.executions import WorkflowExecutions
-from panopticon.sessionservice.git_credentials import repo_git_transport
+from panopticon.sessionservice.git_credentials import GitCredentialError, repo_git_transport
 from panopticon.sessionservice.images import ImageBuilder
 from panopticon.sessionservice.local_runner import CONTAINER_HOME, LocalRunner
 from panopticon.sessionservice.shell_runner import ShellRunner
@@ -255,7 +255,9 @@ class Spawner:
                     detail = (
                         f"{detail} (respawn budget exhausted after {self._max_respawns} attempts)"
                     )
-                if isinstance(exc, _MissingTaskAuth):
+                if isinstance(exc, (_MissingTaskAuth, GitCredentialError)):
+                    if isinstance(exc, GitCredentialError):
+                        detail = f"{detail}. Open foreground setup, then retry this task."
                     # Persist the hold as part of reporting failure; an ephemeral FAILED phase
                     # alone would disappear on service restart and allow automatic healing.
                     self._client.report_lifecycle(

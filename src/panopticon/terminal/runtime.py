@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -27,7 +28,7 @@ SERVICE_KIND = "panopticon-task-service"
 RUNTIME_API_REVISION = 1
 DEFAULT_CONTAINER_SERVICE_URL = "http://host.docker.internal:8000"
 DEFAULT_RUNNER_ID = "local"
-DEFAULT_READINESS_TIMEOUT = 10.0
+DEFAULT_READINESS_TIMEOUT = 30.0
 DEFAULT_REQUEST_TIMEOUT = 1.0
 
 
@@ -230,13 +231,26 @@ def _default_get(runtime: RuntimeConfiguration) -> GetResponse:
     headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     def get(path: str, timeout: float) -> httpx.Response:
-        with httpx.Client(
-            base_url=runtime.service_url,
-            headers=headers,
-            trust_env=False,
-            timeout=httpx.Timeout(max(timeout, 0.001)),
-        ) as client:
-            return client.get(path)
+        total_timeout = max(timeout, 0.001)
+
+        async def request() -> httpx.Response:
+            try:
+                async with asyncio.timeout(total_timeout):
+                    async with httpx.AsyncClient(
+                        base_url=runtime.service_url,
+                        headers=headers,
+                        trust_env=False,
+                        timeout=None,
+                    ) as client:
+                        return await client.get(path)
+            except TimeoutError as exc:
+                request = httpx.Request("GET", f"{runtime.service_url}{path}")
+                raise httpx.ReadTimeout(
+                    f"request exceeded its {total_timeout:g}s total deadline",
+                    request=request,
+                ) from exc
+
+        return asyncio.run(request())
 
     return get
 
@@ -295,7 +309,7 @@ def _verified_identity(response: httpx.Response, runtime: RuntimeConfiguration) 
             "the configured address belongs to a different service; check PANOPTICON_SERVICE_URL"
         )
     revision = identity.get("api_revision")
-    if revision != RUNTIME_API_REVISION:
+    if type(revision) is not int or revision != RUNTIME_API_REVISION:
         raise RuntimeReadinessError(
             f"task-service runtime API revision {revision!r} is unsupported; this client supports "
             f"revision {RUNTIME_API_REVISION}. Preserve the current fleet and use matching "

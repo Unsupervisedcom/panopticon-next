@@ -152,9 +152,9 @@ def _reject_embedded_credentials(name: str, value: str) -> None:
     except ValueError as exc:
         raise ValueError(f"{name} is not a valid URL") from exc
     sensitive_query = any(
-        marker in key.lower().replace("-", "_")
+        marker in key.lower().replace("-", "").replace("_", "")
         for key, _value in query
-        for marker in ("password", "passwd", "token", "secret", "api_key", "credential")
+        for marker in ("password", "passwd", "token", "secret", "apikey", "credential")
     )
     if password is not None or sensitive_query:
         raise ValueError(

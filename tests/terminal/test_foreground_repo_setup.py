@@ -352,3 +352,50 @@ def test_foreground_refuses_unsafe_paths_with_path_diagnostic_without_repair(
     assert str(path) in str(raised.value)
     assert (path.lstat(), leaf.read_bytes()) == before
     assert client.get_repo("one")["env_file"] == "existing.env"
+
+
+# 2119: runtime-readiness.4.15
+@pytest.mark.parametrize("failure_at", [None, "write", "update"])
+def test_repair_holds_admission_during_each_credential_mutation(
+    client: TaskServiceClient, monkeypatch: pytest.MonkeyPatch, failure_at: str | None
+) -> None:
+    from panopticon.terminal import setup
+
+    client.create_repo("one", "one", "https://example.test/one")
+    task = client.create_task("one", "spike", memo="preserve pending work")
+    connection = saved_connection()
+    observed: list[str] = []
+    real_write = setup.write_private
+    real_update = client.update_repo
+
+    def check_hold(step: str) -> None:
+        observed.append(step)
+        assert client.get_repo("one")["launch_paused"]
+        assert client.get_task(task["id"])["launch_paused"]
+        with pytest.raises(httpx.HTTPStatusError) as rejected:
+            client.claim(task["id"], "contending-runner")
+        assert rejected.value.response.status_code == 409
+        if step == failure_at:
+            raise OSError("injected mutation failure")
+
+    def write(reference: str, content: str) -> None:
+        check_hold("write")
+        real_write(reference, content)
+
+    def update(repo_id: str, **changes):
+        check_hold("update")
+        return real_update(repo_id, **changes)
+
+    monkeypatch.setattr(setup, "write_private", write)
+    monkeypatch.setattr(client, "update_repo", update)
+    if failure_at:
+        with pytest.raises(OSError, match="injected mutation failure"):
+            configure_repo(client, "one", connection=connection)
+        assert client.get_repo("one")["launch_paused"]
+        assert observed == (["write"] if failure_at == "write" else ["write", "update"])
+    else:
+        assert configure_repo(client, "one", connection=connection)
+        assert observed == ["write", "update"]
+        assert not client.get_repo("one")["launch_paused"]
+    assert client.get_task(task["id"])["launch_paused"]
+    assert client.get_task(task["id"])["memo"] == "preserve pending work"
