@@ -9,7 +9,7 @@ holding the harness input path is an outage.
 This contract covers every Panopticon-injected callback that contacts the control plane: Claude's
 `Stop` and `UserPromptSubmit` command hooks; Claude's `PreToolUse` and `PostToolUse` command hooks
 matched to `AskUserQuestion`; Codex's `Stop` and `UserPromptSubmit` command hooks; and Pi's
-`agent_end` and `input` extension handlers. A control-plane failure includes connection, response,
+`agent_settled`, `agent_start`, and `input` extension handlers. A control-plane failure includes connection, response,
 protocol, and status failures as well as a request that remains non-responsive.
 
 Invocation begins when the harness dispatches the command hook or extension handler. Returning
@@ -45,5 +45,6 @@ makes.
    | Codex | `Stop` with no live background work | `user` |
    | Codex | `Stop` reporting live background work | unchanged |
    | Codex | `UserPromptSubmit` | `agent` |
-   | Pi | `agent_end` | `user` |
+   | Pi | `agent_settled` after success, retry exhaustion, or abort | `user` |
+   | Pi | `agent_start` (including autonomous starts) | `agent` |
    | Pi | `input` | `agent` |

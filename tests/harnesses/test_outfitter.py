@@ -262,7 +262,7 @@ def test_missing_auth_honestly_names_pi_credentials(tmp_path: Path) -> None:
 def test_image_layer_installs_all_runtime_components_at_pinned_versions() -> None:
     layer = HARNESS.image_layer()
     assert NODE_VERSION == "22.19.0"
-    assert PI_VERSION == "0.80.3"
+    assert PI_VERSION == "0.80.5"
     assert OUTFITTER_VERSION == "0.11.0"
     assert layer == (
         "RUN set -eux; \\\n"

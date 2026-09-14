@@ -1,7 +1,7 @@
 """The pi harness: settings.json, workflow-overview file, the turn-flip extension, REST-curl
 operation instructions (no MCP), SKILL.md rendering, auth, argv.
 
-Facts pinned against pi-coding-agent 0.80.3 (a real local install) and the pi-mono TypeScript
+Facts pinned against pi-coding-agent 0.80.5 (a real local install) and the pi-mono TypeScript
 source (event/handler types) — see the module docstring for exactly what's verified vs. not.
 """
 
@@ -142,8 +142,9 @@ def test_extension_puts_the_turn_via_the_task_service_rest_api() -> None:
 
 
 def test_extension_flips_to_user_on_settle_and_agent_on_input() -> None:
-    assert 'pi.on("agent_end", () => setTurn("user"));' in TURN_EXTENSION
+    assert 'pi.on("agent_settled", () => setTurn("user"));' in TURN_EXTENSION
     assert 'pi.on("input", () => setTurn("agent"));' in TURN_EXTENSION
+    assert 'pi.on("agent_start", () => setTurn("agent"));' in TURN_EXTENSION
 
 
 # 2119: REQ-008.6.1
@@ -190,12 +191,13 @@ globalThis.fetch = (_url, options) => {
 process.env.PANOPTICON_SERVICE_URL = "http://service";
 process.env.PANOPTICON_TASK_ID = "task-1";
 extension(pi);
-if (JSON.stringify(Object.keys(handlers).sort()) !== JSON.stringify(["agent_end", "input"])) {
+if (JSON.stringify(Object.keys(handlers).sort()) !== JSON.stringify(["agent_settled", "agent_start", "input"])) {
   throw new Error(`unexpected injected event inventory: ${JSON.stringify(Object.keys(handlers))}`);
 }
-await handlers.agent_end();
+await handlers.agent_settled();
+await handlers.agent_start();
 await handlers.input();
-if (JSON.stringify(turns) !== JSON.stringify(["user", "agent"])) {
+if (JSON.stringify(turns) !== JSON.stringify(["user", "agent", "agent"])) {
   throw new Error(`wrong turn payloads: ${JSON.stringify(turns)}`);
 }
 """
@@ -261,7 +263,7 @@ globalThis.fetch = (_url, options) => new Promise((resolve, reject) => {
 });
 extension(pi);
 const started = Date.now();
-await Promise.all([handlers.agent_end(), handlers.input()]);
+await Promise.all([handlers.agent_settled(), handlers.agent_start(), handlers.input()]);
 if (Date.now() - started >= 3000) throw new Error("delayed HTTP failure exceeded hook bound");
 """
     )
@@ -286,7 +288,7 @@ const pi = { on(event, handler) { handlers[event] = handler; } };
 globalThis.fetch = () => Promise.resolve({ ok: true });
 extension(pi);
 const started = Date.now();
-await Promise.all([handlers.agent_end(), handlers.input()]);
+await Promise.all([handlers.agent_settled(), handlers.agent_start(), handlers.input()]);
 if (Date.now() - started >= 3000) throw new Error("successful hooks exceeded callback bound");
 """
     )
@@ -321,7 +323,7 @@ globalThis.fetch = (_url, options) => {
 };
 extension(pi);
 const started = Date.now();
-await Promise.all([handlers.agent_end(), handlers.input()]);
+await Promise.all([handlers.agent_settled(), handlers.agent_start(), handlers.input()]);
 const elapsed = Date.now() - started;
 if (elapsed >= 3000) throw new Error(`handlers blocked for ${elapsed}ms`);
 """
@@ -353,9 +355,9 @@ globalThis.fetch = () => {
   return Promise.resolve({ ok: false, status: 503, statusText: "CONTROL_PLANE_FAILURE_SENTINEL" });
 };
 extension(pi);
-const networkResults = [await handlers.agent_end(), await handlers.input()];
+const networkResults = [await handlers.agent_settled(), await handlers.agent_start(), await handlers.input()];
 failure = "status";
-const statusResults = [await handlers.agent_end(), await handlers.input()];
+const statusResults = [await handlers.agent_settled(), await handlers.agent_start(), await handlers.input()];
 if ([...networkResults, ...statusResults].some((value) => value !== undefined)) {
   throw new Error("hook surfaced a control-plane failure as its resolved value");
 }
@@ -1496,7 +1498,7 @@ def test_argv_appends_system_prompt_on_resume_too(tmp_path: Path) -> None:
 
 def test_image_layer_installs_pinned_node_and_pi_for_both_architectures() -> None:
     layer = HARNESS.image_layer()
-    assert PI_VERSION == "0.80.3"  # the version verified against a real local install
+    assert PI_VERSION == "0.80.5"  # the version verified against a real local install
     assert layer == (
         "RUN set -eux; \\\n"
         '    arch="$(uname -m)"; \\\n'

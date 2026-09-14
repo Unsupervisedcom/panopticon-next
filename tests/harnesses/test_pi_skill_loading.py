@@ -166,3 +166,164 @@ def test_pinned_pi_loads_rendered_skill_content_from_real_launch_arguments(
     assert {skill["name"] for skill in malformed["skills"]} == {"artifacts"}
     assert "<name>provision</name>" not in malformed["prompt"]
     assert malformed["diagnostics"]
+
+
+_TURN_PROBE = r"""
+import http from 'node:http';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { parseArgs } from '/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli/args.js';
+import { createAgentSession } from '/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/sdk.js';
+import { DefaultResourceLoader } from '/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/resource-loader.js';
+import { SettingsManager } from '/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/settings-manager.js';
+import { SessionManager } from '/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js';
+import { AuthStorage } from '/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js';
+import { ModelRegistry } from '/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/model-registry.js';
+import { createReadTool } from '/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/tools/read.js';
+const input = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const args = parseArgs(input.argv.slice(1));
+const dir = mkdtempSync(join(tmpdir(), 'pi-turn-test-'));
+const records = [], turns = [];
+let turn = 'user', requests = 0, session, abort;
+const server = http.createServer(async (req, res) => {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    if (req.url === '/tasks/turn-test/turn') {
+        if (req.headers.authorization !== 'Bearer synthetic-task-token') {
+            res.writeHead(401); res.end(); return;
+        }
+        turn = JSON.parse(body).turn;
+        turns.push(turn);
+        res.writeHead(204); res.end(); return;
+    }
+    requests++;
+    records.push({ type: 'request', turn });
+    if (input.scenario === 'abort') {
+        abort = session.abort();
+        return;
+    }
+    if (input.scenario !== 'autonomous' && (requests === 1 || input.scenario === 'exhaustion')) {
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'synthetic temporary server error' } }));
+        return;
+    }
+    const read = input.scenario === 'success' && requests === 2;
+    const delta = read ? { tool_calls: [{ index: 0, id: 'read-proof', type: 'function',
+        function: { name: 'read', arguments: JSON.stringify({ path: join(dir, 'proof.txt') }) }
+    }] } : { content: 'SYNTHETIC_DONE' };
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end('data: ' + JSON.stringify({ id: 'mock', object: 'chat.completion.chunk',
+        created: 0, model: 'mock', choices: [{ index: 0, delta,
+            finish_reason: read ? 'tool_calls' : 'stop' }]
+    }) + '\n\ndata: [DONE]\n\n');
+});
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+try {
+    process.env.PANOPTICON_SERVICE_URL = `http://127.0.0.1:${server.address().port}`;
+    process.env.PANOPTICON_TASK_ID = 'turn-test';
+    process.env.PANOPTICON_SERVICE_AUTH_TOKEN = 'synthetic-task-token';
+    const settings = SettingsManager.inMemory({ retry: {
+        enabled: true, maxRetries: 1, baseDelayMs: 1, provider: { maxRetries: 0 }
+    }, compaction: { enabled: false } });
+    const auth = AuthStorage.inMemory();
+    const models = join(dir, 'models.json');
+    writeFileSync(join(dir, 'proof.txt'), 'synthetic tool result');
+    writeFileSync(models, JSON.stringify({ providers: { synthetic: {
+        baseUrl: `${process.env.PANOPTICON_SERVICE_URL}/v1`, api: 'openai-completions',
+        apiKey: 'synthetic-provider-key', models: [{ id: 'mock', reasoning: false,
+            contextWindow: 8192, maxTokens: 128 }]
+    } } }));
+    const registry = new ModelRegistry(auth, models);
+    const loader = new DefaultResourceLoader({ cwd: dir, agentDir: dir,
+        settingsManager: settings, additionalExtensionPaths: args.extensions,
+        noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true,
+        noContextFiles: true });
+    await loader.reload();
+    if (loader.getExtensions().errors.length) throw new Error(JSON.stringify(loader.getExtensions().errors));
+    ({ session } = await createAgentSession({ cwd: dir, agentDir: dir, authStorage: auth,
+        modelRegistry: registry, model: registry.find('synthetic', 'mock'),
+        settingsManager: settings, sessionManager: SessionManager.inMemory(dir),
+        resourceLoader: loader, tools: [createReadTool(dir)] }));
+    session.subscribe(event => {
+        if (['auto_retry_start', 'agent_settled', 'tool_execution_start', 'tool_execution_end'].includes(event.type)) {
+            records.push({ type: event.type, turn });
+        }
+    });
+    if (input.scenario === 'autonomous') {
+        await session.sendCustomMessage({ customType: 'synthetic', content: 'Synthetic response only.',
+            display: false }, { triggerTurn: true });
+    } else {
+        await session.prompt('Synthetic response only.');
+    }
+    if (abort) await abort;
+    console.log(JSON.stringify({ records, turns, requests,
+        stopReason: session.messages.filter(message => message.role === 'assistant').at(-1)?.stopReason }));
+} finally {
+    session?.dispose();
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    rmSync(dir, { recursive: true, force: true });
+}
+"""
+
+
+# 2119: REQ-016.3.1
+@pytest.mark.parametrize("scenario", ["success", "exhaustion", "abort", "autonomous"])
+def test_pinned_pi_turn_extension_tracks_the_complete_native_run(
+    pi_loader_image: str, tmp_path: Path, scenario: str
+) -> None:
+    """Use native retries/tools/abort with synthetic HTTP responses; never call a real model."""
+    harness = PiHarness()
+    home = tmp_path / "home"
+    harness.bootstrap(
+        BootstrapContext(home=home, cwd=tmp_path, service_url="http://unused", task_id="turn-test")
+    )
+    (tmp_path / "input.json").write_text(
+        json.dumps(
+            {"argv": harness.argv(LaunchContext(home=home, cwd=tmp_path)), "scenario": scenario}
+        )
+    )
+    (tmp_path / "turn-probe.mjs").write_text(_TURN_PROBE)
+    try:
+        result = json.loads(
+            _docker(
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                "--mount",
+                f"type=bind,src={tmp_path},dst={tmp_path},readonly",
+                "--env",
+                f"HOME={home}",
+                pi_loader_image,
+                "node",
+                str(tmp_path / "turn-probe.mjs"),
+                str(tmp_path / "input.json"),
+            )
+        )
+    except subprocess.CalledProcessError as exc:
+        pytest.fail(exc.stderr)
+    assert (
+        result["requests"] == {"success": 3, "exhaustion": 2, "abort": 1, "autonomous": 1}[scenario]
+    )
+    assert (
+        result["stopReason"]
+        == {"success": "stop", "exhaustion": "error", "abort": "aborted", "autonomous": "stop"}[
+            scenario
+        ]
+    )
+    assert result["turns"][-1] == "user"
+    assert result["turns"].count("user") == 1
+    assert result["turns"][0] == "agent"
+    assert all(
+        event["turn"] == ("user" if event["type"] == "agent_settled" else "agent")
+        for event in result["records"]
+    )
+    assert sum(event["type"] == "agent_settled" for event in result["records"]) == 1
+    assert sum(event["type"] == "auto_retry_start" for event in result["records"]) == (
+        scenario in {"success", "exhaustion"}
+    )
+    assert sum(event["type"] == "tool_execution_start" for event in result["records"]) == (
+        scenario == "success"
+    )

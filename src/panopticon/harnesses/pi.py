@@ -2,7 +2,7 @@
 (https://github.com/earendil-works/pi, npm ``@earendil-works/pi-coding-agent``) as a third
 harness adapter, alongside claude and codex.
 
-Verified against a real pi 0.80.3 install: its ``--help`` surface matches this module
+Verified against the pinned pi 0.80.5 package: its ``--help`` surface matches this module
 (``--append-system-prompt``, ``--continue``, ``--skill``, sessions under the agent dir),
 ``PI_CODING_AGENT_DIR`` really relocates the whole config root (confirmed via its auth lookup),
 and ``~/.pi/agent/mcp.json`` on that install is an empty ``{}`` — pi ships no MCP client.
@@ -38,12 +38,11 @@ and ``~/.pi/agent/mcp.json`` on that install is an empty ``{}`` — pi ships no 
   signatures in ``core/extensions/types.ts``. :data:`TURN_EXTENSION` is a minimal extension
   rendered at bootstrap and loaded via ``--extension <path>`` on every launch; it mirrors
   :mod:`panopticon.container.hook`'s contract exactly — ``PUT .../tasks/{id}/turn`` with
-  ``{"turn": "user"}`` on ``agent_end`` (pi "will not continue running automatically", the
-  closest analog to Stop), ``{"turn": "agent"}`` on ``input`` (fired when user input arrives).
+  ``{"turn": "user"}`` on ``agent_settled``, after automatic retries and continuations finish;
+  ``{"turn": "agent"}`` on ``input`` and ``agent_start`` (including autonomous starts).
   It reads ``PANOPTICON_SERVICE_URL``/``PANOPTICON_TASK_ID`` from the environment the launcher
-  already sets, so its content needs no per-task templating. Not run against a live pi process —
-  no Node/pi runtime was available while writing this, so the source-level type-checking above
-  is the strongest evidence short of that.
+  already sets, so its content needs no per-task templating. Native SDK integration tests use
+  a synthetic HTTP model server to exercise retry, exhaustion, and abort without inference.
 
 - **Auth.** Subscription OAuth and API keys share ``<config_dir>/auth.json``. Preflight accepts
   pi's native provider-generic OAuth/API-key shapes (including the additional ``accountId`` field
@@ -78,7 +77,7 @@ from panopticon.harnesses.config import update_json_config
 
 #: The pi-coding-agent release the harness image layer installs (published npm manifest:
 #: ``engines.node >= 22.19.0``, ``bin.pi = dist/cli.js``) — the version verified locally.
-PI_VERSION = "0.80.3"
+PI_VERSION = "0.80.5"
 
 #: The Node.js release installed alongside it — the minimum pi's own ``engines`` requires;
 #: pi ships no static binary, so a Node runtime is a real prerequisite in the image (unlike codex).
@@ -132,7 +131,8 @@ export default function (pi) {
     }
   };
 
-  pi.on("agent_end", () => setTurn("user"));
+  pi.on("agent_settled", () => setTurn("user"));
+  pi.on("agent_start", () => setTurn("agent"));
   pi.on("input", () => setTurn("agent"));
 }
 """
