@@ -86,19 +86,19 @@ class GitWorktrees:
 class GitClones:
     """Per-task **local clones** — the writable checkout a task works in (ADR 0011).
 
-    A ``git clone --local`` of the repo's cache clone is *self-contained* (its own objects —
-    hardlinked from the cache, so creation is near-free on one filesystem — refs, config, HEAD),
-    so it mounts at any container path with no symlink or path-mirroring. The task is provisioned
+    A plain ``git clone`` of the repo's cache path is self-contained: Git hardlinks objects when
+    possible and automatically copies them across filesystems. It mounts at any container path
+    with no symlink or path-mirroring. The task is provisioned
     by **branching whatever's there** once its slug is set, then pointing ``origin`` at the real
-    forge (a ``--local`` clone's origin is the cache). Same injectable runner as ``GitWorktrees``.
+    forge (a local clone's origin is the cache). Same injectable runner as ``GitWorktrees``.
     """
 
     def __init__(self, *, run: CommandRunner = _subprocess_run) -> None:
         self._run = run
 
     def clone_local(self, *, cache_path: str, dest: str) -> None:
-        """``git clone --local <cache> <dest>`` — a self-contained checkout (hardlinked objects)."""
-        self._run(["git", "clone", "--local", cache_path, dest])
+        """Clone a local checkout, allowing Git to copy when hardlinks are unavailable."""
+        self._run(["git", "clone", cache_path, dest])
 
     def create_branch(self, *, repo_path: str, branch: str) -> None:
         """``git -C <repo> checkout -b <branch>`` — branch whatever is checked out (ADR 0011 §2)."""
@@ -108,6 +108,18 @@ class GitClones:
         self._run(["git", "-C", repo_path, "fetch", "origin", branch])
         self._run(["git", "-C", repo_path, "checkout", "--detach", f"origin/{branch}"])
         self._run(["git", "-C", repo_path, "checkout", "-B", branch])
+
+    def origin(self, *, repo_path: str) -> str:
+        """Read the stored origin without applying URL rewrite rules."""
+        return self._run(
+            ["git", "-C", repo_path, "config", "--local", "--get", "remote.origin.url"],
+            check=False,
+        ).strip()
+
+    def check_clone(self, *, repo_path: str) -> None:
+        """Check objects and the initial index before recovering an interrupted clone."""
+        self._run(["git", "-C", repo_path, "fsck", "--connectivity-only", "--no-dangling"])
+        self._run(["git", "-C", repo_path, "diff", "--cached", "--quiet"])
 
     def set_origin(self, *, repo_path: str, url: str) -> None:
         """``git -C <repo> remote set-url origin <url>`` — point at the forge, not the cache."""

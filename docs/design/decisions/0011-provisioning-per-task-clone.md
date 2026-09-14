@@ -130,3 +130,12 @@ Stop the container, then `rm -rf` the per-task dir — the clone is self-contain
 - PR #41 / #43 — container-local `CLAUDE_CONFIG_DIR` + creds symlink; §5 moves the location to the
   per-task host dir to survive container re-creation.
 - ARCHITECTURE §8.3 (slug decided in-container), §9 (slug → branch → provisioning).
+
+
+## Amendment — 2026-09-14: clone across filesystems
+
+Spawn preparation now uses plain `git clone <cache-clone> <per-task-dir>` rather than forcing
+`--local`. Git still uses its local optimization and hardlinks objects when possible, preserving
+the inexpensive same-filesystem path. When hardlinks cannot span filesystems, Git automatically
+copies the objects; explicit `--local` made that failure fatal. The task checkout remains
+self-contained with no alternates or dependency on the cache path.

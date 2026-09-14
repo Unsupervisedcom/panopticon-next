@@ -39,6 +39,16 @@ class RepoGitTransport:
     operation_url: str
     token: str | None = field(default=None, repr=False)
 
+    def matches_source(self, origin: str) -> bool:
+        """Allow the same source, including supported GitHub SSH/HTTPS transport repair."""
+        if origin in (self.source_url, self.operation_url):
+            return True
+        try:
+            github_origin = _github_https_url(origin)
+            return github_origin is not None and github_origin == _github_https_url(self.source_url)
+        except ValueError:
+            return False
+
     @property
     def credentialed(self) -> bool:
         return self.token is not None

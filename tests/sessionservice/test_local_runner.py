@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from panopticon.core.models import LifecyclePhase
+from panopticon.sessionservice.clones import CloneCache
 from panopticon.sessionservice.local_runner import LocalRunner
 from panopticon.sessionservice.prefill import readiness_log, readiness_watch_command
 from panopticon.sessionservice.runner import Runner
@@ -680,7 +681,12 @@ def test_cli_preps_the_workspace_then_spawns_with_secrets_and_mount(
     assert cid == "panopticon-t1"
     cmds = [c for c, _ in rec.calls]
     # spawn-prep cloned the per-task checkout (ADR 0011) before launching the container
-    assert ["git", "clone", "--local", str(cache_root / "r1"), str(tasks_root / "t1")] in cmds
+    assert [
+        "git",
+        "clone",
+        CloneCache(str(cache_root)).path("r1", "https://forge/r1.git"),
+        str(tasks_root / "t1"),
+    ] in cmds
     docker_run = next(c for c in cmds if c[:2] == ["docker", "run"])
     assert "PANOPTICON_SERVICE_URL=http://svc:9" in docker_run
     assert docker_run[-1] == "img:2"

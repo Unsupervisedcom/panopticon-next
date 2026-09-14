@@ -3380,10 +3380,11 @@ class Dashboard(App[None]):
                 runner_host = task.get("runner_host") if task else None
                 if runner_host:
                     message += (
-                        f" For setup on {runner_host}, open its dashboard and press g, then s."
+                        f" For repairs on {runner_host}, open its dashboard and press g, "
+                        "then e to edit the repo or s for credential setup."
                     )
                 else:
-                    message += " Press g to open repos, then s for setup."
+                    message += " Press g to open repos, then e to edit or s for credential setup."
                 if task and task.get("container_status") in {"failed", "paused"}:
                     message += " After resolving the problem, press R to retry this task."
             self.notify(message, severity="warning", timeout=12 if detail else None, markup=False)
