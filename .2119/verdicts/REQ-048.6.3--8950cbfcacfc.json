@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.6.3--8950cbfcacfc",
+  "requirementId": "REQ-048.6.3",
+  "hash": "8950cbfcacfc",
+  "verdict": "pass",
+  "summary": "Every task-targeted REST surface compares existing sibling and missing-target status/body with the same generic 403; action-table and MCP cases reinforce denial before target existence can leak.",
+  "timestamp": "2026-09-12T09:14:26.520Z"
+}

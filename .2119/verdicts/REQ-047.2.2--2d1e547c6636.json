@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.2.2--2d1e547c6636",
+  "requirementId": "REQ-047.2.2",
+  "hash": "2d1e547c6636",
+  "verdict": "pass",
+  "summary": "Real LocalRunner with is_running forced true: first two recorded commands are tmux kill-session and docker rm --force, the workspace-removal hook asserts both snapshots are already gone at call time, and the workspace deletion is the final event; stop/probe failures still remove snapshots while preserving the workspace.",
+  "timestamp": "2026-09-12T09:58:31.990Z"
+}

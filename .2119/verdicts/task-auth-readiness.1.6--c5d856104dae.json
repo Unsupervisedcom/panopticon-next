@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.1.6--c5d856104dae",
+  "requirementId": "task-auth-readiness.1.6",
+  "hash": "c5d856104dae",
+  "verdict": "pass",
+  "summary": "After finish, paused tasks still reject claims until retry_task; review-gate worker shows the same.",
+  "timestamp": "2026-09-12T09:07:36.568Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.5.6--ab2e9b845f66",
+  "requirementId": "runtime-readiness.5.6",
+  "hash": "ab2e9b845f66",
+  "verdict": "pass",
+  "summary": "Real readiness requires an unchanged repository snapshot and only identity/runner GET requests; failed quickstart also traps setup and binding. Modifying the registered repository during evaluation is detected.",
+  "timestamp": "2026-09-12T09:34:42.066Z"
+}

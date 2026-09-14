@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-023.4.1--1e5ee0bd126a",
+  "requirementId": "REQ-023.4.1",
+  "hash": "1e5ee0bd126a",
+  "verdict": "pass",
+  "summary": "Real dashboard key events move down and up across a collapsed ensemble; a terminal summary-row case asserts the actual cursor remains on its governor, rejecting landing on the summary.",
+  "timestamp": "2026-09-12T09:13:38.481Z"
+}

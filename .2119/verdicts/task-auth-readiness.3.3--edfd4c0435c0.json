@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.3--edfd4c0435c0",
+  "requirementId": "task-auth-readiness.3.3",
+  "hash": "edfd4c0435c0",
+  "verdict": "pass",
+  "summary": "Against a real service and SQLite store, each of four harnesses with no env file leaves the claimed task launch_paused with a lifecycle detail naming that harness and foreground setup, and no workspace directory is created",
+  "timestamp": "2026-09-12T09:32:48.027Z"
+}

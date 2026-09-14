@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.3.3--7fdb1dfa3b80",
+  "requirementId": "foreground-setup.3.3",
+  "hash": "7fdb1dfa3b80",
+  "verdict": "pass",
+  "summary": "Cancelled Claude paste and failed Codex login leave the saved connection equal to the prior one and still configured.",
+  "timestamp": "2026-09-12T09:07:12.719Z"
+}

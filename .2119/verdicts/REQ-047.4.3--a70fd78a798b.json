@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.4.3--a70fd78a798b",
+  "requirementId": "REQ-047.4.3",
+  "hash": "a70fd78a798b",
+  "verdict": "pass",
+  "summary": "Real tmux runs the generated env-wrapped pipeline with a producer emitting stdout and stderr; capture-pane output and the private log file must both equal exactly ['stdout-line','stderr-line'], and unit tests show the sink forwards before EOF and keeps forwarding pane output after the log write fails.",
+  "timestamp": "2026-09-12T09:58:39.027Z"
+}

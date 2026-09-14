@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.1.8--2f5f9047b74b",
+  "requirementId": "task-auth-readiness.1.8",
+  "hash": "2f5f9047b74b",
+  "verdict": "pass",
+  "summary": "set_blocked both ways and a stale store write of blocked leave launch_paused true.",
+  "timestamp": "2026-09-12T09:07:38.673Z"
+}

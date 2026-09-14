@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.3.3--6c6928590d66",
+  "requirementId": "REQ-012.3.3",
+  "hash": "6c6928590d66",
+  "verdict": "pass",
+  "summary": "A different explicit harness with no model against a non-null workflow pair must yield the new harness and null model; carrying the losing model fails.",
+  "timestamp": "2026-09-12T08:29:28.958Z"
+}

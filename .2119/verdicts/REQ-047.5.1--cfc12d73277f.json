@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.5.1--cfc12d73277f",
+  "requirementId": "REQ-047.5.1",
+  "hash": "cfc12d73277f",
+  "verdict": "pass",
+  "summary": "In both disabled and enforced modes, unauthenticated raw-ASGI GET and HEAD /healthz are compared: HEAD's http.response.start message must equal GET's (status 200 and full header list) and HEAD's concatenated body must be empty, so 405, auth challenge, header drift, or a leaked body all fail.",
+  "timestamp": "2026-09-12T09:58:40.018Z"
+}

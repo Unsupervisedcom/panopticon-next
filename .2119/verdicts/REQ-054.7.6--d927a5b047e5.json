@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.6--d927a5b047e5",
+  "requirementId": "REQ-054.7.6",
+  "hash": "d927a5b047e5",
+  "verdict": "pass",
+  "summary": "Task is created via n, Enter, arrow keys and typed prompt in the dashboard pane; both approvals are typed advance commands into the attached session while a monitor thread fails the run if state or turn changes before the input; history triggers must be 'advance'; AST guard limits driver.send to documented keys.",
+  "timestamp": "2026-09-12T09:21:26.634Z"
+}

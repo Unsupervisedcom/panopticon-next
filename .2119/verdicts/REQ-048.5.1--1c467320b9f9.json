@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.5.1--1c467320b9f9",
+  "requirementId": "REQ-048.5.1",
+  "hash": "1c467320b9f9",
+  "verdict": "pass",
+  "summary": "Real capability-authenticated mutation requests are reloaded from a separate SQLite-backed service; alternate scalar values, both boolean directions, turns, responsibility outcomes, state transitions and dependency clearing reject no-op or response-only persistence.",
+  "timestamp": "2026-09-12T09:14:23.875Z"
+}

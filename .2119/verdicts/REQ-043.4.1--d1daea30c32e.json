@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-043.4.1--d1daea30c32e",
+  "requirementId": "REQ-043.4.1",
+  "hash": "d1daea30c32e",
+  "verdict": "pass",
+  "summary": "Repeated real image-build and docker-run failures hit exactly the configured attempt cap despite slow commands; refunding failed attempts permits an extra command and fails.",
+  "timestamp": "2026-09-12T08:29:57.793Z"
+}

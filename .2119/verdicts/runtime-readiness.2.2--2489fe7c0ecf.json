@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.2--2489fe7c0ecf",
+  "requirementId": "runtime-readiness.2.2",
+  "hash": "2489fe7c0ecf",
+  "verdict": "pass",
+  "summary": "Unauthenticated identity returns the generic 401, a fleet reader succeeds, and the real route policy independently classifies GET /identity as fleet-read rather than public or task-scoped.",
+  "timestamp": "2026-09-12T09:16:59.097Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.3.1--727715695ddd",
+  "requirementId": "REQ-047.3.1",
+  "hash": "727715695ddd",
+  "verdict": "pass",
+  "summary": "Fresh-subprocess script pins record-factory, Logger.makeRecord, and a caller-replaced Handler.handle identities across import, create_app, lifespan, and exit, and checks Logger.handle is restored to the caller's pre-lifespan identity after each lifespan; overlapping-lifespan test confirms Logger.handle stays patched while one app remains and is restored only when both end.",
+  "timestamp": "2026-09-12T09:58:34.017Z"
+}

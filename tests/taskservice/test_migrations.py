@@ -18,7 +18,7 @@ from typing import Any
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 from panopticon.taskservice.store_sqlalchemy import metadata
 
@@ -72,6 +72,37 @@ def test_migrations_match_orm_schema(tmp_path: Path) -> None:
     engine.dispose()
 
     assert _schema_snapshot(migrated_url) == _schema_snapshot(create_all_url)
+
+
+# 2119: task-auth-readiness.2.4
+def test_launch_hold_upgrade_preserves_existing_work_as_unpaused(tmp_path: Path) -> None:
+    url = f"sqlite:///{tmp_path / 'upgrade-holds.db'}"
+    cfg = _alembic_config(url)
+    command.upgrade(cfg, "ba862235dfe7")
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO repo (id, name, git_url, default_base, capabilities, enabled_workflows, disabled_workflows) VALUES ('repo', 'Example', 'https://example.test/repo', 'main', '{}', '[]', '[]')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO task (id, repo_id, workflow, state, turn, blocked, attention, depends_on_task_ids, initial_prompt) VALUES ('task', 'repo', 'spike', 'ITERATING', 'agent', 0, 0, '[]', 'Preserve this work')"
+            )
+        )
+    command.upgrade(cfg, "head")
+    with engine.connect() as connection:
+        assert (
+            connection.execute(text("SELECT launch_paused FROM repo WHERE id='repo'")).scalar() == 0
+        )
+        row = connection.execute(
+            text(
+                "SELECT launch_paused, launch_pause_reason, initial_prompt FROM task WHERE id='task'"
+            )
+        ).one()
+        assert tuple(row) == (0, None, "Preserve this work")
+    engine.dispose()
 
 
 def test_migrations_roundtrip(tmp_path: Path) -> None:

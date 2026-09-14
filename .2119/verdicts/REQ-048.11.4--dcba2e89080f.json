@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.11.4--dcba2e89080f",
+  "requirementId": "REQ-048.11.4",
+  "hash": "dcba2e89080f",
+  "verdict": "pass",
+  "summary": "Allowed-origin success, auth-failure and not-found responses must echo the exact origin with Vary: Origin; changed scheme, port, host, trailing slash and null origins receive no allow-origin header.",
+  "timestamp": "2026-09-12T09:14:35.739Z"
+}

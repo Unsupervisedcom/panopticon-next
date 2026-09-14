@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.39.1--01b9b68c0e58",
+  "requirementId": "REQ-035.39.1",
+  "hash": "01b9b68c0e58",
+  "verdict": "pass",
+  "summary": "Runner construction precedes credential rotation; spawn's actual mounted JSON must equal a single independently derived task capability keyed by the newly active writer, rejecting a cached writer, fleet token or extra reader.",
+  "timestamp": "2026-09-12T09:13:51.334Z"
+}

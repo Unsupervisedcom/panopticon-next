@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.1.4--300db22598eb",
+  "requirementId": "task-auth-readiness.1.4",
+  "hash": "300db22598eb",
+  "verdict": "pass",
+  "summary": "Live registered task equals its pre-repair snapshot and keeps claim and registration through begin and finish.",
+  "timestamp": "2026-09-12T09:07:34.438Z"
+}

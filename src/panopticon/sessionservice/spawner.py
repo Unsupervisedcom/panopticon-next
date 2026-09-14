@@ -25,14 +25,20 @@ from panopticon.client import JsonObj, TaskServiceClient
 from panopticon.core.models import ContainerStatus, LifecyclePhase
 from panopticon.core.state import TERMINAL_LABELS
 from panopticon.harnesses import Harness, get_harness
+from panopticon.sessionservice.auth_readiness import missing_task_auth
 from panopticon.sessionservice.clones import CloneCache
 from panopticon.sessionservice.executions import WorkflowExecutions
+from panopticon.sessionservice.git_credentials import GitCredentialError, repo_git_transport
 from panopticon.sessionservice.images import ImageBuilder
 from panopticon.sessionservice.local_runner import CONTAINER_HOME, LocalRunner
 from panopticon.sessionservice.shell_runner import ShellRunner
 from panopticon.sessionservice.spawn import cleanup_workspace, prepare_workspace
 
 _log = logging.getLogger(__name__)
+
+
+class _MissingTaskAuth(RuntimeError):
+    """A missing credential transport requiring foreground setup and explicit retry."""
 
 
 class _SpawnInfrastructureFailure(RuntimeError):
@@ -109,6 +115,7 @@ class Spawner:
         max_respawns: int = MAX_RESPAWNS,
         respawn_reset: float = RESPAWN_RESET_SECONDS,
         daemon_reachable: Callable[[], bool] = lambda: True,
+        credential_check: Callable[[JsonObj, JsonObj], str | None] | None = None,
     ) -> None:
         self._client = client
         self._runner = runner
@@ -145,6 +152,7 @@ class Spawner:
         #: :func:`~panopticon.sessionservice.host.run_host` wires the real
         #: :func:`~panopticon.sessionservice.docker_daemon.daemon_reachable` check.
         self._daemon_reachable = daemon_reachable
+        self._credential_check = credential_check or missing_task_auth
 
     def spawn_one(self, task: JsonObj) -> str | None:
         """Claim + spawn ``task`` if it's a fresh unclaimed, non-terminal task; else ``None``.
@@ -162,7 +170,7 @@ class Spawner:
         An unreachable Docker daemon is environmental, not this task's fault (REQ-031.3): a
         non-shell task is left unclaimed so a later pass retries once the daemon returns, with no
         claim taken and no ``FAILED`` report. A shell task never touches Docker, so it's unaffected."""
-        if task["state"] in TERMINAL_LABELS or task.get("claimed_by"):
+        if task["state"] in TERMINAL_LABELS or task.get("claimed_by") or task.get("launch_paused"):
             return None
         self._validate_runner_configuration(task)
         if not self._executions.is_shell(task.get("workflow")) and not self._daemon_reachable():
@@ -175,7 +183,15 @@ class Spawner:
             self._client.claim(task["id"], self._runner_id)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 409:
-                return None  # another runner claimed it first
+                # Ownership races are routine; readiness/repair rejection is actionable evidence.
+                try:
+                    current = self._client.get_task(task["id"])
+                except (httpx.HTTPError, AttributeError):
+                    current = {}
+                if current.get("claimed_by") not in (None, self._runner_id):
+                    return None
+                _log.warning("Task %s claim rejected: %s", task["id"], exc.response.text)
+                return None
             raise
         self._respawns.pop(task["id"], None)  # every fresh claim starts a new respawn budget
         self._pre_session_failures.discard(task["id"])
@@ -209,6 +225,8 @@ class Spawner:
             is_shell = self._executions.is_shell(task["workflow"])
             if is_shell:
                 return self._spawn_shell(task, repo)
+            if detail := self._credential_check(task, repo):
+                raise _MissingTaskAuth(detail)
             return self._spawn_container(task, repo)
         except Exception as exc:
             recoverable = is_shell is False and isinstance(exc, _SpawnInfrastructureFailure)
@@ -237,7 +255,20 @@ class Spawner:
                     detail = (
                         f"{detail} (respawn budget exhausted after {self._max_respawns} attempts)"
                     )
-                self._report(task_id, LifecyclePhase.FAILED, detail=detail)
+                if isinstance(exc, (_MissingTaskAuth, GitCredentialError)):
+                    if isinstance(exc, GitCredentialError):
+                        detail = f"{detail}. Open foreground setup, then retry this task."
+                    # Persist the hold as part of reporting failure; an ephemeral FAILED phase
+                    # alone would disappear on service restart and allow automatic healing.
+                    self._client.report_lifecycle(
+                        task_id,
+                        self._runner_id,
+                        LifecyclePhase.FAILED.value,
+                        detail,
+                        pause_launch=True,
+                    )
+                else:
+                    self._report(task_id, LifecyclePhase.FAILED, detail=detail)
             raise
 
     def _prepare_task_dir(self, task: JsonObj, repo: JsonObj, *, clone: bool) -> str:
@@ -255,6 +286,7 @@ class Spawner:
         )
         self._report(task_id, LifecyclePhase.PREPARING)
         if clone:
+            git_transport = repo_git_transport(repo)
             workspace = prepare_workspace(
                 task_id,
                 repo,
@@ -264,6 +296,7 @@ class Spawner:
                 makedirs=self._makedirs,
                 task=task,
                 runner_id=self._runner_id,
+                git_transport=git_transport,
             )
             owner = task.get("provisioned_by")
             if owner not in (None, self._runner_id):
@@ -275,7 +308,7 @@ class Spawner:
 
                 verify_canonical_workspace(
                     Path(workspace),
-                    expected_git_url=str(repo["git_url"]),
+                    expected_git_url=git_transport.operation_url,
                     expected_branch=str(task["branch"]),
                 )
                 prospective = dict(task)
@@ -440,7 +473,10 @@ class Spawner:
         operator cancelling), not a crash to respawn — so re-running it would be wrong."""
         if task.get("claimed_by") != self._runner_id or task["state"] in TERMINAL_LABELS:
             return False
-        if task.get("container_status") == ContainerStatus.FAILED.value:
+        if (
+            task.get("launch_paused")
+            or task.get("container_status") == ContainerStatus.FAILED.value
+        ):
             return False
         if self._executions.is_shell(task.get("workflow")):
             return False
@@ -574,7 +610,10 @@ class Spawner:
                 continue
             if task["state"] in TERMINAL_LABELS:
                 continue
-            if task.get("container_status") == ContainerStatus.FAILED.value:
+            if (
+                task.get("launch_paused")
+                or task.get("container_status") == ContainerStatus.FAILED.value
+            ):
                 continue  # preserve launcher/budget diagnostics until explicit claim release
             if self._executions.is_shell(task.get("workflow")):
                 continue  # never auto-respawn a shell task — leave it claimed (reconciles to `down`)
@@ -594,11 +633,11 @@ class Spawner:
                 self._client.release(task["id"])
 
     def cleanup(self, task: JsonObj) -> None:
-        """Remove the per-task workspace once a terminal task's container has exited.
+        """Clean up terminal runtime resources and disposable task workspaces.
 
-        Self-gates on two conditions so calling this on every task each pass is safe:
-        the task must be terminal (COMPLETE/DROPPED). Reaching a terminal state ends the task, so
-        cleanup stops any still-running backend before deleting its workspace and runtime secrets.
+        The task must be terminal (COMPLETE/DROPPED). Cleanup stops any still-running backend
+        and removes runtime secrets. A workflow may retain completed workspaces as its result;
+        dropped workspaces are always disposable.
 
         Also releases a lingering claim (best-effort) before cleaning the workspace. In the
         normal flow the container agent releases its own claim on exit; this catches the case
@@ -624,6 +663,10 @@ class Spawner:
         if task.get("claimed_by") == self._runner_id:
             with contextlib.suppress(httpx.HTTPError):
                 self._client.release(task["id"])
+        if task["state"] == "COMPLETE" and task.get("workflow"):
+            execution = self._executions.spec(task["workflow"])
+            if execution.get("retain_completed_workspace", False):
+                return  # the checkout is the local result, not disposable runtime state
         cleanup_workspace(
             task["id"],
             self._tasks_root,
@@ -681,6 +724,7 @@ def spawnable_tasks(
             task
             for task in tasks
             if not task["claimed_by"]
+            and not task.get("launch_paused")
             and not is_terminal(task)
             and not any(dependency_blocks(dep_id) for dep_id in task.get("depends_on_task_ids", []))
         ]

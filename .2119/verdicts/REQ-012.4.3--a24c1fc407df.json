@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.4.3--a24c1fc407df",
+  "requirementId": "REQ-012.4.3",
+  "hash": "a24c1fc407df",
+  "verdict": "pass",
+  "summary": "An existing task keeps claude after the application default changes to codex while a new task uses codex; lazy default lookup fails.",
+  "timestamp": "2026-09-12T08:29:31.271Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.1.5--de7d61b8abf0",
+  "requirementId": "REQ-031.1.5",
+  "hash": "de7d61b8abf0",
+  "verdict": "pass",
+  "summary": "Both entry points exercise real probe and session construction with subprocess responses as the boundary fake; exact detached service/runner module argv reject missing, swapped, or inert session commands.",
+  "timestamp": "2026-09-12T08:29:49.539Z"
+}

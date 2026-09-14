@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.2.1--0de0d8c382db",
+  "requirementId": "REQ-030.2.1",
+  "hash": "0de0d8c382db",
+  "verdict": "fail",
+  "summary": "The copy-mode test compares a generated binding string but never releases a drag or inspects clipboard bytes. Execute the installed binding on known selected text with a capture clipboard tool; assert exact copied bytes.",
+  "timestamp": "2026-09-12T09:13:41.092Z"
+}

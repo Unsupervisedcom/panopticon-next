@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-005.1.1--9e805e5b8db0",
+  "requirementId": "REQ-005.1.1",
+  "hash": "9e805e5b8db0",
+  "verdict": "pass",
+  "summary": "Real shell dispatch accepts outfitter and reaches Pi auth, including an obstructed profile path; returning unsupported for the recognized harness fails.",
+  "timestamp": "2026-09-12T08:29:24.090Z"
+}

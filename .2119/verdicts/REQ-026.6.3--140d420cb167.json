@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.6.3--140d420cb167",
+  "requirementId": "REQ-026.6.3",
+  "hash": "140d420cb167",
+  "verdict": "pass",
+  "summary": "Blocked true/false writes are checked with attention both set and clear; coupling attention to blocked or clearing it on unblocking fails.",
+  "timestamp": "2026-09-12T08:29:39.308Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.2.3--58da48a00e4a",
+  "requirementId": "source-selection.2.3",
+  "hash": "58da48a00e4a",
+  "verdict": "pass",
+  "summary": "Missing checkout and bogus bundle raise RuntimeError whose message must contain the selected path; CLI test runs real select_source with those inputs and sentinels runtime, registration and client construction with pytest.fail, so any side effect before rejection fails.",
+  "timestamp": "2026-09-12T09:22:34.762Z"
+}

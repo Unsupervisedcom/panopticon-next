@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.2.5--7cf6beb30f53",
+  "requirementId": "source-selection.2.5",
+  "hash": "7cf6beb30f53",
+  "verdict": "pass",
+  "summary": "Real bundles named friendly.bundle and archive.bundle.bundle resolve to friendly and archive.bundle, rejecting both zero and double suffix removal",
+  "timestamp": "2026-09-12T09:32:39.701Z"
+}

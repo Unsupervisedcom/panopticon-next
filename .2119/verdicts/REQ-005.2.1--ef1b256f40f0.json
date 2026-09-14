@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-005.2.1--ef1b256f40f0",
+  "requirementId": "REQ-005.2.1",
+  "hash": "ef1b256f40f0",
+  "verdict": "pass",
+  "summary": "Real setup_pi_auth and dispatch_harness_auth run in sh for env-key, credential-dir and no-credential inputs; Outfitter output after the notice must equal Pi output, so a divergent offer/skip decision fails.",
+  "timestamp": "2026-09-12T09:06:31.039Z"
+}

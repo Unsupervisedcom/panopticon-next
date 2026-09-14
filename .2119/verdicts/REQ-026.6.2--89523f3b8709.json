@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.6.2--89523f3b8709",
+  "requirementId": "REQ-026.6.2",
+  "hash": "89523f3b8709",
+  "verdict": "pass",
+  "summary": "True and false attention writes assert requested values and unchanged turn/blocked with persisted readback; clearing blocked or changing turn during the write fails.",
+  "timestamp": "2026-09-12T08:29:38.744Z"
+}

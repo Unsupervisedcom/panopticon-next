@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.4--1239b2e081ad",
+  "requirementId": "runtime-readiness.4.4",
+  "hash": "1239b2e081ad",
+  "verdict": "pass",
+  "summary": "A real inert service session cannot permit startup, and simulated existing sessions with a real service but no runner cannot permit repository work. Named tmux sessions alone do not satisfy the observed readiness checks.",
+  "timestamp": "2026-09-12T09:34:37.118Z"
+}

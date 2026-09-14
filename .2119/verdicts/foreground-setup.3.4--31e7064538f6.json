@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.3.4--31e7064538f6",
+  "requirementId": "foreground-setup.3.4",
+  "hash": "31e7064538f6",
+  "verdict": "pass",
+  "summary": "Recorded argv is exactly claude setup-token with check=False, followed by the token supplied through the hidden secret prompt.",
+  "timestamp": "2026-09-12T09:07:13.770Z"
+}

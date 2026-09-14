@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.1.5--365e735d56a3",
+  "requirementId": "source-selection.1.5",
+  "hash": "365e735d56a3",
+  "verdict": "pass",
+  "summary": "resolve_source output passed to setup_repo must reach create_repo with git_url and name unchanged plus the given env_file/harness; any normalization or rewrite in registration fails; other tests assert exact GitHub URL pass-through on create.",
+  "timestamp": "2026-09-12T09:22:31.748Z"
+}

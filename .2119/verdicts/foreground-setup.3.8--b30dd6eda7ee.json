@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.3.8--b30dd6eda7ee",
+  "requirementId": "foreground-setup.3.8",
+  "hash": "b30dd6eda7ee",
+  "verdict": "pass",
+  "summary": "Real legacy shell script exits nonzero with the lock message and no paste prompt while the foreground lock is held, including with stale config env.",
+  "timestamp": "2026-09-12T09:07:17.909Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.4.3--c15c32c96f0b",
+  "requirementId": "source-selection.4.3",
+  "hash": "c15c32c96f0b",
+  "verdict": "pass",
+  "summary": "Existing repo with matching friendly name and basename but a different owner must not be reused (new id, create called, update_repo asserts); the id-match case is covered by the 4.5 test where the conflicting id belongs to an unrelated source and reuse would make repo_id equal ids[0].",
+  "timestamp": "2026-09-12T09:22:48.977Z"
+}

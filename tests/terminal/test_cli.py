@@ -13,6 +13,7 @@ import pytest
 
 from panopticon.sessionservice.tmux_defaults import defaults_argv
 from panopticon.terminal.__main__ import main
+from panopticon.terminal.session_environment import SESSION_ENVIRONMENT
 
 
 def test_stop_kills_containers_and_server() -> None:
@@ -105,21 +106,35 @@ def test_no_arg_aliases_start() -> None:
     mock_console.assert_called_once()
 
 
+# 2119: foreground-setup.1.6
 def test_fresh_no_arg_enters_quickstart_and_prints_tmux_install_help(
     capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from panopticon.terminal import doctor
+    from panopticon.terminal import doctor, quickstart, setup
+    from panopticon.terminal.setup_credentials import Connection
+    from panopticon.terminal.source_selection import RepositorySource
 
-    result = doctor.CheckResult(
-        "tmux",
-        False,
-        "not found on PATH",
-        hint="Install tmux (e.g. `brew install tmux` / `apt-get install --yes tmux`).",
+    monkeypatch.setattr(setup, "configure_connection", lambda: Connection("claude", "test.env"))
+    monkeypatch.setattr(
+        quickstart,
+        "select_source",
+        lambda: RepositorySource("https://example.test/repo", "repo", "remote"),
     )
+
+    real_checks = doctor.run_checks
+
+    def checks(**kwargs):
+        return real_checks(
+            which=lambda name: None if name == "tmux" else f"/test/{name}",
+            run=lambda _: 0,
+            **kwargs,
+        )
+
     with (
         patch("panopticon.terminal.__main__._has_bootstrap_credential", return_value=False),
         patch("panopticon.taskservice.auth.environment_token"),
-        patch("panopticon.terminal.doctor.run_checks", return_value=[result]),
+        patch("panopticon.terminal.doctor.run_checks", side_effect=checks),
         patch("panopticon.terminal.__main__._run_migrate") as mock_migrate,
         patch("panopticon.terminal.__main__._start_sessions") as mock_sessions,
     ):
@@ -244,48 +259,62 @@ def test_no_arg_refuses_when_docker_daemon_is_unreachable() -> None:
     mock_console.assert_not_called()
 
 
-def _expected_new_session_commands(state_root: Path) -> list[list[str]]:
-    """The exact `tmux new-session` invocations `_start_sessions` runs for each real session —
-    reproduced here (not derived from the source, except `defaults_argv` itself — REQ-030's own
-    tests own proving *that* function's content; this pins that `_start_sessions` passes it at
-    the right position) so an exact-list comparison catches a mutant that keeps the right session
-    name but starts the wrong module, drops the log redirection, or drops `-d` (detached — a
-    foregrounded session would hang `panopticon start`/`host`). A function, not a module-level
-    constant, so its `defaults_argv` call (which writes a config file as a side effect) only runs
-    for the tests that need it."""
+def _assert_new_session_commands(calls: list[list[str]], state_root: Path) -> None:
+    """Pin tmux construction, controlled environment, process module, and private log path."""
+
     defaults = defaults_argv("panopticon")
     service_host = "127.0.0.1" if sys.platform == "darwin" else "0.0.0.0"
-    environment = (
-        "env -u PANOPTICON_SERVICE_AUTH_FILE -u PANOPTICON_SERVICE_AUTH_MODE -u PANOPTICON_CONFIG "
-    )
-    return [
-        [
+    assert len(calls) == 2
+    by_name = {call[call.index("-s") + 1]: call for call in calls}
+    assert set(by_name) == {"service", "runner"}
+    modules = {
+        "service": ("panopticon.taskservice", ["--host", service_host]),
+        "runner": ("panopticon.sessionservice.host", []),
+    }
+    for name, call in by_name.items():
+        assert call[:-1] == [
             "tmux",
             "-L",
             "panopticon",
             *defaults,
+            "source-file",
+            defaults[1],
+            ";",
             "new-session",
             "-d",
             "-s",
-            "service",
-            f"{environment}{shlex.quote(sys.executable)} -m panopticon.taskservice "
-            f"--host {service_host} 2>&1 | {shlex.quote(sys.executable)} "
-            f"-m panopticon.terminal.log_tee {shlex.quote(str(state_root / 'service.log'))}",
-        ],
-        [
-            "tmux",
-            "-L",
-            "panopticon",
-            *defaults,
-            "new-session",
-            "-d",
-            "-s",
-            "runner",
-            f"{environment}{shlex.quote(sys.executable)} -m panopticon.sessionservice.host "
-            f"2>&1 | {shlex.quote(sys.executable)} -m panopticon.terminal.log_tee "
-            f"{shlex.quote(str(state_root / 'runner.log'))}",
-        ],
-    ]
+            name,
+        ]
+        command = shlex.split(call[-1])
+        assert command[0] == "env"
+        for variable in SESSION_ENVIRONMENT:
+            position = command.index(variable)
+            assert command[position - 1] == "-u"
+        assert f"PANOPTICON_STATE={state_root}" in command
+        instance = next(
+            item for item in command if item.startswith("PANOPTICON_INSTANCE_ID=")
+        ).partition("=")[2]
+        assert len(instance) == 64
+        assert not any(
+            item.startswith(("ANTHROPIC_API_KEY=", "CODEX_API_KEY=", "GH_TOKEN="))
+            for item in command
+        )
+        assert command[-3:-1] == ["/bin/sh", "-c"]
+        command = shlex.split(command[-1])
+        executable = command.index(sys.executable)
+        module, extra = modules[name]
+        assert command[executable : executable + 3 + len(extra)] == [
+            sys.executable,
+            "-m",
+            module,
+            *extra,
+        ]
+        assert command[-4:] == [
+            sys.executable,
+            "-m",
+            "panopticon.terminal.log_tee",
+            str(state_root / f"{name}.log"),
+        ]
 
 
 def _fake_subprocess_run(cmd: list[str], **kwargs: object) -> MagicMock:
@@ -322,7 +351,7 @@ def test_start_actually_starts_both_sessions_with_their_real_commands_when_reach
     ):
         assert main(["start"]) == 0
     new_session_calls = [c.args[0] for c in mock_run.call_args_list if "new-session" in c.args[0]]
-    assert sorted(new_session_calls) == sorted(_expected_new_session_commands(state_root))
+    _assert_new_session_commands(new_session_calls, state_root)
 
 
 def test_host_actually_starts_both_sessions_with_their_real_commands_when_reachable(
@@ -343,7 +372,7 @@ def test_host_actually_starts_both_sessions_with_their_real_commands_when_reacha
     ):
         assert main(["host"]) == 0
     new_session_calls = [c.args[0] for c in mock_run.call_args_list if "new-session" in c.args[0]]
-    assert sorted(new_session_calls) == sorted(_expected_new_session_commands(state_root))
+    _assert_new_session_commands(new_session_calls, state_root)
 
 
 def test_start_refuses_via_the_real_docker_probe_when_docker_info_fails() -> None:
@@ -437,3 +466,40 @@ def test_console_does_not_preflight_docker() -> None:
         assert main(["console"]) == 0
     mock_preflight.assert_not_called()
     mock_console.assert_called_once()
+
+
+@pytest.mark.parametrize("failure", ["cancel", "refusal", "incomplete"])
+def test_repository_setup_exit_and_diagnostic_support_resume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failure: str,
+) -> None:
+    import httpx
+
+    from panopticon.terminal import setup
+
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(tmp_path / "config"))
+    monkeypatch.setattr(
+        "panopticon.terminal.__main__._select_existing_integrated_auth", lambda: None
+    )
+
+    def configure(*args, **kwargs):
+        if failure == "cancel":
+            raise KeyboardInterrupt
+        if failure == "refusal":
+            request = httpx.Request("POST", "http://test/repos/one/setup")
+            response = httpx.Response(
+                409, json={"detail": "Release the stale task claim before repair."}, request=request
+            )
+            response.raise_for_status()
+        return False
+
+    monkeypatch.setattr(setup, "configure_repo", configure)
+    assert main(["setup", "--repo", "one"]) == 1
+    output = capsys.readouterr().out
+    if failure == "cancel":
+        assert "panopticon setup --repo one" in output
+    elif failure == "refusal":
+        assert "Release the stale task claim before repair." in output
+        assert "409 Conflict" not in output

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.10.1--6baae4a64731",
+  "requirementId": "REQ-013.10.1",
+  "hash": "6baae4a64731",
+  "verdict": "pass",
+  "summary": "Three REVIEW entries through both transition APIs produce three distinct persisted worker ids; reusing an earlier review task fails the count and identity assertions.",
+  "timestamp": "2026-09-12T09:09:55.475Z"
+}

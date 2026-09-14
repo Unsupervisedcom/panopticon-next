@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.2.1--b992af683e22",
+  "requirementId": "REQ-048.2.1",
+  "hash": "b992af683e22",
+  "verdict": "pass",
+  "summary": "Token components are decoded and compared to independently computed HMAC-SHA256 bytes and canonical unpadded base64url; subjects that require both URL-safe alphabet characters reject ordinary base64 encoding.",
+  "timestamp": "2026-09-12T09:14:18.410Z"
+}

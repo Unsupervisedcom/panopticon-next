@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.1.2--6723095de4da",
+  "requirementId": "REQ-030.1.2",
+  "hash": "6723095de4da",
+  "verdict": "pass",
+  "summary": "The test-owned literal 50000 is checked in generated config and a real fresh pane reports its effective history limit; an existing server starts at 123 and its new pane must inherit 50000.",
+  "timestamp": "2026-09-12T09:13:40.094Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.2.2--7bf9c15069da",
+  "requirementId": "REQ-054.2.2",
+  "hash": "7bf9c15069da",
+  "verdict": "pass",
+  "summary": "select_source with a real origin-bearing checkout offers that origin in the prompt and accepts a different real checkout path as the selection; a non-repo cwd is separately shown to demand an explicit source",
+  "timestamp": "2026-09-12T09:31:57.210Z"
+}

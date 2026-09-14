@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.3.2--75aba820124e",
+  "requirementId": "REQ-047.3.2",
+  "hash": "75aba820124e",
+  "verdict": "pass",
+  "summary": "During an active authenticated lifespan, 24 logger namespaces including root and an unrelated third-party name, with handlers attached after lifespan entry, are checked for exact '[redacted]' in msg, args, mapping args, split-token args, nested extra keys/values, exc_text, and stack_info at both formatted-output and raw-record levels; a standard field name equal to a token is verified not to be renamed.",
+  "timestamp": "2026-09-12T09:58:34.958Z"
+}

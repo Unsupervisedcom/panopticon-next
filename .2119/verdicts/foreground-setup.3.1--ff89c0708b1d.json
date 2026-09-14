@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.3.1--ff89c0708b1d",
+  "requirementId": "foreground-setup.3.1",
+  "hash": "ff89c0708b1d",
+  "verdict": "pass",
+  "summary": "Simulated os.replace failure keeps the previous content with no leftover temp file; new files are 0600 regular files.",
+  "timestamp": "2026-09-12T09:07:10.592Z"
+}

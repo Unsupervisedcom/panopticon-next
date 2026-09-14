@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.3.3--d21e75c1b44c",
+  "requirementId": "source-selection.3.3",
+  "hash": "d21e75c1b44c",
+  "verdict": "pass",
+  "summary": "Parametrized pairs differing only in host, owner, or nested repository path are all non-equivalent, plus the inline other-owner case",
+  "timestamp": "2026-09-12T09:32:42.855Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.1.1--9b2a165dbb4e",
+  "requirementId": "REQ-027.1.1",
+  "hash": "9b2a165dbb4e",
+  "verdict": "pass",
+  "summary": "Domain default plus detail/list REST defaults are null; timestamp round trips and malformed/date-only rejection verify the optional ISO timestamp boundary.",
+  "timestamp": "2026-09-12T08:29:40.988Z"
+}

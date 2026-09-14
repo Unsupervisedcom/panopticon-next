@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.6.1--2f39986408cf",
+  "requirementId": "REQ-013.6.1",
+  "hash": "2f39986408cf",
+  "verdict": "pass",
+  "summary": "Unpaired workflows enter REVIEW through both advance and free move; the complete task inventory remains author-only, rejecting an unexpected review worker.",
+  "timestamp": "2026-09-12T09:09:53.349Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.6.1--da9831a5df1e",
+  "requirementId": "source-selection.6.1",
+  "hash": "da9831a5df1e",
+  "verdict": "pass",
+  "summary": "Legacy id 'legacy-widget' with a stored scp source must be returned unchanged and the only update may be enabled_workflows, so an id or git_url rewrite fails the exact updates assertion.",
+  "timestamp": "2026-09-12T09:22:58.075Z"
+}

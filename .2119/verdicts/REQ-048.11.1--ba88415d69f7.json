@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.11.1--ba88415d69f7",
+  "requirementId": "REQ-048.11.1",
+  "hash": "ba88415d69f7",
+  "verdict": "pass",
+  "summary": "Absent and empty allowlists emit no allow-origin authorization; registered routes, methods, preflights and a live stream are exercised, rejecting a permissive default CORS path.",
+  "timestamp": "2026-09-12T09:14:34.020Z"
+}

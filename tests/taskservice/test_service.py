@@ -706,6 +706,15 @@ async def test_register_runner_with_host_is_surfaced_by_runner_host(tmp_path: Pa
     assert regs[0].runner_id == "host-1" and regs[0].host == "box.example.com"
 
 
+async def test_register_runner_preserves_nonsecret_runtime_identity(tmp_path: Path) -> None:
+    svc = await make_service(tmp_path)
+    await svc.register_runner("host-1", instance_id="runtime-abc")
+
+    registrations = svc.live_runner_registrations()
+    assert len(registrations) == 1
+    assert registrations[0].instance_id == "runtime-abc"
+
+
 async def test_register_runner_reconnect_overlap_keeps_the_runner_live(tmp_path: Path) -> None:
     # A reconnect during a blip can briefly hold two connections; the *old* one's disconnect must
     # not drop the runner while the *new* one is up (each connection has its own id, not keyed by

@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.8--2f6cc3e1ceb5",
+  "requirementId": "task-auth-readiness.3.8",
+  "hash": "2f6cc3e1ceb5",
+  "verdict": "pass",
+  "summary": "Across a persistent-store service restart, a new runner with claim, release, report_lifecycle, and credential_check set to fail sees no side effect from spawn_one, heal, mark_healing, or startup_reclaim on unclaimed-paused and claimed-paused tasks",
+  "timestamp": "2026-09-12T09:32:50.210Z"
+}

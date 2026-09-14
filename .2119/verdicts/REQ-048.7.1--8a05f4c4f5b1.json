@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.7.1--8a05f4c4f5b1",
+  "requirementId": "REQ-048.7.1",
+  "hash": "8a05f4c4f5b1",
+  "verdict": "pass",
+  "summary": "Real child creation accepts the subject governor in its own repo and rejects absent, unrelated or child governors and a different repo; an alternate workflow proves authority comes from orchestrates=True.",
+  "timestamp": "2026-09-12T09:14:27.708Z"
+}

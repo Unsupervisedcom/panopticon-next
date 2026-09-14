@@ -680,7 +680,11 @@ def test_main_terminates_when_liveness_thread_is_permanently_rejected(
     assert raised.value.__cause__ is rejection
 
 
-def test_run_host_spawns_then_provisions_end_to_end(tmp_path: Path) -> None:
+def test_run_host_spawns_then_provisions_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # This integration isolates spawn/provisioning. Credential transport is exercised separately.
+    monkeypatch.setattr("panopticon.sessionservice.spawner.missing_task_auth", lambda *_args: None)
     service = TaskService(SqlAlchemyStore(), {"spike": Spike()}, FilesystemArtifactStore(tmp_path))
     asyncio.run(service.init())
     asyncio.run(

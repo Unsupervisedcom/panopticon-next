@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.4--eab8568a703c",
+  "requirementId": "REQ-030.4.4",
+  "hash": "eab8568a703c",
+  "verdict": "fail",
+  "summary": "Only linux exercises the non-darwin xclip fallback. Add a second non-darwin platform without wl-copy and with xclip plus xsel, asserting the complete xclip -selection clipboard command.",
+  "timestamp": "2026-09-12T09:13:46.540Z"
+}

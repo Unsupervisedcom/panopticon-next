@@ -19,8 +19,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from panopticon.client import JsonObj
-from panopticon.core.git import GitClones
+from panopticon.core.git import CommandRunner, GitClones, _subprocess_run
 from panopticon.sessionservice.clones import CloneCache
+from panopticon.sessionservice.git_credentials import (
+    RepoGitTransport,
+    configure_task_git_credentials,
+    repo_git_transport,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -46,6 +51,9 @@ def prepare_workspace(
     makedirs: Callable[[str], None] = lambda p: Path(p).mkdir(parents=True, exist_ok=True),
     task: JsonObj | None = None,
     runner_id: str | None = None,
+    secrets_dir: str | Path | None = None,
+    git_credential_run: CommandRunner = _subprocess_run,
+    git_transport: RepoGitTransport | None = None,
 ) -> str:
     """Ensure the task's per-task clone exists and return its path (mount this at ``/workspace``).
 
@@ -53,17 +61,19 @@ def prepare_workspace(
     ``<tasks_root>/<task_id>`` if that checkout isn't already there. ``git``/``exists`` are
     injectable so the emitted commands are unit-testable without a real repo.
 
-    Then points ``origin`` at the repo's forge — its ``git_url``, used **verbatim** (a ``--local``
-    clone's origin is the cache *path*, which the container can neither push to nor let ``gh``
-    resolve, so it would fork to the token's own account). The ``git_url`` is registered in the form
-    the container should use as its remote — HTTPS for token auth, SSH for key auth — so no rewriting
-    happens here. Done at spawn, not deferred to slug-time provisioning, so the agent has a correct
-    ``origin`` from its first action; ``set-url`` is idempotent, so it also repoints an existing clone.
+    Then points ``origin`` at the repo's operational forge URL (a ``--local`` clone's origin is the
+    cache *path*, which the container can neither push to nor let ``gh`` resolve). A repository
+    ``GH_TOKEN`` converts a supported GitHub SSH source to an equivalent credential-free HTTPS
+    origin and configures the container's existing ``gh`` credential helper. The stored source
+    identity remains unchanged. Done at spawn, not deferred to slug-time provisioning, so the agent
+    has a correct ``origin`` from its first action; ``set-url`` is idempotent, so it also repoints an
+    existing clone.
 
     Finally sets a deterministic repository-local author identity for the agent. This is reasserted
     for an existing checkout so an operator or harness identity cannot leak into task commits.
     """
     git = git or GitClones()
+    transport = git_transport or repo_git_transport(repo, secrets_dir=secrets_dir)
     clone = f"{tasks_root.rstrip('/')}/{task_id}"
     if (
         not exists(clone)
@@ -84,9 +94,10 @@ def prepare_workspace(
         )
     if not exists(clone):
         makedirs(str(Path(clone).parent))
-        cache_path = cache.ensure(repo["id"], repo["git_url"])
+        cache_path = cache.ensure(repo["id"], repo["git_url"], transport=transport)
         git.clone_local(cache_path=cache_path, dest=clone)
-    git.set_origin(repo_path=clone, url=repo["git_url"])
+    git.set_origin(repo_path=clone, url=transport.operation_url)
+    configure_task_git_credentials(clone, transport, run=git_credential_run)
     git.set_identity(
         repo_path=clone,
         name="Panopticon Agent",

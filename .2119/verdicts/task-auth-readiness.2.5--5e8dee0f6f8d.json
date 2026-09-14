@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.2.5--5e8dee0f6f8d",
+  "requirementId": "task-auth-readiness.2.5",
+  "hash": "5e8dee0f6f8d",
+  "verdict": "pass",
+  "summary": "Claimed task before any lifecycle report, live registered, and every non-FAILED phase are rejected with state unchanged.",
+  "timestamp": "2026-09-12T09:07:43.042Z"
+}

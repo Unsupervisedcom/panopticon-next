@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.3.7--82d6d516c324",
+  "requirementId": "foreground-setup.3.7",
+  "hash": "82d6d516c324",
+  "verdict": "pass",
+  "summary": "Real connection and repository writers run as separate processes against a live authenticated service while the test holds the lock: both exit non-zero with the refusal, secret files and repo bindings stay byte-identical, and the same scripts succeed after release; a killed owner process also releases the lock.",
+  "timestamp": "2026-09-12T09:57:21.169Z"
+}

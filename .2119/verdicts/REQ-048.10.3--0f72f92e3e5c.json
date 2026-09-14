@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.10.3--0f72f92e3e5c",
+  "requirementId": "REQ-048.10.3",
+  "hash": "0f72f92e3e5c",
+  "verdict": "pass",
+  "summary": "Preflights against real task/repo/artifact fixtures must have fixed empty-or-OK bodies and an exact permitted header/value inventory, including absent-or-600 max-age; protected sentinel values and route-dependent responses fail.",
+  "timestamp": "2026-09-12T09:14:33.532Z"
+}

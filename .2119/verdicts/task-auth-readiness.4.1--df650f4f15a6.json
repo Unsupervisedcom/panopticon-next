@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.4.1--df650f4f15a6",
+  "requirementId": "task-auth-readiness.4.1",
+  "hash": "df650f4f15a6",
+  "verdict": "pass",
+  "summary": "Begin, finish and retry return 401 for reader and 403 for task-scoped token, 200 for the fleet writer.",
+  "timestamp": "2026-09-12T09:07:54.365Z"
+}

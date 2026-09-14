@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.2.3--cba729b78658",
+  "requirementId": "REQ-047.2.3",
+  "hash": "cba729b78658",
+  "verdict": "pass",
+  "summary": "Real LocalRunner.spawn with a recording runner: kill-session and docker rm --force are the first two calls and docker run asserts both stale resources are already cleared; cleanup failures and lingering resources both prevent docker run with the documented error text.",
+  "timestamp": "2026-09-12T09:58:32.979Z"
+}

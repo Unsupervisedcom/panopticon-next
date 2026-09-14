@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.3.5--ff3abf0f6583",
+  "requirementId": "REQ-031.3.5",
+  "hash": "ff3abf0f6583",
+  "verdict": "pass",
+  "summary": "After one charged respawn, ten deferred heals span more than the reset window; return of Docker consumes exactly one further attempt, rejecting inflation and outage-induced reset.",
+  "timestamp": "2026-09-12T08:29:52.232Z"
+}

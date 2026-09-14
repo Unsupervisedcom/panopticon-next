@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.4.4--123ae366696c",
+  "requirementId": "source-selection.4.4",
+  "hash": "123ae366696c",
+  "verdict": "pass",
+  "summary": "After a 409 the client must be re-listed and the equivalent repo that only appears in the second listing returned; the companion test shows a non-equivalent repo in the refreshed list is not reused (repo_id != its id).",
+  "timestamp": "2026-09-12T09:22:50.000Z"
+}

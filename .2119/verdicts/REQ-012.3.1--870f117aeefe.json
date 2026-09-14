@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.3.1--870f117aeefe",
+  "requirementId": "REQ-012.3.1",
+  "hash": "870f117aeefe",
+  "verdict": "pass",
+  "summary": "Explicit codex overrides both absent repository selection and a conflicting non-null repository pair; the workflow override case is also exercised by the adjacent annotated losing-pair test.",
+  "timestamp": "2026-09-12T08:29:27.897Z"
+}

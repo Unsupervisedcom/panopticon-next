@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.1.1--d152adf69a63",
+  "requirementId": "source-selection.1.1",
+  "hash": "d152adf69a63",
+  "verdict": "pass",
+  "summary": "With a real checkout whose origin ends in .git, select_source prints the friendly name and the exact unmodified remote for both the suggestion and the confirmed selection, and the selector module performs no registration",
+  "timestamp": "2026-09-12T09:32:38.678Z"
+}

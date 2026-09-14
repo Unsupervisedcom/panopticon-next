@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.2.1--28bf492d4ef3",
+  "requirementId": "REQ-047.2.1",
+  "hash": "28bf492d4ef3",
+  "verdict": "pass",
+  "summary": "Exited-container cleanup records only credentials then workspace on a fake runner (a stop call would appear and fail the exact event list), and the real LocalRunner credential cleanup unlinks every matching snapshot, preserves an unrelated task's snapshot, and issues zero tmux/docker commands.",
+  "timestamp": "2026-09-12T09:58:30.938Z"
+}

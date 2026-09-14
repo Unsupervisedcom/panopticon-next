@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.3.1--5839b8ac374c",
+  "requirementId": "REQ-048.3.1",
+  "hash": "5839b8ac374c",
+  "verdict": "pass",
+  "summary": "Actual runner-emitted mount and environment options identify one snapshot whose complete JSON is the subject capability; the real container client loads that file into its Authorization header.",
+  "timestamp": "2026-09-12T09:14:20.645Z"
+}

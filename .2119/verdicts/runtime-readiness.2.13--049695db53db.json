@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.13--049695db53db",
+  "requirementId": "runtime-readiness.2.13",
+  "hash": "049695db53db",
+  "verdict": "pass",
+  "summary": "The authentication-rejection case requires both its distinct configured-credential diagnosis and reconnect-authentication remedy. Substituting the generic malformed or compatibility failure fails the assertions.",
+  "timestamp": "2026-09-12T09:34:21.553Z"
+}

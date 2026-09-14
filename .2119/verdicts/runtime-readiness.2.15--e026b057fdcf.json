@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.15--e026b057fdcf",
+  "requirementId": "runtime-readiness.2.15",
+  "hash": "e026b057fdcf",
+  "verdict": "pass",
+  "summary": "An unsupported revision must produce the revision-specific diagnosis and matching-client/service remedy; separate type-confusion cases require unsupported-revision errors. A generic compatibility failure does not satisfy the evidence.",
+  "timestamp": "2026-09-12T09:34:22.632Z"
+}

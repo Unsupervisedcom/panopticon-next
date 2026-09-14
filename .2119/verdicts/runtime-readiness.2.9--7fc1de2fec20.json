@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.9--7fc1de2fec20",
+  "requirementId": "runtime-readiness.2.9",
+  "hash": "7fc1de2fec20",
+  "verdict": "pass",
+  "summary": "A real baseline-shaped service returns health success and identity 404; integrated startup must classify it as unverified legacy. Treating missing identity as ready or merely unreachable fails the assertions.",
+  "timestamp": "2026-09-12T09:34:27.200Z"
+}

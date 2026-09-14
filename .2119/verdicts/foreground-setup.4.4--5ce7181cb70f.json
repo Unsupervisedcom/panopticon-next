@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.4.4--5ce7181cb70f",
+  "requirementId": "foreground-setup.4.4",
+  "hash": "5ce7181cb70f",
+  "verdict": "pass",
+  "summary": "Legacy setup-repo task record and state remain retrievable after foreground repair and after refusal.",
+  "timestamp": "2026-09-12T09:07:22.091Z"
+}

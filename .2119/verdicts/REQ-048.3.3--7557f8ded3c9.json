@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.3.3--7557f8ded3c9",
+  "requirementId": "REQ-048.3.3",
+  "hash": "7557f8ded3c9",
+  "verdict": "pass",
+  "summary": "Real file rotation and service recreation remove old then middle writer generations; derived capabilities become 401 across the registered surface while retained generations still read and mutate their tasks.",
+  "timestamp": "2026-09-12T09:14:21.716Z"
+}

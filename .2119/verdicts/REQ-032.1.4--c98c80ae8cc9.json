@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.1.4--c98c80ae8cc9",
+  "requirementId": "REQ-032.1.4",
+  "hash": "c98c80ae8cc9",
+  "verdict": "pass",
+  "summary": "A newer interactive-origin subagent thread competes with an older root thread; exact resume-id comparison rejects treating originator alone as sufficient.",
+  "timestamp": "2026-09-12T09:09:59.239Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.12.1--aaa7c4e49f3c",
+  "requirementId": "REQ-013.12.1",
+  "hash": "aaa7c4e49f3c",
+  "verdict": "pass",
+  "summary": "Unpaired REVIEW entry through both advance and free move reloads an empty responsibility list, rejecting an incorrectly seeded review-addressed obligation.",
+  "timestamp": "2026-09-12T09:09:56.486Z"
+}

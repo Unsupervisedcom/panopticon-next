@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.4.2--e2f2760642f2",
+  "requirementId": "REQ-048.4.2",
+  "hash": "e2f2760642f2",
+  "verdict": "pass",
+  "summary": "Collection tests include self, children, grandchildren, ancestor, peers and unrelated tasks; exact id sets and an alternate orchestrating workflow reject sibling leakage, name-based authority and descendant access for ordinary tasks.",
+  "timestamp": "2026-09-12T09:14:22.806Z"
+}

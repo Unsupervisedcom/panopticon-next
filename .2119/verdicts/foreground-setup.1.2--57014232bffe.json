@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.1.2--57014232bffe",
+  "requirementId": "foreground-setup.1.2",
+  "hash": "57014232bffe",
+  "verdict": "pass",
+  "summary": "cli.main(['quickstart']) is asserted to call connection, source, doctor, runtime, register, bind, console in that order with ensure_setup_repo_task as a failing sentinel and no console join; creating an auth task fails the test",
+  "timestamp": "2026-09-12T08:38:53.518Z"
+}

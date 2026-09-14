@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.6.3--d4300ca7de3b",
+  "requirementId": "source-selection.6.3",
+  "hash": "d4300ca7de3b",
+  "verdict": "pass",
+  "summary": "AST import scan of source_selection.py must exclude anthropic/openai, and socket.create_connection is patched to raise while select_source and setup_repo run end to end, so any provider or network call during selection or registration fails.",
+  "timestamp": "2026-09-12T09:23:00.084Z"
+}

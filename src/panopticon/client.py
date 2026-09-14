@@ -10,7 +10,6 @@ return the updated resource. LLM-free — agents reach the LLM only inside the c
 from __future__ import annotations
 
 import base64
-import os
 from collections.abc import Generator
 from typing import Any, cast
 
@@ -19,6 +18,7 @@ import httpx
 from panopticon.core.liveness import LIVENESS_READ_TIMEOUT_SECONDS
 from panopticon.core.models import Status
 from panopticon.taskservice.auth import environment_token
+from panopticon.taskservice.operator_auth import operator_token as load_operator_token
 
 JsonObj = dict[str, Any]
 
@@ -44,7 +44,12 @@ class TaskServiceClient:
         token = token if token is not None else environment_token()
         if token:
             self._http.headers["Authorization"] = f"Bearer {token}"
-        self._operator_token = operator_token or os.environ.get("PANOPTICON_OPERATOR_TOKEN")
+        self._operator_token = operator_token or load_operator_token()
+
+    @property
+    def service_url(self) -> str:
+        """The service this client is bound to, without introducing a second address source."""
+        return str(self._http.base_url).rstrip("/")
 
     @staticmethod
     def _json(resp: httpx.Response) -> Any:
@@ -353,6 +358,18 @@ class TaskServiceClient:
             self._json(self._http.put(f"/tasks/{task_id}/claim", json={"runner_id": runner_id})),
         )
 
+    def begin_repo_setup(self, repo_id: str) -> JsonObj:
+        """Pause repository admission and pending tasks before foreground credential repair."""
+        return cast(JsonObj, self._json(self._http.post(f"/repos/{repo_id}/setup/begin")))
+
+    def finish_repo_setup(self, repo_id: str) -> JsonObj:
+        """Reopen repository admission, leaving paused tasks for explicit retry."""
+        return cast(JsonObj, self._json(self._http.post(f"/repos/{repo_id}/setup/finish")))
+
+    def retry_task(self, task_id: str) -> JsonObj:
+        """Release one stopped task's execution hold and claim."""
+        return cast(JsonObj, self._json(self._http.post(f"/tasks/{task_id}/retry")))
+
     def release(self, task_id: str) -> JsonObj:
         """Release a task's claim (back to unclaimed) so it can be re-claimed / respawned."""
         return cast(JsonObj, self._json(self._http.delete(f"/tasks/{task_id}/claim")))
@@ -479,11 +496,19 @@ class TaskServiceClient:
     # -- container lifecycle (the session service reports its spawn progress) -----
 
     def report_lifecycle(
-        self, task_id: str, runner_id: str, phase: str, detail: str | None = None
+        self,
+        task_id: str,
+        runner_id: str,
+        phase: str,
+        detail: str | None = None,
+        *,
+        pause_launch: bool = False,
     ) -> JsonObj:
         """Report this runner's latest spawn phase for a task (claiming → … → awaiting, or failed),
         so the dashboard can surface the steps to becoming live. Cleared on claim release/reclaim."""
         body: JsonObj = {"runner_id": runner_id, "phase": phase, "detail": detail}
+        if pause_launch:
+            body["pause_launch"] = True
         return cast(JsonObj, self._json(self._http.put(f"/tasks/{task_id}/lifecycle", json=body)))
 
     def clear_lifecycle(self, task_id: str) -> JsonObj:
@@ -493,7 +518,11 @@ class TaskServiceClient:
     # -- host (runner) liveness + reclaim -----------------------------------------
 
     def live_runner(
-        self, runner_id: str, *, host: str | None = None
+        self,
+        runner_id: str,
+        *,
+        host: str | None = None,
+        instance_id: str | None = None,
     ) -> Generator[None, None, None]:
         """Hold this host's liveness connection open, yielding once per server keepalive.
 
@@ -504,7 +533,11 @@ class TaskServiceClient:
         reconnecting if it drops underneath. ``host`` is the runner's hostname, passed as a query
         param so the task service can surface it for the terminal supervisor's remote attach (M5).
         """
-        params = {"host": host} if host is not None else {}
+        params = {
+            name: value
+            for name, value in {"host": host, "instance_id": instance_id}.items()
+            if value is not None
+        }
         with self._http.stream(
             "GET",
             f"/runners/{runner_id}/live",

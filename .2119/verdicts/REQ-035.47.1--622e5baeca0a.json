@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.47.1--622e5baeca0a",
+  "requirementId": "REQ-035.47.1",
+  "hash": "622e5baeca0a",
+  "verdict": "fail",
+  "summary": "Native proxy behavior is exercised only through Claude; Codex evidence only parses its MCP configuration. Add an equivalent provider-free native Codex transport control proving emitted bypass variables prevent proxy traffic while preserving existing entries.",
+  "timestamp": "2026-09-12T09:13:51.880Z"
+}

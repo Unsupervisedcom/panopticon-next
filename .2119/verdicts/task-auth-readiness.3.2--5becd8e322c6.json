@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.2--5becd8e322c6",
+  "requirementId": "task-auth-readiness.3.2",
+  "hash": "5becd8e322c6",
+  "verdict": "pass",
+  "summary": "Socket, httpx, urlopen, Popen and exec are all fail-on-call during presence checks, and host env values are ignored.",
+  "timestamp": "2026-09-12T09:07:45.216Z"
+}

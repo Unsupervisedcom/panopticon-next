@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from panopticon.harnesses.codex import render_config
+from panopticon.sessionservice.local_runner import LocalRunner
 
 
 class _CaptureHandler(http.server.BaseHTTPRequestHandler):
@@ -77,8 +78,6 @@ def test_real_claude_mcp_transport_bypasses_ambient_proxy(
         "PANOPTICON_SERVICE_AUTH_TOKEN": token,
         "HTTP_PROXY": f"http://127.0.0.1:{proxy.server_address[1]}",
         "http_proxy": f"http://127.0.0.1:{proxy.server_address[1]}",
-        "NO_PROXY": "127.0.0.1",
-        "no_proxy": "127.0.0.1",
     }
     workdir = tmp_path / "work"
     workdir.mkdir()
@@ -104,6 +103,45 @@ def test_real_claude_mcp_transport_bypasses_ambient_proxy(
             text=True,
             timeout=30,
         )
+        # Positive control: this exact native client and target do use the configured proxy when
+        # the runner's bypass is absent.
+        subprocess.run(
+            ["claude", "--dangerously-skip-permissions", "mcp", "get", "panopticon"],
+            cwd=workdir,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert _ProxyHandler.hits
+        assert _TargetHandler.hits == []
+
+        runner_calls: list[list[str]] = []
+
+        def capture_runner(command: list[str], **_kwargs: object) -> str:
+            runner_calls.append(command)
+            return ""
+
+        runner = LocalRunner(
+            f"http://127.0.0.1:{target.server_address[1]}",
+            tmux_socket=None,
+            extra_env={"HTTP_PROXY": env["HTTP_PROXY"], "http_proxy": env["http_proxy"]},
+            run=capture_runner,
+        )
+        runner.spawn("proxy-proof")
+        docker = next(command for command in runner_calls if command[:2] == ["docker", "run"])
+        emitted = {
+            name: value
+            for item in docker
+            if "=" in item
+            for name, value in [item.split("=", 1)]
+            if name in {"NO_PROXY", "no_proxy"}
+        }
+        assert set(emitted) == {"NO_PROXY", "no_proxy"}
+        env.update(emitted)
+        _ProxyHandler.hits = []
+        _TargetHandler.hits = []
         subprocess.run(
             ["claude", "--dangerously-skip-permissions", "mcp", "get", "panopticon"],
             cwd=workdir,

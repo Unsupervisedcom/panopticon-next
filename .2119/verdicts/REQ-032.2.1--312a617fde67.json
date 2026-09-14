@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.2.1--312a617fde67",
+  "requirementId": "REQ-032.2.1",
+  "hash": "312a617fde67",
+  "verdict": "pass",
+  "summary": "An empty temporary session home produces a literal first-run argv with no resume command, rejecting resume or changed baseline session flags.",
+  "timestamp": "2026-09-12T09:09:59.785Z"
+}

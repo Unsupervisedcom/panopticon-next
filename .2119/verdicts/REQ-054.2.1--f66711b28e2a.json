@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.2.1--f66711b28e2a",
+  "requirementId": "REQ-054.2.1",
+  "hash": "f66711b28e2a",
+  "verdict": "pass",
+  "summary": "CLI quickstart with the real selector and an invalid checkout or bundle exits 1 while runtime preparation, repository registration, and client construction are guarded with pytest.fail; origin and canonical-path detection use real git repositories",
+  "timestamp": "2026-09-12T09:32:23.632Z"
+}

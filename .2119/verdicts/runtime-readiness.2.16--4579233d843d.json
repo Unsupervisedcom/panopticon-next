@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.16--4579233d843d",
+  "requirementId": "runtime-readiness.2.16",
+  "hash": "4579233d843d",
+  "verdict": "pass",
+  "summary": "Guard and readiness paths both raise a message naming a different runtime with preserve, matching-installation, and deliberate-stop remedies, while credential rejection, legacy, wrong kind, unsupported revision, and malformed identity each raise distinct phrases; a real service advertising another instance is refused with that diagnosis and no side effects.",
+  "timestamp": "2026-09-12T09:57:44.399Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.4.1--625ee012ad86",
+  "requirementId": "REQ-048.4.1",
+  "hash": "625ee012ad86",
+  "verdict": "pass",
+  "summary": "Real scoped reads compare independently expected identity and workflow metadata, differing sibling workflows, artifact bytes and registrations; ASGI liveness produces ok and keepalive bytes with scope enforcement intact.",
+  "timestamp": "2026-09-12T09:14:22.278Z"
+}

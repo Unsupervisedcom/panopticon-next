@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.8.1--15af71101419",
+  "requirementId": "REQ-013.8.1",
+  "hash": "15af71101419",
+  "verdict": "pass",
+  "summary": "Failure cases inspect the persisted current history note and distinguish pairing, disabled-workflow, and storage reasons; the storage case compares the full note, rejecting a generic or lost reason.",
+  "timestamp": "2026-09-12T09:09:54.413Z"
+}

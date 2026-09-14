@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-005.3.1--bc05c992e4eb",
+  "requirementId": "REQ-005.3.1",
+  "hash": "bc05c992e4eb",
+  "verdict": "pass",
+  "summary": "Notice is now asserted by exact line equality on the first output line with a fixed two-line count, rejecting split, negated or reworded notices.",
+  "timestamp": "2026-09-12T09:06:31.981Z"
+}

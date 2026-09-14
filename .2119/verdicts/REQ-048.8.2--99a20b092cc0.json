@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.8.2--99a20b092cc0",
+  "requirementId": "REQ-048.8.2",
+  "hash": "99a20b092cc0",
+  "verdict": "fail",
+  "summary": "Subject-versus-target checks cover raw ids and conflicting actor_task_id, but no encoded artifact resource URI. Exercise URI decoding while keeping the authenticated subject fixed, including an encoded sibling target that must remain denied.",
+  "timestamp": "2026-09-12T09:14:30.392Z"
+}

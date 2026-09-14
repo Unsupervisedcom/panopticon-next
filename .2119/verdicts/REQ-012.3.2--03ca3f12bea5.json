@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.3.2--03ca3f12bea5",
+  "requirementId": "REQ-012.3.2",
+  "hash": "03ca3f12bea5",
+  "verdict": "pass",
+  "summary": "Real creation supplies only a model override against a workflow pair and asserts both custom model and retained codex harness; ignoring the override or resetting the harness fails.",
+  "timestamp": "2026-09-12T08:29:28.410Z"
+}

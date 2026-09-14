@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-046.5.1--67b4b68a23e4",
+  "requirementId": "REQ-046.5.1",
+  "hash": "67b4b68a23e4",
+  "verdict": "pass",
+  "summary": "Test locates the docs paragraph by its opening sentence and compares the wrap-joined text for exact equality with the required wording, so any word, value, or clause drift fails; exact-text comparison is the correct verification for a requirement that is itself the text.",
+  "timestamp": "2026-09-12T09:58:27.848Z"
+}

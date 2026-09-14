@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.3.2--c09bfe2f8af6",
+  "requirementId": "source-selection.3.2",
+  "hash": "c09bfe2f8af6",
+  "verdict": "pass",
+  "summary": "HTTPS with mixed case and trailing slash, scp with uppercase host, and ssh:// spellings are equivalent, while a double .git suffix is rejected as a different source",
+  "timestamp": "2026-09-12T09:32:41.813Z"
+}

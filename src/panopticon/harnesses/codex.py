@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import ClassVar
@@ -48,6 +49,7 @@ CODEX_VERSION = "0.144.4"
 
 #: The credential file codex expects under ``$CODEX_HOME``.
 AUTH_FILE = "auth.json"
+RECONCILE_AUTH_ENV = "PANOPTICON_RECONCILE_CODEX_AUTH"
 
 #: The ``session_meta`` originator that names an interactive ``codex-tui`` launch, as opposed to
 #: a non-resumable ``codex exec`` invocation (``codex_exec``/``exec``) — see ``_resume_target``.
@@ -246,8 +248,12 @@ class CodexHarness(Harness):
         """Materialize ``auth.json`` when absent — from the credential-dir mount (subscription;
         a symlink, so refreshes converge on the shared file) or an env-file API key (rendered in
         the shape ``codex login --with-api-key`` writes). ``CODEX_ACCESS_TOKEN`` needs no file —
-        codex reads it from the environment. Idempotent; never clobbers an existing auth.json."""
+        codex reads it from the environment. Existing auth is preserved unless foreground
+        setup explicitly selected a replacement binding."""
         auth = config_dir / AUTH_FILE
+        if environ.get(RECONCILE_AUTH_ENV) == "1":
+            self._reconcile_auth(auth, environ)
+            return
         if auth.exists() or auth.is_symlink():
             return
         credentials = environ.get("PANOPTICON_CREDENTIALS")
@@ -257,6 +263,36 @@ class CodexHarness(Harness):
         if key := (environ.get("CODEX_API_KEY") or environ.get("OPENAI_API_KEY")):
             auth.write_text(json.dumps({"auth_mode": "apikey", "OPENAI_API_KEY": key}, indent=2))
             os.chmod(auth, 0o600)
+
+    def _reconcile_auth(self, auth: Path, environ: Mapping[str, str]) -> None:
+        """Apply an explicit foreground binding without changing a shared credential target.
+
+        Older installations retain their persisted-login precedence. Foreground setup opts
+        into replacement so retrying a repaired task cannot silently reuse its old account.
+        Only the auth leaf changes; session history stays available for resume.
+        """
+        credentials = environ.get("PANOPTICON_CREDENTIALS")
+        target = Path(credentials) / AUTH_FILE if credentials else None
+        key = environ.get("CODEX_API_KEY") or environ.get("OPENAI_API_KEY")
+        if target is not None and not target.is_file():
+            raise ValueError(
+                "Configured Codex credential file is missing; repair repository setup."
+            )
+        if target is None and not key:
+            if environ.get("CODEX_ACCESS_TOKEN"):
+                auth.unlink(missing_ok=True)
+                return
+            raise ValueError("Configured Codex credentials are missing; repair repository setup.")
+        with tempfile.TemporaryDirectory(prefix=".auth-", dir=auth.parent) as temporary:
+            replacement = Path(temporary) / AUTH_FILE
+            if target is not None:
+                replacement.symlink_to(target)
+            else:
+                with os.fdopen(
+                    os.open(replacement, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
+                ) as f:
+                    json.dump({"auth_mode": "apikey", "OPENAI_API_KEY": key}, f, indent=2)
+            os.replace(replacement, auth)
 
     def argv(self, ctx: LaunchContext) -> list[str]:
         """``codex`` argv — resume the task's own interactive session when one is recorded.

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.4.1--a4ab39db73b9",
+  "requirementId": "REQ-012.4.1",
+  "hash": "a4ab39db73b9",
+  "verdict": "pass",
+  "summary": "Task, workflow, and repository model sources round-trip deliberately nonstandard model/effort strings through real API creation; rejection or parsing/normalization fails.",
+  "timestamp": "2026-09-12T08:29:30.119Z"
+}

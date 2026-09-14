@@ -20,6 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from panopticon.core.git import CommandRunner, _subprocess_run
+from panopticon.sessionservice.git_credentials import RepoGitTransport
 
 
 class CloneCache:
@@ -46,7 +47,13 @@ class CloneCache:
         """Where this repo's clone lives — ``<root>/<repo_id>`` (the worktree base)."""
         return f"{self._root}/{repo_id}"
 
-    def ensure(self, repo_id: str, git_url: str) -> str:
+    def ensure(
+        self,
+        repo_id: str,
+        git_url: str,
+        *,
+        transport: RepoGitTransport | None = None,
+    ) -> str:
         """Ensure the repo's clone exists and is current, returning its path. Idempotent.
 
         Clones from ``git_url`` on first use; on later calls fetches (``--all --prune``) **and
@@ -56,12 +63,25 @@ class CloneCache:
         commit it was first cloned at, so every task would start behind.)
         """
         path = self.path(repo_id)
+        transport = transport or RepoGitTransport(git_url, git_url)
         if self._exists(path):
-            self._run(["git", "-C", path, "fetch", "--all", "--prune"])
+            fetch = ["git", "-C", path, "fetch", "--all", "--prune"]
+            if transport.credentialed:
+                # Override the remote only for this network operation. The cache keeps the
+                # registered source spelling in persistent configuration.
+                fetch[1:1] = [
+                    "-c",
+                    f"url.{transport.operation_url}.insteadOf={git_url}",
+                ]
+            with transport.git_command(fetch) as command:
+                self._run(command)
             self._run(
                 ["git", "-C", path, "merge", "--ff-only"]
             )  # advance the base branch to upstream
         else:
             self._makedirs(self._root)
-            self._run(["git", "clone", git_url, path])
+            with transport.git_command(["git", "clone", transport.operation_url, path]) as command:
+                self._run(command)
+            if transport.credentialed and transport.operation_url != git_url:
+                self._run(["git", "-C", path, "remote", "set-url", "origin", git_url])
         return path

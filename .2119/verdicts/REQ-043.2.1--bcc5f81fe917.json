@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-043.2.1--bcc5f81fe917",
+  "requirementId": "REQ-043.2.1",
+  "hash": "bcc5f81fe917",
+  "verdict": "pass",
+  "summary": "A real service receives the post-session failure; mark/heal and startup reclaim retain its claim, failed state and exact detail, and explicit release restores spawning.",
+  "timestamp": "2026-09-12T08:29:55.526Z"
+}

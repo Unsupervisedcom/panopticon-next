@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.1.2--89e239d2f564",
+  "requirementId": "REQ-031.1.2",
+  "hash": "89e239d2f564",
+  "verdict": "pass",
+  "summary": "Host entry point exercises real docker-info failure handling and asserts background startup is never called; host-only bypass of the preflight fails.",
+  "timestamp": "2026-09-12T08:29:47.855Z"
+}

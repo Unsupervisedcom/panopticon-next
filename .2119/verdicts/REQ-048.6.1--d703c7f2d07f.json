@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.6.1--d703c7f2d07f",
+  "requirementId": "REQ-048.6.1",
+  "hash": "d703c7f2d07f",
+  "verdict": "pass",
+  "summary": "An independent task-action inventory is compared to the policy, every task-targeted action denies unrelated subjects, and the registered REST inventory exercises sibling and missing targets including drop.",
+  "timestamp": "2026-09-12T09:14:25.488Z"
+}

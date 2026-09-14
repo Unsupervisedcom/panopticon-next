@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-043.3.2--f5f0f83edb37",
+  "requirementId": "REQ-043.3.2",
+  "hash": "f5f0f83edb37",
+  "verdict": "pass",
+  "summary": "Hook failure and OSError during clone preparation or image staging with no tmux session latch FAILED with the exact reason, no lifecycle clear, and heal does not retry.",
+  "timestamp": "2026-09-12T09:06:38.173Z"
+}

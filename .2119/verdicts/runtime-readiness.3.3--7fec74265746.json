@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.3.3--7fec74265746",
+  "requirementId": "runtime-readiness.3.3",
+  "hash": "7fec74265746",
+  "verdict": "pass",
+  "summary": "Connection refusal plus a present session raises the migration refusal; a real inert tmux session remains present and migration/start sentinels cannot run. Treating its silent API as permission to migrate is rejected.",
+  "timestamp": "2026-09-12T09:34:28.943Z"
+}

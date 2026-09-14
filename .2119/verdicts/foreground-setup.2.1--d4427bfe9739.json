@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.1--d4427bfe9739",
+  "requirementId": "foreground-setup.2.1",
+  "hash": "d4427bfe9739",
+  "verdict": "pass",
+  "summary": "Connection values equal exactly the entered harness key despite ambient GH_TOKEN, and a connection file carrying GH_TOKEN is rejected as non-harness.",
+  "timestamp": "2026-09-12T09:06:56.379Z"
+}

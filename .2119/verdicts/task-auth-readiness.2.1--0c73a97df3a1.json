@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.2.1--0c73a97df3a1",
+  "requirementId": "task-auth-readiness.2.1",
+  "hash": "0c73a97df3a1",
+  "verdict": "pass",
+  "summary": "Unclaimed, paused and failed conditions release only the selected task's hold and claim while the other runner's claim and registration remain.",
+  "timestamp": "2026-09-12T09:07:39.694Z"
+}

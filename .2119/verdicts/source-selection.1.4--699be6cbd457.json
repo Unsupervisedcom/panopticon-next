@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.1.4--699be6cbd457",
+  "requirementId": "source-selection.1.4",
+  "hash": "699be6cbd457",
+  "verdict": "pass",
+  "summary": "Non-repo cwd: prompt must mention 'Repository source' and contain no bracketed default, and the entered checkout must be the selection; a fallback default or registration without a prompt fails (prompts[0] would be absent or bracketed).",
+  "timestamp": "2026-09-12T09:22:30.730Z"
+}

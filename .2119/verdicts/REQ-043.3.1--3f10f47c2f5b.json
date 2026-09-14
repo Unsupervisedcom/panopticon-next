@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-043.3.1--3f10f47c2f5b",
+  "requirementId": "REQ-043.3.1",
+  "hash": "3f10f47c2f5b",
+  "verdict": "pass",
+  "summary": "The same real new-session command and numeric failure is tested with session existence false and true, requiring different lifecycle outcomes; numeric-only classification fails.",
+  "timestamp": "2026-09-12T08:29:56.658Z"
+}

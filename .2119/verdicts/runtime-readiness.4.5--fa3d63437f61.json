@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.5--fa3d63437f61",
+  "requirementId": "runtime-readiness.4.5",
+  "hash": "fa3d63437f61",
+  "verdict": "pass",
+  "summary": "Each of 401, wrong service kind, foreign instance id, and revision 2 fails after a single identity request with sleep forbidden and a frozen clock under a 30s deadline, and the wrong-runtime runner case fails after two requests at clock zero, so retrying any permanent defect is rejected.",
+  "timestamp": "2026-09-12T09:57:54.496Z"
+}

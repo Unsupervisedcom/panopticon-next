@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-043.1.3--f91b7d228fd0",
+  "requirementId": "REQ-043.1.3",
+  "hash": "f91b7d228fd0",
+  "verdict": "pass",
+  "summary": "Both image-build and docker-run failure paths explicitly require lifecycle clearing and prohibit failed reports before session creation; stale in-progress or failed state fails.",
+  "timestamp": "2026-09-12T08:29:54.969Z"
+}

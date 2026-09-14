@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-043.1.1--71b63449ab3c",
+  "requirementId": "REQ-043.1.1",
+  "hash": "71b63449ab3c",
+  "verdict": "pass",
+  "summary": "Real ImageBuilder command execution is failed once, retaining claim and clearing lifecycle, then ordinary heal reaches a successful second build; permanent failure or lost eligibility fails.",
+  "timestamp": "2026-09-12T08:29:53.800Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.4.1--09722e0e8c20",
+  "requirementId": "foreground-setup.4.1",
+  "hash": "09722e0e8c20",
+  "verdict": "pass",
+  "summary": "Pending task and repo are held before any write; cancel mid-repair still leaves both held, proving the hold precedes mutation.",
+  "timestamp": "2026-09-12T09:07:18.838Z"
+}

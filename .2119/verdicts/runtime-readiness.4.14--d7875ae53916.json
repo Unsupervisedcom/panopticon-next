@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.14--d7875ae53916",
+  "requirementId": "runtime-readiness.4.14",
+  "hash": "d7875ae53916",
+  "verdict": "pass",
+  "summary": "With an unreachable service, a missing runner, or a runner from another instance, configure_repo raises before any prompt, private write, hold, or repo update against a real service and store, the quickstart entrypoint exits 1 without registering or rebinding, and the same repair succeeds on the Textual event loop once readiness passes.",
+  "timestamp": "2026-09-12T09:58:09.525Z"
+}

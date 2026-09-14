@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.3.3--5d4d0bcf8418",
+  "requirementId": "REQ-031.3.3",
+  "hash": "5d4d0bcf8418",
+  "verdict": "pass",
+  "summary": "Unreachable orphan healing produces no lifecycle reports; marking the deferred task failed is directly rejected.",
+  "timestamp": "2026-09-12T08:29:51.159Z"
+}

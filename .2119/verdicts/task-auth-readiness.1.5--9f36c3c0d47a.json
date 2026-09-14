@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.1.5--9f36c3c0d47a",
+  "requirementId": "task-auth-readiness.1.5",
+  "hash": "9f36c3c0d47a",
+  "verdict": "pass",
+  "summary": "Task and review worker created during repair remain launch_paused after finish until retried.",
+  "timestamp": "2026-09-12T09:07:35.540Z"
+}

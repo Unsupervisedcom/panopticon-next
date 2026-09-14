@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.4.5--f1f295821311",
+  "requirementId": "foreground-setup.4.5",
+  "hash": "f1f295821311",
+  "verdict": "pass",
+  "summary": "KeyboardInterrupt during the forge prompt leaves the old env reference and bytes intact.",
+  "timestamp": "2026-09-12T09:07:23.178Z"
+}

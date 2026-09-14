@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.7--d1c062f54295",
+  "requirementId": "runtime-readiness.4.7",
+  "hash": "d1c062f54295",
+  "verdict": "pass",
+  "summary": "Separate unreachable-service and ready-service/missing-runner fixtures require different diagnoses; a service that disappears before expiry must return the unreachable diagnosis. Reusing stale readiness to report only a missing runner is rejected.",
+  "timestamp": "2026-09-12T09:34:38.238Z"
+}

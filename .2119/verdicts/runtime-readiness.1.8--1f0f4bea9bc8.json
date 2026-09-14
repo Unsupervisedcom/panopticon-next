@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.1.8--1f0f4bea9bc8",
+  "requirementId": "runtime-readiness.1.8",
+  "hash": "1f0f4bea9bc8",
+  "verdict": "pass",
+  "summary": "URL controls with a userinfo password or token/api-key/secret/credential query keys are rejected at both resolve and argv boundaries and through the integrated entrypoint, with the distinct secret value and full URL asserted absent from output and no probe, migration, or spawn attempted; the term credential-like is loosely bounded but the enumerated classes are each rejected.",
+  "timestamp": "2026-09-12T09:57:34.474Z"
+}

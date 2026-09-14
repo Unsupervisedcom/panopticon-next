@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.12--ea4f89ea533c",
+  "requirementId": "foreground-setup.2.12",
+  "hash": "ea4f89ea533c",
+  "verdict": "pass",
+  "summary": "Successful relogin yields a new dir and env while the old auth.json and env bytes are unchanged and both remain configured.",
+  "timestamp": "2026-09-12T09:07:07.563Z"
+}

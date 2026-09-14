@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.1.2--52587c3bb2b0",
+  "requirementId": "source-selection.1.2",
+  "hash": "52587c3bb2b0",
+  "verdict": "pass",
+  "summary": "select_source is shown replacing a suggestion with an entered checkout path, and accepting a GitHub URL and a Git bundle path through the same input path in other tests; an ignored replacement would surface as the suggestion's git_url and fail.",
+  "timestamp": "2026-09-12T09:22:28.665Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.1.1--f8db05447d2c",
+  "requirementId": "task-auth-readiness.1.1",
+  "hash": "f8db05447d2c",
+  "verdict": "pass",
+  "summary": "Claims raise NotReady during repair, and interleaved claim/begin races in both orders leave exactly one winner with consistent hold state.",
+  "timestamp": "2026-09-12T09:07:31.460Z"
+}

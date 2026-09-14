@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.14--bacc482e3a32",
+  "requirementId": "runtime-readiness.2.14",
+  "hash": "bacc482e3a32",
+  "verdict": "pass",
+  "summary": "Non-object bodies, invalid JSON and an invalid package-version field trigger specific malformed-identity diagnoses and address-check remedies. Accepting malformed data or replacing its remedy with a generic failure is rejected.",
+  "timestamp": "2026-09-12T09:34:22.088Z"
+}

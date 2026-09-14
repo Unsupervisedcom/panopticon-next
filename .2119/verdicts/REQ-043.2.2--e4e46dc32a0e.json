@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-043.2.2--e4e46dc32a0e",
+  "requirementId": "REQ-043.2.2",
+  "hash": "e4e46dc32a0e",
+  "verdict": "pass",
+  "summary": "After real service failure reporting, wrapped lifecycle/claim APIs must remain uncalled and the real runner command trace unchanged during mark/heal; even a runner probe fails.",
+  "timestamp": "2026-09-12T08:29:56.081Z"
+}

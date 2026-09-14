@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.9.1--832706ad980b",
+  "requirementId": "REQ-013.9.1",
+  "hash": "832706ad980b",
+  "verdict": "pass",
+  "summary": "After real review-creation rejection, free moves to draft, working, complete, and dropped are reloaded; a failure gate that traps the author in REVIEW would fail.",
+  "timestamp": "2026-09-12T09:09:54.980Z"
+}

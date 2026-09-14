@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.9--247715758fcf",
+  "requirementId": "runtime-readiness.4.9",
+  "hash": "247715758fcf",
+  "verdict": "pass",
+  "summary": "Missing-runner failures from fake transport, a real slow-drip server, and the real quickstart entrypoint all must name runner.log, and the path is derived from the same state directory the launcher writes the runner log into; a message naming only the service log fails the regex.",
+  "timestamp": "2026-09-12T09:57:55.494Z"
+}

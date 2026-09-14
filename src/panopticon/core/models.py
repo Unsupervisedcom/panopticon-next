@@ -105,6 +105,7 @@ class ContainerStatus(str, Enum):
 
     NONE = "–"  # terminal task — no container concept
     GATED = "gated"  # unclaimed, non-terminal — dependencies are not ready
+    PAUSED = "paused"  # explicit execution hold; foreground setup or retry is needed
     QUEUED = "queued"  # unclaimed, non-terminal — waiting for a runner to claim it
     HEALING = "healing"  # claimed, container gone, the runner is self-healing it (orphan respawn)
     CLAIMING = "claiming"
@@ -122,6 +123,7 @@ def compose_container_status(
     *,
     terminal: bool,
     dependencies_blocking: bool = False,
+    launch_paused: bool = False,
     claimed: bool,
     registered: bool,
     runner_live: bool,
@@ -138,6 +140,8 @@ def compose_container_status(
     """
     if terminal:
         return ContainerStatus.NONE
+    if launch_paused and not registered:
+        return ContainerStatus.FAILED if phase is LifecyclePhase.FAILED else ContainerStatus.PAUSED
     if not claimed and dependencies_blocking:
         return ContainerStatus.GATED
     if not claimed:
@@ -268,6 +272,8 @@ class Repo:
     #: an atomic ``<harness>:<model>`` pair; the model suffix remains harness-owned and opaque.
     reviewer_1: str | None = None
     reviewer_2: str | None = None
+    #: Admission gate while foreground setup changes this repository's credential binding.
+    launch_paused: bool = False
 
 
 @dataclass(frozen=True)
@@ -396,6 +402,9 @@ class Task:
     #: Tracking only — the state machine does not enforce this constraint.
     depends_on_task_ids: list[str] = field(default_factory=list)
     history: list[HistoryEntry] = field(default_factory=list)
+    #: Durable execution hold; conversational turn/state changes cannot release it.
+    launch_paused: bool = False
+    launch_pause_reason: str | None = None
 
     @property
     def provisioned(self) -> bool:

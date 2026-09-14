@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-004.3.1--d85e83ec0067",
+  "requirementId": "REQ-004.3.1",
+  "hash": "d85e83ec0067",
+  "verdict": "pass",
+  "summary": "Exact git argv pins --local identity config with no global write, and the real-git acceptance test asserts the operator's global identity is unchanged after re-preparation.",
+  "timestamp": "2026-09-12T09:06:30.082Z"
+}

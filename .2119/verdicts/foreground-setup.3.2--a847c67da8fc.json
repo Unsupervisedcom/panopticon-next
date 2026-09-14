@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.3.2--a847c67da8fc",
+  "requirementId": "foreground-setup.3.2",
+  "hash": "a847c67da8fc",
+  "verdict": "pass",
+  "summary": "Symlinked and 0644 destinations raise and remain byte- and link-identical.",
+  "timestamp": "2026-09-12T09:07:11.625Z"
+}

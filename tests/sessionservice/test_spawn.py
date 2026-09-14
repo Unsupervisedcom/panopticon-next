@@ -136,6 +136,75 @@ def test_prepare_uses_the_git_url_verbatim_as_origin() -> None:
     ]
 
 
+def test_prepare_converts_github_ssh_to_credential_free_https_for_repo_token(
+    tmp_path: Path,
+) -> None:
+    calls, run = _recording_runner()
+    secrets = tmp_path / "secrets"
+    secrets.mkdir(mode=0o700)
+    env_file = secrets / "repo.env"
+    env_file.write_text("GH_TOKEN=repo-token-test\n")
+    env_file.chmod(0o600)
+    repo = {
+        "id": "r1",
+        "git_url": "git@github.com:Acme/private.git",
+        "env_file": "repo.env",
+    }
+    cache = CloneCache("/cache", run=run, exists=lambda _p: False, makedirs=lambda _p: None)
+
+    prepare_workspace(
+        "t1",
+        repo,
+        cache=cache,
+        tasks_root="/tasks",
+        git=GitClones(run=run),
+        exists=lambda _p: False,
+        makedirs=lambda _p: None,
+        secrets_dir=secrets,
+        git_credential_run=run,
+    )
+
+    network_clone = calls[0]
+    assert network_clone[-3:] == [
+        "clone",
+        "https://github.com/Acme/private.git",
+        "/cache/r1",
+    ]
+    assert calls[3:7] == [
+        [
+            "git",
+            "-C",
+            "/tasks/t1",
+            "remote",
+            "set-url",
+            "origin",
+            "https://github.com/Acme/private.git",
+        ],
+        ["git", "-C", "/tasks/t1", "config", "--local", "credential.helper", ""],
+        [
+            "git",
+            "-C",
+            "/tasks/t1",
+            "config",
+            "--local",
+            "credential.https://github.com.helper",
+            "!gh auth git-credential",
+        ],
+        [
+            "git",
+            "-C",
+            "/tasks/t1",
+            "config",
+            "--local",
+            "credential.https://github.com.useHttpPath",
+            "true",
+        ],
+    ]
+    rendered_calls = "\n".join(part for command in calls for part in command)
+    assert "repo-token-test" not in rendered_calls
+    assert repo["git_url"] == "git@github.com:Acme/private.git"
+
+
 def test_prepare_creates_tasks_root_before_cloning(tmp_path: Path) -> None:
     tasks_root = tmp_path / "tasks"
     assert not tasks_root.exists()

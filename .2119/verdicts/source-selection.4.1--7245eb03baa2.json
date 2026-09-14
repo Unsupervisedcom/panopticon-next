@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.4.1--7245eb03baa2",
+  "requirementId": "source-selection.4.1",
+  "hash": "7245eb03baa2",
+  "verdict": "pass",
+  "summary": "Two checkouts both named widget must get ids starting 'widget-' that differ and are stable across calls; a basename-only id or a random suffix fails.",
+  "timestamp": "2026-09-12T09:22:46.981Z"
+}

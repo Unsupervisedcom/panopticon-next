@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.3.2--a8b61b0d2dfb",
+  "requirementId": "REQ-026.3.2",
+  "hash": "a8b61b0d2dfb",
+  "verdict": "pass",
+  "summary": "Real API reads preserve user turn and the two Actor values, while dashboard held rendering preserves both user and agent input turns; inventing a held actor or rewriting the turn fails.",
+  "timestamp": "2026-09-12T08:29:35.888Z"
+}

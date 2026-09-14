@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.4.11--050c6d5d6168",
+  "requirementId": "runtime-readiness.4.11",
+  "hash": "050c6d5d6168",
+  "verdict": "pass",
+  "summary": "Revised clause states an observable outcome (operation elapsed time vs supplied budget) rather than a mechanism. Real-transport tests reject slow name resolution (0.75s getaddrinfo vs 0.05s budget), a peer that accepts but never responds, and slow body drips on both identity and runner reads; deterministic tests check the budget handed to each operation is exact and shrinks by prior elapsed time. Connection setup has no hanging-connect test because loopback cannot produce one hermetically; it is covered only by the phase-agnostic whole-operation deadline that starts before connect. Elapsed assertions allow scheduling tolerance of a few hundred ms above budget, as the spec's nonnormative note permits.",
+  "timestamp": "2026-09-12T10:04:55.533Z"
+}

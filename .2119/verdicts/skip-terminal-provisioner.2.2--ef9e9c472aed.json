@@ -1,0 +1,8 @@
+{
+  "reviewId": "skip-terminal-provisioner.2.2--ef9e9c472aed",
+  "requirementId": "skip-terminal-provisioner.2.2",
+  "hash": "ef9e9c472aed",
+  "verdict": "pass",
+  "summary": "Source HEAD, show-ref, porcelain status, tracked and uncommitted files, and bundle sha256 are unchanged after cleanup.",
+  "timestamp": "2026-09-12T09:07:26.226Z"
+}

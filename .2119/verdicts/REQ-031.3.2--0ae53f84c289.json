@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.3.2--0ae53f84c289",
+  "requirementId": "REQ-031.3.2",
+  "hash": "0ae53f84c289",
+  "verdict": "pass",
+  "summary": "Orphan deferral asserts no spawn and unchanged zero budget; the nonzero-budget outage case separately retains the prior count through repeated deferrals.",
+  "timestamp": "2026-09-12T08:29:50.616Z"
+}

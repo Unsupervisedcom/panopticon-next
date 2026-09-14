@@ -1,0 +1,8 @@
+{
+  "reviewId": "skip-terminal-provisioner.2.3--f46bb41d5bcf",
+  "requirementId": "skip-terminal-provisioner.2.3",
+  "hash": "f46bb41d5bcf",
+  "verdict": "pass",
+  "summary": "Running backend gets docker rm --force and kill-session, the auth snapshot file is removed, and claimed_by is cleared, for both retained and disposable cases.",
+  "timestamp": "2026-09-12T09:07:27.194Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.9--e804a0bef67d",
+  "requirementId": "foreground-setup.2.9",
+  "hash": "e804a0bef67d",
+  "verdict": "pass",
+  "summary": "Ambient ANTHROPIC_API_KEY, CODEX_API_KEY and a personal CODEX_HOME do not make an empty repo transport configured.",
+  "timestamp": "2026-09-12T09:07:04.533Z"
+}

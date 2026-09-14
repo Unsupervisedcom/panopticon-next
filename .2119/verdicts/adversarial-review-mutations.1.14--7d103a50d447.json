@@ -1,0 +1,8 @@
+{
+  "reviewId": "adversarial-review-mutations.1.14--7d103a50d447",
+  "requirementId": "adversarial-review-mutations.1.14",
+  "hash": "7d103a50d447",
+  "verdict": "pass",
+  "summary": "Twenty-plus near-miss bodies (renamed or nested heading, inline mention, fenced or quoted section, misspelled or punctuated Outcome, outcome outside the section) are rejected and block stage completion; killed and survived both accepted.",
+  "timestamp": "2026-09-12T09:06:52.346Z"
+}

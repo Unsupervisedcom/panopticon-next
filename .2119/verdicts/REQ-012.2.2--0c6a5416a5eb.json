@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.2.2--0c6a5416a5eb",
+  "requirementId": "REQ-012.2.2",
+  "hash": "0c6a5416a5eb",
+  "verdict": "pass",
+  "summary": "Real task creation with no override or workflow pair asserts the non-default repository harness and model; falling back to the application harness or dropping the model fails.",
+  "timestamp": "2026-09-12T08:29:26.827Z"
+}

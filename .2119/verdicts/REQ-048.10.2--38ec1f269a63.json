@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.10.2--38ec1f269a63",
+  "requirementId": "REQ-048.10.2",
+  "hash": "38ec1f269a63",
+  "verdict": "pass",
+  "summary": "Actual and preflight requests span registered routes, allowed/disallowed/null origins, success-capable mutations, invalid auth and HTTP method variations; every response rejects allow-credentials true.",
+  "timestamp": "2026-09-12T09:14:33.026Z"
+}

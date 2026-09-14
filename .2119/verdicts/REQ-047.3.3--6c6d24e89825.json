@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.3.3--6c6d24e89825",
+  "requirementId": "REQ-047.3.3",
+  "hash": "6c6d24e89825",
+  "verdict": "pass",
+  "summary": "Parametrized over entry order and which lifespan ends first: the 'remaining' log line must show the ended app's tokens in clear and the still-active app's tokens redacted (including a partial redaction of a token that extends the other app's token), and all tokens clear once both end, so both premature disable and stale retention fail.",
+  "timestamp": "2026-09-12T09:58:35.880Z"
+}

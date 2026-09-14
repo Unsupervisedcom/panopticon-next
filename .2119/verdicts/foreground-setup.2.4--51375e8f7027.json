@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.4--51375e8f7027",
+  "requirementId": "foreground-setup.2.4",
+  "hash": "51375e8f7027",
+  "verdict": "pass",
+  "summary": "Empty explicit env with a saved connection and ambient key present returns not configured and leaves the file and reference untouched; corrupt connection raises.",
+  "timestamp": "2026-09-12T09:06:59.447Z"
+}

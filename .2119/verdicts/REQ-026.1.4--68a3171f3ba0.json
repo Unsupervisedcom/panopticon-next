@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.1.4--68a3171f3ba0",
+  "requirementId": "REQ-026.1.4",
+  "hash": "68a3171f3ba0",
+  "verdict": "pass",
+  "summary": "Real candidate filtering includes unclaimed nonterminal tasks with empty and absent dependency lists while excluding claimed and terminal controls; requiring a dependency fails.",
+  "timestamp": "2026-09-12T08:29:34.186Z"
+}

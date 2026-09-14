@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.1.4--909c4e96c4fe",
+  "requirementId": "runtime-readiness.1.4",
+  "hash": "909c4e96c4fe",
+  "verdict": "pass",
+  "summary": "Real subprocess and shell-pipeline children started under stale values for every controlled name show unselected controls absent (PYTHONPATH, task id, XDG inputs) rather than inherited, and a stale PYTHONPATH package cannot be imported by the real log sink.",
+  "timestamp": "2026-09-12T09:57:31.515Z"
+}

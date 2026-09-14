@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-025.1.1--5143ddaa6d03",
+  "requirementId": "REQ-025.1.1",
+  "hash": "5143ddaa6d03",
+  "verdict": "fail",
+  "summary": "Seven focused tests pass and reject missing slug, missing memo, incorrect brackets, and incorrect attach argv, but mocked runners never verify visible status-left text; the documented default status-left-length of 10 can truncate a both-present label without failing any covering test.",
+  "timestamp": "2026-09-12T14:48:39.705Z"
+}

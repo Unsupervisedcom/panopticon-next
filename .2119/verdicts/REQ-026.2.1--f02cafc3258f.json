@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.2.1--f02cafc3258f",
+  "requirementId": "REQ-026.2.1",
+  "hash": "f02cafc3258f",
+  "verdict": "pass",
+  "summary": "Real API cases cover active and DROPPED dependencies, and composer controls cover claimed and terminal boundaries; returning queued for a blocked unclaimed task fails.",
+  "timestamp": "2026-09-12T08:29:34.775Z"
+}

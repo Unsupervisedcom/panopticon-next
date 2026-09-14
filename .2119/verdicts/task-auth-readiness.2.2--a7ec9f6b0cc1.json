@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.2.2--a7ec9f6b0cc1",
+  "requirementId": "task-auth-readiness.2.2",
+  "hash": "a7ec9f6b0cc1",
+  "verdict": "pass",
+  "summary": "Real service/store tests reject explicit retries for existing and newly created tasks during repository setup, then allow retry after setup finishes; an authorized HTTP retry of a failed paused task must return 409 without changing task or repository state. Accepting retry during repair or mutating state before rejection fails these assertions; no mocks bypass admission.",
+  "timestamp": "2026-09-12T14:49:41.975Z"
+}

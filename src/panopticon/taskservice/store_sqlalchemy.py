@@ -33,6 +33,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     UniqueConstraint,
     case,
+    false,
     func,
     select,
     update,
@@ -100,6 +101,7 @@ class _RepoRow(_Base):
     name: Mapped[str]
     git_url: Mapped[str]
     default_base: Mapped[str]
+    launch_paused: Mapped[bool] = mapped_column(default=False, server_default=false())
     env_file: Mapped[str | None] = mapped_column(default=None)
     image_layer_file: Mapped[str | None] = mapped_column(default=None)
     capabilities: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -119,6 +121,7 @@ class _RepoRow(_Base):
             name=self.name,
             git_url=self.git_url,
             default_base=self.default_base,
+            launch_paused=self.launch_paused,
             env_file=self.env_file,
             image_layer_file=self.image_layer_file,
             capabilities=dict(self.capabilities or {}),
@@ -140,6 +143,7 @@ class _RepoRow(_Base):
             name=repo.name,
             git_url=repo.git_url,
             default_base=repo.default_base,
+            launch_paused=repo.launch_paused,
             env_file=repo.env_file,
             image_layer_file=repo.image_layer_file,
             capabilities=dict(repo.capabilities),
@@ -164,6 +168,8 @@ class _TaskRow(_Base):
     state: Mapped[str]
     turn: Mapped[str]
     blocked: Mapped[bool] = mapped_column(default=False)
+    launch_paused: Mapped[bool] = mapped_column(default=False, server_default=false())
+    launch_pause_reason: Mapped[str | None] = mapped_column(default=None)
     attention: Mapped[bool] = mapped_column(default=False)
     memo: Mapped[str | None] = mapped_column(default=None)
     initial_prompt: Mapped[str | None] = mapped_column(default=None)
@@ -199,6 +205,8 @@ class _TaskRow(_Base):
             state=self.state,
             turn=Actor(self.turn),
             blocked=self.blocked,
+            launch_paused=self.launch_paused,
+            launch_pause_reason=self.launch_pause_reason,
             attention=self.attention,
             memo=self.memo,
             initial_prompt=self.initial_prompt,
@@ -231,6 +239,8 @@ class _TaskRow(_Base):
             state=task.state,
             turn=task.turn.value,
             blocked=task.blocked,
+            launch_paused=task.launch_paused,
+            launch_pause_reason=task.launch_pause_reason,
             attention=task.attention,
             memo=task.memo,
             initial_prompt=task.initial_prompt,
@@ -493,6 +503,36 @@ class SqlAlchemyStore(Store):
             row.honesty_reviewer = repo.honesty_reviewer
             row.reviewer_1 = repo.reviewer_1
             row.reviewer_2 = repo.reviewer_2
+
+    async def _set_repo_launch_pause(
+        self, repo_id: str, paused: bool, task_ids: Sequence[str]
+    ) -> None:
+        async with self._session.begin() as s:
+            row = await s.get(_RepoRow, repo_id)
+            if row is None:
+                raise NotFound(f"repo {repo_id!r} does not exist")
+            row.launch_paused = paused
+            if task_ids:
+                await s.execute(
+                    update(_TaskRow)
+                    .where(_TaskRow.repo_id == repo_id, _TaskRow.id.in_(task_ids))
+                    .values(
+                        launch_paused=True,
+                        launch_pause_reason="Setup paused this task; retry it after setup.",
+                    )
+                )
+
+    async def _set_task_launch_pause(
+        self, task_id: str, paused: bool, reason: str | None, *, release_claim: bool
+    ) -> None:
+        async with self._session.begin() as s:
+            row = await s.get(_TaskRow, task_id)
+            if row is None:
+                raise NotFound(f"task {task_id!r} does not exist")
+            row.launch_paused = paused
+            row.launch_pause_reason = reason
+            if release_claim:
+                row.claimed_by = None
 
     async def _delete_repo(self, repo_id: str) -> None:
         async with self._session.begin() as s:

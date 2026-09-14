@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.1.2--5c8a7e0e3e36",
+  "requirementId": "REQ-054.1.2",
+  "hash": "5c8a7e0e3e36",
+  "verdict": "pass",
+  "summary": "Live journey installs the hash-pinned wheel into a fresh pipx home with no panopticon on PATH beforehand, proves a fresh login shell resolves the pipx executable, and runs --version/doctor from a non-checkout cwd; deterministic run only skips this test for lack of live config, no mock bypasses the install.",
+  "timestamp": "2026-09-12T09:21:14.370Z"
+}

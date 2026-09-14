@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.8.1--215498cd15aa",
+  "requirementId": "REQ-048.8.1",
+  "hash": "215498cd15aa",
+  "verdict": "fail",
+  "summary": "The complete REST/MCP action-pair matrix uses only unencoded generated ids and plain artifact URIs. A decoder that treats an encoded target as a different task could pass; add equivalent percent-encoded targets for self, descendants, unrelated and missing cases through both transports.",
+  "timestamp": "2026-09-12T09:14:29.870Z"
+}

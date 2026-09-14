@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.5.1--e0ef347c9211",
+  "requirementId": "REQ-032.5.1",
+  "hash": "e0ef347c9211",
+  "verdict": "pass",
+  "summary": "Resumed argv suffix is compared with a test-owned literal list of all three session flags; first-run tests use the same independent literal contract, rejecting missing or extra resume flags.",
+  "timestamp": "2026-09-12T09:10:02.005Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.1.2--bb4b6357610e",
+  "requirementId": "REQ-027.1.2",
+  "hash": "bb4b6357610e",
+  "verdict": "pass",
+  "summary": "Real snooze writes preserve offset, microseconds, and naive timestamp spelling; timestamp and null writes return persisted values without changing nondefault state, turn, or blocked.",
+  "timestamp": "2026-09-12T08:29:41.545Z"
+}

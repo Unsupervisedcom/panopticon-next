@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.5.3--a04715d9c7ba",
+  "requirementId": "source-selection.5.3",
+  "hash": "a04715d9c7ba",
+  "verdict": "pass",
+  "summary": "file:///tmp/widget, /tmp/widget, /tmp/widget.bundle and a gitlab remote must return exactly ('local-git-self-reviewed',), so adding any GitHub workflow to these sources fails.",
+  "timestamp": "2026-09-12T09:22:57.104Z"
+}

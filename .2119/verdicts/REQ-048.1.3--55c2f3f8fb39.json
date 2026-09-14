@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.1.3--55c2f3f8fb39",
+  "requirementId": "REQ-048.1.3",
+  "hash": "55c2f3f8fb39",
+  "verdict": "pass",
+  "summary": "The same allowed-origin GET /tasks succeeds with a fleet reader and returns 403 with either fleet writer or task capability, rejecting accidental cross-origin privilege widening.",
+  "timestamp": "2026-09-12T09:14:17.913Z"
+}

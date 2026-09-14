@@ -65,5 +65,9 @@ class SetupRepo(Workflow):
         script checks for an existing credential, optionally collects a new one, and — whatever route
         the operator takes — ends with a summary and a prompt to press Enter, which advances the task
         to COMPLETE over REST and returns them to the dashboard."""
+        return '"$PANOPTICON_PYTHON" -m panopticon.terminal.legacy_setup'
+
+    def legacy_script(self) -> str:
+        """The supported legacy prompts, executed only by the locked compatibility runner."""
         pi_vars = " ".join(API_KEY_ENV_VARS)
         return f"PANOPTICON_PI_API_KEY_ENV_VARS='{pi_vars}'\n{_LIB}\n{_SCRIPT}"

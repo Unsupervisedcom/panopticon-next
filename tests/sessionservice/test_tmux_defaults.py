@@ -5,8 +5,10 @@ actually prove the config text is valid tmux syntax and lands correctly on a fre
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -15,6 +17,7 @@ from panopticon.sessionservice.tmux_defaults import (
     HISTORY_LIMIT,
     clipboard_tool,
     default_config_path,
+    new_session_argv,
     server_default_config_text,
     write_default_config,
 )
@@ -172,6 +175,48 @@ def test_write_default_config_overwrites_via_atomic_rename_leaving_no_temp_files
 # -- integration: a real tmux server, from a genuinely fresh socket -----------------
 
 _HAVE_TMUX = bool(shutil.which("tmux"))
+
+
+# 2119: REQ-030.1.1
+# 2119: REQ-030.3.1
+@pytest.mark.skipif(not _HAVE_TMUX, reason="needs tmux")
+def test_production_new_session_repairs_defaults_on_an_existing_server(tmp_path: Path) -> None:
+    del tmp_path
+    tmux_tmpdir = Path(tempfile.mkdtemp(prefix="pn-tmux-", dir="/tmp"))
+    tmux_tmpdir.chmod(0o700)
+    environment = {"PATH": os.environ["PATH"], "TMUX_TMPDIR": str(tmux_tmpdir)}
+    socket = "existing-defaults"
+
+    def tmux(*arguments: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["tmux", "-L", socket, *arguments],
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+
+    try:
+        assert tmux("new-session", "-d", "-s", "keeper", "sleep", "30").returncode == 0
+        assert tmux("set-option", "-g", "mouse", "off").returncode == 0
+        assert tmux("set-option", "-g", "history-limit", "123").returncode == 0
+        assert tmux("set-option", "-g", "set-clipboard", "off").returncode == 0
+        assert tmux("unbind-key", "-T", "root", "DoubleClick1Pane").returncode == 0
+
+        created = tmux(*new_session_argv(socket, "-d", "-s", "corrected", "sleep", "30"))
+        assert created.returncode == 0, created.stderr
+        assert tmux("show-options", "-g", "mouse").stdout.strip() == "mouse on"
+        assert tmux("show-options", "-g", "set-clipboard").stdout.strip() == "set-clipboard on"
+        assert (
+            tmux("display-message", "-t", "corrected", "-p", "#{history_limit}").stdout.strip()
+            == HISTORY_LIMIT
+        )
+        binding = tmux("list-keys", "-T", "root").stdout
+        assert any(
+            "DoubleClick1Pane" in line and "select-word" in line for line in binding.splitlines()
+        )
+    finally:
+        tmux("kill-server")
+        shutil.rmtree(tmux_tmpdir)
 
 
 # 2119: REQ-030.1.1

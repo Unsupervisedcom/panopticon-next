@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.4.3--57f3d1a3d0c4",
+  "requirementId": "REQ-026.4.3",
+  "hash": "57f3d1a3d0c4",
+  "verdict": "pass",
+  "summary": "REST tests seed a nonempty prior dependency list and reload it after self-cycle, missing-target, and indirect-cycle rejection; concurrent cycle attempts also verify the rejected writer preserves its prior list.",
+  "timestamp": "2026-09-12T09:13:39.015Z"
+}

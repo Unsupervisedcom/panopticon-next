@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.5--a92cd0793f25",
+  "requirementId": "runtime-readiness.2.5",
+  "hash": "a92cd0793f25",
+  "verdict": "pass",
+  "summary": "A health-shaped 200 body cannot satisfy identity validation, and a real endpoint with successful health but missing identity causes integrated failure. Health success alone is therefore rejected.",
+  "timestamp": "2026-09-12T09:34:24.904Z"
+}

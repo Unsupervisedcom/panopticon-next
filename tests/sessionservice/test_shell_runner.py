@@ -203,15 +203,19 @@ def test_minify_shell_drops_full_line_comments_and_blanks_only() -> None:
 
 
 def test_spawn_spills_a_large_script_to_avoid_the_imsg_cap(tmp_path: Path) -> None:
-    # tmux sends the whole new-session command to its server over imsg (16 KiB cap); a heavily
-    # commented workflow script + the task lib can exceed it and fail the spawn, so the assembled
-    # command drops whole-line comments/blanks. The real setup-repo script is the motivating case.
-    from panopticon.workflows import SetupRepo
+    # Exercise a workflow larger than tmux's 16 KiB imsg cap even after comment removal,
+    # independently of the size of any built-in workflow.
+    script = "\n".join(
+        ["# Render a large report", "", "render_report() {"]
+        + [f"printf '%s\\n' 'report row {index:04d} with source data'" for index in range(600)]
+        + ["}", "", "# Run the workflow", "render_report"]
+    )
+    assert len(_minify_shell(script).encode()) > 16384
 
     rec = _Recorder()
     ShellRunner("http://svc:8000", script_dir=tmp_path, run=rec).spawn(
         "t1",
-        script=SetupRepo().shell_script(),
+        script=script,
         git_url="https://github.com/o/r.git",
         repo_name="o/r",
     )
@@ -220,7 +224,7 @@ def test_spawn_spills_a_large_script_to_avoid_the_imsg_cap(tmp_path: Path) -> No
     spilled = script_path.read_text()
     # no whole-line comments survive, but the code (functions, exports) does
     assert not [ln for ln in spilled.splitlines() if ln.lstrip().startswith("#")]
-    assert "store_env_token" in spilled and "panopticon_advance()" in spilled
+    assert _minify_shell(script) in spilled and "panopticon_advance()" in spilled
     # tmux receives only a tiny wrapper, which removes the private spill file when the pane exits.
     assert str(script_path) in command and "trap 'rm -f" in command
     assert len(command.encode()) < 16384
@@ -279,7 +283,7 @@ def test_spawn_loads_every_shipped_tmux_server_default_via_dash_f_on_its_own_new
     assert tmux_new[:3] == ["tmux", "-L", "panopticon"]
     assert tmux_new[3] == "-f"
     config_path = Path(tmux_new[4])
-    assert tmux_new[5] == "new-session"
+    assert tmux_new.index("source-file") < tmux_new.index("new-session")
     assert config_path.read_text() == server_default_config_text(clipboard=None)
 
 

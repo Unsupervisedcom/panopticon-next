@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.2.10--1b5659ed72c8",
+  "requirementId": "foreground-setup.2.10",
+  "hash": "1b5659ed72c8",
+  "verdict": "pass",
+  "summary": "Output must say configured locally and must not contain verified, authenticated or logged in, with sockets and subprocess forbidden.",
+  "timestamp": "2026-09-12T09:07:05.587Z"
+}

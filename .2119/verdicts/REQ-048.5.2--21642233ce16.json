@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.5.2--21642233ce16",
+  "requirementId": "REQ-048.5.2",
+  "hash": "21642233ce16",
+  "verdict": "pass",
+  "summary": "The capability creates an artifact, lists its name, reads exact bytes, replaces them and reads the replacement; sibling read/write/create attempts are denied and preserve sibling bytes.",
+  "timestamp": "2026-09-12T09:14:24.474Z"
+}

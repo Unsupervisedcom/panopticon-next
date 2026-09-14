@@ -733,8 +733,9 @@ def test_integrated_stack_explicitly_exposes_service_to_linux_containers(
 
     terminal_cli._start_sessions(run=record)
     service = next(call for call in calls if "new-session" in call and "service" in call)
-    command = service[-1]
-    service_argv = shlex.split(command.split(" 2>&1", 1)[0])
+    command = shlex.split(service[-1])
+    assert command[-3:-1] == ["/bin/sh", "-c"]
+    service_argv = shlex.split(command[-1].split(" 2>&1", 1)[0])
     assert service_argv.count("--host") == 1
     assert service_argv[service_argv.index("--host") + 1] == "0.0.0.0"
 
@@ -757,20 +758,16 @@ def test_integrated_sessions_pin_current_auth_environment(
     assert set(commands) == {"service", "runner"}
     for command in commands.values():
         command_argv = shlex.split(command)
-        assert command_argv[:7] == [
-            "env",
-            "-u",
+        for name in [
             "PANOPTICON_SERVICE_AUTH_FILE",
-            "-u",
             "PANOPTICON_SERVICE_AUTH_MODE",
-            "-u",
             "PANOPTICON_CONFIG",
-        ]
-        assert command_argv[7:10] == [
-            "PANOPTICON_SERVICE_AUTH_FILE=current-auth.json",
-            "PANOPTICON_SERVICE_AUTH_MODE=enforced",
-            "PANOPTICON_CONFIG=/current/config",
-        ]
+        ]:
+            position = command_argv.index(name)
+            assert command_argv[position - 1] == "-u"
+        assert "PANOPTICON_SERVICE_AUTH_FILE=current-auth.json" in command_argv
+        assert "PANOPTICON_SERVICE_AUTH_MODE=enforced" in command_argv
+        assert "PANOPTICON_CONFIG=/current/config" in command_argv
 
     for name in [
         "PANOPTICON_SERVICE_AUTH_FILE",
@@ -786,16 +783,14 @@ def test_integrated_sessions_pin_current_auth_environment(
     assert set(cleared_commands) == {"service", "runner"}
     for command in cleared_commands.values():
         command_argv = shlex.split(command)
-        assert command_argv[:7] == [
-            "env",
-            "-u",
+        for name in [
             "PANOPTICON_SERVICE_AUTH_FILE",
-            "-u",
             "PANOPTICON_SERVICE_AUTH_MODE",
-            "-u",
             "PANOPTICON_CONFIG",
-        ]
-        assert not any(argument.startswith("PANOPTICON_") for argument in command_argv[7:])
+        ]:
+            position = command_argv.index(name)
+            assert command_argv[position - 1] == "-u"
+            assert not any(argument.startswith(f"{name}=") for argument in command_argv)
 
     monkeypatch.setenv("PANOPTICON_SERVICE_AUTH_FILE", "only-current-auth.json")
     calls.clear()

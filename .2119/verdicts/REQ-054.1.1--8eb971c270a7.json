@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.1.1--8eb971c270a7",
+  "requirementId": "REQ-054.1.1",
+  "hash": "8eb971c270a7",
+  "verdict": "pass",
+  "summary": "README and walkthrough must contain the exact unpinned pipx command on its own line before panopticon quickstart, with pinned, git+ and other pipx installs rejected.",
+  "timestamp": "2026-09-12T09:09:24.043Z"
+}

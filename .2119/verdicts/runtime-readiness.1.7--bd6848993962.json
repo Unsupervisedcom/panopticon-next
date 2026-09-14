@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.1.7--bd6848993962",
+  "requirementId": "runtime-readiness.1.7",
+  "hash": "bd6848993962",
+  "verdict": "pass",
+  "summary": "Resolved environment is asserted to carry service URL and port, container callback URL, runtime identity, PATH, TMPDIR and TMUX_TMPDIR, Panopticon/XDG storage paths, and Docker settings; an in-memory mutant dropping the runner id from the resolved set is caught by the real child-execution equality check.",
+  "timestamp": "2026-09-12T09:57:33.550Z"
+}

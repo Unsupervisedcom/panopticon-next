@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.9.1--233fe8d8f5ff",
+  "requirementId": "REQ-048.9.1",
+  "hash": "233fe8d8f5ff",
+  "verdict": "pass",
+  "summary": "Absent and empty read arrays start successfully with a valid writer; absent, empty and non-array write fields fail before serving, rejecting accidental read-required or write-optional parsing.",
+  "timestamp": "2026-09-12T09:14:31.439Z"
+}

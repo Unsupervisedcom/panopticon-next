@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.3.1--5ca687d623b2",
+  "requirementId": "runtime-readiness.3.1",
+  "hash": "5ca687d623b2",
+  "verdict": "pass",
+  "summary": "Cold-start ordering pins GET /identity before migrate and before any tmux call on the unreachable branch; a real legacy server and a real verified service each record the identity probe at the resolved address with migration forbidden, so skipping or misaddressing the probe is rejected.",
+  "timestamp": "2026-09-12T09:57:45.398Z"
+}

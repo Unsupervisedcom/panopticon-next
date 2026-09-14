@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.2.3--904304c50af1",
+  "requirementId": "task-auth-readiness.2.3",
+  "hash": "904304c50af1",
+  "verdict": "pass",
+  "summary": "Retried task keeps repo_id, initial_prompt, WORKING state and two-entry history.",
+  "timestamp": "2026-09-12T09:07:41.981Z"
+}

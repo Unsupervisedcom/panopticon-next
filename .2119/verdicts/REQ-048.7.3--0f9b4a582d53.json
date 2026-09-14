@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.7.3--0f9b4a582d53",
+  "requirementId": "REQ-048.7.3",
+  "hash": "0f9b4a582d53",
+  "verdict": "pass",
+  "summary": "Actual governed-child REST calls deny operations, transitions, state, drop, claims, provisioning, migration, lifecycle and both governor-clearing/reassignment; the independent action table rejects these for governed targets.",
+  "timestamp": "2026-09-12T09:14:28.760Z"
+}

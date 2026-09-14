@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.3.6--aa2fa1f4c873",
+  "requirementId": "runtime-readiness.3.6",
+  "hash": "aa2fa1f4c873",
+  "verdict": "pass",
+  "summary": "Authentication rejection, missing identity, malformed data, unsupported revision and a different instance each raise guard failures; integrated incompatible and legacy cases trap migration. Reporting permission for these unverified responses is rejected.",
+  "timestamp": "2026-09-12T09:34:30.634Z"
+}

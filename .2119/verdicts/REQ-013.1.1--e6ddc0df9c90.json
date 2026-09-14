@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-013.1.1--e6ddc0df9c90",
+  "requirementId": "REQ-013.1.1",
+  "hash": "e6ddc0df9c90",
+  "verdict": "pass",
+  "summary": "Real task-service advance and free-move tests count newly persisted review tasks; concurrent entry and three review rounds reject zero, duplicate, or reused workers.",
+  "timestamp": "2026-09-12T09:08:45.845Z"
+}

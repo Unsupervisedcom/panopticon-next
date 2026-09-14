@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-001.8.1--6ac5ef60831a",
+  "requirementId": "REQ-001.8.1",
+  "hash": "6ac5ef60831a",
+  "verdict": "pass",
+  "summary": "Real dashboard deletion input must emit the exact cannot-delete notice after mount notices are cleared; a silent refusal or mount-only notice fails.",
+  "timestamp": "2026-09-12T08:28:54.845Z"
+}

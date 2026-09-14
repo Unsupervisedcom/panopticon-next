@@ -555,6 +555,9 @@ class CredentialScopePolicy:
     def fleet_administration_rest_surfaces() -> set[tuple[str, str]]:
         return {
             ("POST", "/repos"),
+            ("POST", "/repos/{repo_id}/setup/begin"),
+            ("POST", "/repos/{repo_id}/setup/finish"),
+            ("POST", "/tasks/{task_id}/retry"),
             ("DELETE", "/repos/{repo_id}"),
             ("GET", "/workflow-files"),
             ("PUT", "/tasks/{task_id}/claim"),

@@ -1,0 +1,8 @@
+{
+  "reviewId": "skip-terminal-provisioner.2.4--4aff8fc49f1b",
+  "requirementId": "skip-terminal-provisioner.2.4",
+  "hash": "4aff8fc49f1b",
+  "verdict": "pass",
+  "summary": "DROPPED local-git-self-reviewed task's checkout is deleted by cleanup.",
+  "timestamp": "2026-09-12T09:07:28.293Z"
+}

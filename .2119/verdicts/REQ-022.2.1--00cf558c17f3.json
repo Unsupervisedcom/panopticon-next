@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-022.2.1--00cf558c17f3",
+  "requirementId": "REQ-022.2.1",
+  "hash": "00cf558c17f3",
+  "verdict": "pass",
+  "summary": "Word-boundary gh scan over every discovered layer plus an exact-bytes gate for the full shipped layer set rejects any reinstall spelling.",
+  "timestamp": "2026-09-12T09:06:35.110Z"
+}

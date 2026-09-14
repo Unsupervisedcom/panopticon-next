@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.5.1--db3b54b13170",
+  "requirementId": "runtime-readiness.5.1",
+  "hash": "db3b54b13170",
+  "verdict": "pass",
+  "summary": "Real verified service and runner reuse allows only the two exact session-presence probes and traps migration; separate session tests forbid new-session creation. Restarting healthy sessions is rejected.",
+  "timestamp": "2026-09-12T09:34:39.317Z"
+}

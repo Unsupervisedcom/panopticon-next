@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.3.1--0bfac1a54dd4",
+  "requirementId": "source-selection.3.1",
+  "hash": "0bfac1a54dd4",
+  "verdict": "pass",
+  "summary": "A whitespace-padded local path must be equivalent to its canonical form and a padded GitHub URL to its scp spelling; missing trim would return False and fail; reuse of an equivalent stored source is asserted via setup_repo returning the existing id.",
+  "timestamp": "2026-09-12T09:22:40.836Z"
+}

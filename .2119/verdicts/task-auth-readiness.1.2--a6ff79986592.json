@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.1.2--a6ff79986592",
+  "requirementId": "task-auth-readiness.1.2",
+  "hash": "a6ff79986592",
+  "verdict": "pass",
+  "summary": "Both unclaimed nonterminal tasks are launch_paused immediately after begin_repo_setup.",
+  "timestamp": "2026-09-12T09:07:32.454Z"
+}

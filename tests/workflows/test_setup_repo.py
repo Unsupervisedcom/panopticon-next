@@ -32,7 +32,7 @@ WF = SetupRepo()
 # `script` are never invoked.
 _LIB = (importlib.resources.files("panopticon.workflows") / "setup_repo_lib.sh").read_text()
 _TASK_LIB = (importlib.resources.files("panopticon.sessionservice") / "task_lib.sh").read_text()
-_FULL_SCRIPT = WF.shell_script()
+_FULL_SCRIPT = WF.legacy_script()
 
 
 def _shell_function(name: str) -> str:
@@ -120,7 +120,7 @@ def test_running_has_no_responsibilities() -> None:
 
 
 def test_shell_script_runs_setup_repo_and_advances() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     assert "claude setup-token" in script
     # completes the task via the panopticon shell lib (loaded by the shell runner), not raw curl
     assert "panopticon_advance" in script
@@ -311,7 +311,7 @@ dispatch_harness_auth outfitter || echo unsupported
 
         lines = _sh(body).splitlines()
         assert len(lines) == 2
-        assert "Outfitter uses Pi credentials" in lines[0]
+        assert lines[0] == "Outfitter uses Pi credentials."
         assert lines[1] == "pi-auth-flow"
         profiles = credential_path / "outfitter" / "profiles"
         assert profiles.is_dir()
@@ -369,7 +369,7 @@ store_token() {{ echo stored:$1; }}
         pi_lines = _sh(f"{common}\nsetup_pi_auth").splitlines()
         outfitter_lines = _sh(f"{common}\ndispatch_harness_auth outfitter").splitlines()
 
-        assert "Outfitter uses Pi credentials" in outfitter_lines[0]
+        assert outfitter_lines[0] == "Outfitter uses Pi credentials."
         assert outfitter_lines[1:] == pi_lines
 
 
@@ -595,7 +595,7 @@ def test_pi_auth_helpers_use_the_adapter_api_key_vars(tmp_path: Path) -> None:
 
 
 def test_shell_script_pi_flow_lists_adapter_vars_and_reads_hidden_input() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     assert f"PANOPTICON_PI_API_KEY_ENV_VARS='{' '.join(API_KEY_ENV_VARS)}'" in script
     assert "read -r -s -p" in script
     assert "read_secret 'Provider API key (input hidden): '" in script
@@ -603,7 +603,7 @@ def test_shell_script_pi_flow_lists_adapter_vars_and_reads_hidden_input() -> Non
 
 
 def test_shell_script_codex_flow_logs_in_copies_private_auth_and_updates_repo() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     assert "Paste a Codex credential for task containers" in script
     assert 'store_token "$_sca_var" "$_sca_val"' in script
     assert 'store_token "$codex_var" "$codex_key"' in script
@@ -615,7 +615,7 @@ def test_shell_script_codex_flow_logs_in_copies_private_auth_and_updates_repo() 
 
 
 def test_shell_script_checks_for_an_existing_credential_and_guides_the_operator() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     # branches on an already-configured credential, checked against the **env-file** (not the sourced
     # env) so a host-only token isn't mis-reported as configured
     assert "CLAUDE_CODE_OAUTH_TOKEN" in script and "ANTHROPIC_API_KEY" in script
@@ -626,7 +626,7 @@ def test_shell_script_checks_for_an_existing_credential_and_guides_the_operator(
 
 
 def test_shell_script_opens_with_the_credentials_goal_intro() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     # begins by explaining what happens and that the operator stays in control: task containers use
     # per-repo credentials (not the operator's own session), and they can opt out.
     assert "per-repo credentials" in script
@@ -637,7 +637,7 @@ def test_shell_script_opens_with_the_credentials_goal_intro() -> None:
 
 
 def test_shell_script_shows_the_dashboard_hint_first() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     # the return-to-dashboard hint is echoed up front, before the credential check / any prompts.
     # (The sourceable helpers are prepended and mention CLAUDE_CODE_OAUTH_TOKEN in their bodies, so
     # anchor on the interactive flow's credential *check* — `${CLAUDE_CODE_OAUTH_TOKEN:-}` — which
@@ -647,7 +647,7 @@ def test_shell_script_shows_the_dashboard_hint_first() -> None:
 
 
 def test_shell_script_captures_and_writes_the_minted_token() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     # captures the interactive `claude setup-token` in a pty (capture_claude_setup_token, in the
     # sourced lib) so its output can be read back — the `-c '<command>' <file>` (util-linux/BusyBox)
     # and `<file> <command>...` (BSD, no `-c`) forms both appear, gated on script_supports_dash_c
@@ -672,7 +672,7 @@ def test_shell_script_captures_and_writes_the_minted_token() -> None:
 
 
 def test_shell_script_converges_on_a_summary_and_completes_on_a_final_enter() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     # every route ends with a summary + a complete-on-Enter prompt
     assert "Summary:" in script
     assert "Press Enter to complete this task and return to the dashboard" in script
@@ -1069,7 +1069,7 @@ def test_store_oauth_token_keeps_an_already_commented_out_token(tmp_path: Path) 
 
 
 def test_shell_script_summarizes_the_repo_and_setup_up_front() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     # opens with two bulleted lists: what we know about the repo (name + source), and what setting it
     # up entails, driven by the repo env vars the shell runner injects and the source classification.
     assert "This repo:" in script and "To set up:" in script
@@ -1079,7 +1079,7 @@ def test_shell_script_summarizes_the_repo_and_setup_up_front() -> None:
 
 
 def test_shell_script_sets_up_the_github_token_for_github_repos() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     # gated on the repo being a GitHub remote (local checkouts skip the whole GH step)
     assert "is_github_url" in script and "PANOPTICON_GIT_URL" in script
     # adopts a GH_TOKEN from the environment or lets the operator paste one — it does not mint one
@@ -1095,7 +1095,7 @@ def test_shell_script_sets_up_the_github_token_for_github_repos() -> None:
 
 
 def test_shell_script_offers_adopt_paste_and_default_no_consent() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     # each credential can be adopted from the operator's env or pasted inline (fast path for an
     # already-authenticated operator — no cancel-and-restart)
     assert "Paste a Claude token" in script and "Paste a Codex credential" in script
@@ -1108,7 +1108,7 @@ def test_shell_script_offers_adopt_paste_and_default_no_consent() -> None:
 
 
 def test_shell_script_closing_summary_is_bulleted() -> None:
-    script = WF.shell_script()
+    script = WF.legacy_script()
     # each step records its outcome as a bullet; the closing summary prints them
     assert "add_summary" in script
     assert 'summary="  • ' in script  # bullet-prefixed accumulation

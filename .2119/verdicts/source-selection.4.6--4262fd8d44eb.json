@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.4.6--4262fd8d44eb",
+  "requirementId": "source-selection.4.6",
+  "hash": "4262fd8d44eb",
+  "verdict": "pass",
+  "summary": "client.updates must equal exactly one enabled_workflows update for the equivalent repo and the same-basename test's update_repo raises if called, so any change to another repository's fields fails.",
+  "timestamp": "2026-09-12T09:22:51.935Z"
+}

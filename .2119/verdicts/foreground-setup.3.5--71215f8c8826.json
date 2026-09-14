@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.3.5--71215f8c8826",
+  "requirementId": "foreground-setup.3.5",
+  "hash": "71215f8c8826",
+  "verdict": "pass",
+  "summary": "Login run kwargs are exactly check=False with no capture, and the real pty session never echoes the pasted token.",
+  "timestamp": "2026-09-12T09:07:14.789Z"
+}

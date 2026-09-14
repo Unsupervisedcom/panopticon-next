@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-047.1.1--0fc5caf7c6f4",
+  "requirementId": "REQ-047.1.1",
+  "hash": "0fc5caf7c6f4",
+  "verdict": "pass",
+  "summary": "Unit test splits plaintext containing two occurrences each of a long and a short token at every byte boundary and byte-by-byte, asserting exact '[redacted]' output and drained pending; transport test drives the real create_app redaction wrapper with a token split across ASGI chunks and checks the body and content-length removal, so length-preserving or boundary-blind redaction fails.",
+  "timestamp": "2026-09-12T09:58:28.880Z"
+}

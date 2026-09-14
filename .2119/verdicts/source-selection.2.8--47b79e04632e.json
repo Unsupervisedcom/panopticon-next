@@ -1,0 +1,8 @@
+{
+  "reviewId": "source-selection.2.8--47b79e04632e",
+  "requirementId": "source-selection.2.8",
+  "hash": "47b79e04632e",
+  "verdict": "pass",
+  "summary": "Six credential-bearing spellings (https user-info, user:password, query, ssh password, fragment, scp query) must be rejected with the generic message and neither 'token' nor 'secret' may appear in output; the safe follow-up entry must be selected; a credential-bearing cwd origin must fall back to the path without echo.",
+  "timestamp": "2026-09-12T09:22:39.855Z"
+}
