@@ -47,4 +47,6 @@ makes.
    | Codex | `UserPromptSubmit` | `agent` |
    | Pi | `agent_settled` after success, retry exhaustion, or abort | `user` |
    | Pi | `agent_start` (including autonomous starts) | `agent` |
-   | Pi | `input` | `agent` |
+   | Pi | `input` during an active run | `agent` |
+   | Pi | idle `input` with a selected model and configured auth | `agent` |
+   | Pi | idle `input` with no selected model or no configured auth | `user` |

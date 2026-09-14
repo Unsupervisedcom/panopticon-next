@@ -185,7 +185,7 @@ const input = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const args = parseArgs(input.argv.slice(1));
 const dir = mkdtempSync(join(tmpdir(), 'pi-turn-test-'));
 const records = [], turns = [];
-let turn = 'user', requests = 0, session, abort;
+let turn = 'user', requests = 0, session, abort, promptError, auth, registry;
 const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
@@ -199,11 +199,17 @@ const server = http.createServer(async (req, res) => {
     }
     requests++;
     records.push({ type: 'request', turn });
+    if (input.scenario === 'queued-logout' && requests === 1) {
+        auth.logout('synthetic');
+        registry.refresh();
+        await session.prompt('Queued while still streaming.', { streamingBehavior: 'followUp' });
+        records.push({ type: 'queued_input', turn, isIdle: session.isIdle });
+    }
     if (input.scenario === 'abort') {
         abort = session.abort();
         return;
     }
-    if (input.scenario !== 'autonomous' && (requests === 1 || input.scenario === 'exhaustion')) {
+    if (['success', 'exhaustion'].includes(input.scenario) && (requests === 1 || input.scenario === 'exhaustion')) {
         res.writeHead(500, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: { message: 'synthetic temporary server error' } }));
         return;
@@ -226,15 +232,19 @@ try {
     const settings = SettingsManager.inMemory({ retry: {
         enabled: true, maxRetries: 1, baseDelayMs: 1, provider: { maxRetries: 0 }
     }, compaction: { enabled: false } });
-    const auth = AuthStorage.inMemory();
+    auth = AuthStorage.inMemory();
+    const storedAuth = ['logout', 'stored-auth', 'queued-logout'].includes(input.scenario);
+    if (storedAuth) auth.set('synthetic', { type: 'api_key', key: 'synthetic-provider-key' });
+    process.env.PI_SYNTHETIC_API_KEY = 'synthetic-provider-key';
     const models = join(dir, 'models.json');
     writeFileSync(join(dir, 'proof.txt'), 'synthetic tool result');
     writeFileSync(models, JSON.stringify({ providers: { synthetic: {
         baseUrl: `${process.env.PANOPTICON_SERVICE_URL}/v1`, api: 'openai-completions',
-        apiKey: 'synthetic-provider-key', models: [{ id: 'mock', reasoning: false,
+        ...(storedAuth ? {} : { apiKey: input.scenario === 'env-auth' ? '${PI_SYNTHETIC_API_KEY}' : 'synthetic-provider-key' }),
+        models: [{ id: 'mock', reasoning: false,
             contextWindow: 8192, maxTokens: 128 }]
     } } }));
-    const registry = new ModelRegistry(auth, models);
+    registry = new ModelRegistry(auth, models);
     const loader = new DefaultResourceLoader({ cwd: dir, agentDir: dir,
         settingsManager: settings, additionalExtensionPaths: args.extensions,
         noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true,
@@ -245,19 +255,29 @@ try {
         modelRegistry: registry, model: registry.find('synthetic', 'mock'),
         settingsManager: settings, sessionManager: SessionManager.inMemory(dir),
         resourceLoader: loader, tools: [createReadTool(dir)] }));
+    const initiallyAuthenticated = registry.hasConfiguredAuth(session.model);
     session.subscribe(event => {
         if (['auto_retry_start', 'agent_settled', 'tool_execution_start', 'tool_execution_end'].includes(event.type)) {
             records.push({ type: event.type, turn });
         }
     });
-    if (input.scenario === 'autonomous') {
+    if (input.scenario === 'logout') {
+        auth.logout('synthetic');
+        registry.refresh();
+        try {
+            await session.prompt('Synthetic response only.', {
+                preflightResult: ok => records.push({ type: 'preflight', ok, turn })
+            });
+        } catch (error) { promptError = error.message; }
+    } else if (input.scenario === 'autonomous') {
         await session.sendCustomMessage({ customType: 'synthetic', content: 'Synthetic response only.',
             display: false }, { triggerTurn: true });
     } else {
         await session.prompt('Synthetic response only.');
     }
     if (abort) await abort;
-    console.log(JSON.stringify({ records, turns, requests,
+    console.log(JSON.stringify({ records, turns, requests, initiallyAuthenticated,
+        configuredAuth: registry.hasConfiguredAuth(session.model), isIdle: session.isIdle, promptError,
         stopReason: session.messages.filter(message => message.role === 'assistant').at(-1)?.stopReason }));
 } finally {
     session?.dispose();
@@ -268,8 +288,21 @@ try {
 """
 
 
+# 2119: REQ-008.6.1
 # 2119: REQ-016.3.1
-@pytest.mark.parametrize("scenario", ["success", "exhaustion", "abort", "autonomous"])
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "success",
+        "exhaustion",
+        "abort",
+        "autonomous",
+        "logout",
+        "stored-auth",
+        "env-auth",
+        "queued-logout",
+    ],
+)
 def test_pinned_pi_turn_extension_tracks_the_complete_native_run(
     pi_loader_image: str, tmp_path: Path, scenario: str
 ) -> None:
@@ -304,15 +337,24 @@ def test_pinned_pi_turn_extension_tracks_the_complete_native_run(
         )
     except subprocess.CalledProcessError as exc:
         pytest.fail(exc.stderr)
-    assert (
-        result["requests"] == {"success": 3, "exhaustion": 2, "abort": 1, "autonomous": 1}[scenario]
-    )
-    assert (
-        result["stopReason"]
-        == {"success": "stop", "exhaustion": "error", "abort": "aborted", "autonomous": "stop"}[
-            scenario
-        ]
-    )
+    assert result["initiallyAuthenticated"] is True
+    assert result["isIdle"] is True
+    if scenario == "logout":
+        assert result["configuredAuth"] is False
+        assert result["requests"] == 0
+        assert result["turns"] == ["user"]
+        assert result["records"] == [{"type": "preflight", "ok": False, "turn": "user"}]
+        assert "No API key found for synthetic" in result["promptError"]
+        assert "/login" in result["promptError"]
+        return
+    assert result["configuredAuth"] is (scenario != "queued-logout")
+    assert "promptError" not in result
+    assert result["requests"] == {"success": 3, "exhaustion": 2}.get(scenario, 1)
+    assert result["stopReason"] == {
+        "exhaustion": "error",
+        "abort": "aborted",
+        "queued-logout": "error",
+    }.get(scenario, "stop")
     assert result["turns"][-1] == "user"
     assert result["turns"].count("user") == 1
     assert result["turns"][0] == "agent"
@@ -327,3 +369,5 @@ def test_pinned_pi_turn_extension_tracks_the_complete_native_run(
     assert sum(event["type"] == "tool_execution_start" for event in result["records"]) == (
         scenario == "success"
     )
+    if scenario == "queued-logout":
+        assert {"type": "queued_input", "turn": "agent", "isIdle": False} in result["records"]

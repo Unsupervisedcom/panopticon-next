@@ -39,7 +39,9 @@ and ``~/.pi/agent/mcp.json`` on that install is an empty ``{}`` — pi ships no 
   rendered at bootstrap and loaded via ``--extension <path>`` on every launch; it mirrors
   :mod:`panopticon.container.hook`'s contract exactly — ``PUT .../tasks/{id}/turn`` with
   ``{"turn": "user"}`` on ``agent_settled``, after automatic retries and continuations finish;
-  ``{"turn": "agent"}`` on ``input`` and ``agent_start`` (including autonomous starts).
+  ``{"turn": "agent"}`` on active-run ``input``, idle ``input`` with a selected model and
+  configured auth, and ``agent_start`` (including autonomous starts). Known missing-model/auth
+  inputs while idle keep the user turn, since Pi rejects those before a run.
   It reads ``PANOPTICON_SERVICE_URL``/``PANOPTICON_TASK_ID`` from the environment the launcher
   already sets, so its content needs no per-task templating. Native SDK integration tests use
   a synthetic HTTP model server to exercise retry, exhaustion, and abort without inference.
@@ -133,7 +135,9 @@ export default function (pi) {
 
   pi.on("agent_settled", () => setTurn("user"));
   pi.on("agent_start", () => setTurn("agent"));
-  pi.on("input", () => setTurn("agent"));
+  pi.on("input", (_event, ctx) => setTurn(
+    !ctx.isIdle() || (ctx.model && ctx.modelRegistry.hasConfiguredAuth(ctx.model)) ? "agent" : "user"
+  ));
 }
 """
 

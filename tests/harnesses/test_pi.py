@@ -143,13 +143,36 @@ def test_extension_puts_the_turn_via_the_task_service_rest_api() -> None:
 
 def test_extension_flips_to_user_on_settle_and_agent_on_input() -> None:
     assert 'pi.on("agent_settled", () => setTurn("user"));' in TURN_EXTENSION
-    assert 'pi.on("input", () => setTurn("agent"));' in TURN_EXTENSION
+    assert 'pi.on("input", (_event, ctx) => setTurn(' in TURN_EXTENSION
     assert 'pi.on("agent_start", () => setTurn("agent"));' in TURN_EXTENSION
+
+
+# 2119: REQ-008.6.1
+# 2119: REQ-016.3.1
+def test_input_without_a_selected_model_keeps_the_user_turn() -> None:
+    source = TURN_EXTENSION.replace("export default function", "const extension = function")
+    probe = (
+        source
+        + """
+let inputHandler;
+const turns = [];
+extension({ on(event, handler) { if (event === "input") inputHandler = handler; } });
+globalThis.fetch = async (_url, options) => { turns.push(JSON.parse(options.body).turn); };
+await inputHandler({}, {
+  isIdle: () => true,
+  model: undefined,
+  modelRegistry: { hasConfiguredAuth() { throw new Error("cannot inspect an absent model"); } }
+});
+if (JSON.stringify(turns) !== JSON.stringify(["user"])) throw new Error("missing model left agent turn");
+"""
+    )
+    subprocess.run(["node", "--input-type=module", "--eval", probe], check=True)
 
 
 # 2119: REQ-008.6.1
 def test_input_handler_waits_for_the_agent_turn_request() -> None:
     source = TURN_EXTENSION.replace("export default function", "const extension = function")
+    source += "\nconst inputContext = { isIdle: () => true, model: {}, modelRegistry: { hasConfiguredAuth: () => true } };\n"
     probe = (
         source
         + """
@@ -164,7 +187,7 @@ globalThis.fetch = (_url, options) => new Promise((_resolve, reject) => {
 });
 extension(pi);
 const started = Date.now();
-await inputHandler();
+await inputHandler({}, inputContext);
 if (!requestSettled) throw new Error("input handler returned before request settlement");
 if (Date.now() - started >= 3000) throw new Error("input handler exceeded fail-open bound");
 """
@@ -176,6 +199,7 @@ if (Date.now() - started >= 3000) throw new Error("input handler exceeded fail-o
 # 2119: REQ-008.6.1
 def test_extension_sends_the_behavioral_turn_payload_for_each_event() -> None:
     source = TURN_EXTENSION.replace("export default function", "const extension = function")
+    source += "\nconst inputContext = { isIdle: () => true, model: {}, modelRegistry: { hasConfiguredAuth: () => true } };\n"
     probe = (
         source
         + """
@@ -196,7 +220,7 @@ if (JSON.stringify(Object.keys(handlers).sort()) !== JSON.stringify(["agent_sett
 }
 await handlers.agent_settled();
 await handlers.agent_start();
-await handlers.input();
+await handlers.input({}, inputContext);
 if (JSON.stringify(turns) !== JSON.stringify(["user", "agent", "agent"])) {
   throw new Error(`wrong turn payloads: ${JSON.stringify(turns)}`);
 }
@@ -225,6 +249,7 @@ def test_input_handler_completes_a_real_task_service_turn_write() -> None:
     thread = threading.Thread(target=service.serve_forever, daemon=True)
     thread.start()
     source = TURN_EXTENSION.replace("export default function", "const extension = function")
+    source += "\nconst inputContext = { isIdle: () => true, model: {}, modelRegistry: { hasConfiguredAuth: () => true } };\n"
     probe = (
         source
         + f"""
@@ -233,7 +258,7 @@ const pi = {{ on(event, handler) {{ if (event === "input") inputHandler = handle
 process.env.PANOPTICON_SERVICE_URL = "http://127.0.0.1:{service.server_port}";
 process.env.PANOPTICON_TASK_ID = "task-1";
 extension(pi);
-await inputHandler();
+await inputHandler({{}}, inputContext);
 """
     )
     try:
@@ -249,6 +274,7 @@ await inputHandler();
 # 2119: REQ-016.1.1
 def test_turn_handlers_bound_a_delayed_http_error_response() -> None:
     source = TURN_EXTENSION.replace("export default function", "const extension = function")
+    source += "\nconst inputContext = { isIdle: () => true, model: {}, modelRegistry: { hasConfiguredAuth: () => true } };\n"
     probe = (
         source
         + """
@@ -263,7 +289,7 @@ globalThis.fetch = (_url, options) => new Promise((resolve, reject) => {
 });
 extension(pi);
 const started = Date.now();
-await Promise.all([handlers.agent_settled(), handlers.agent_start(), handlers.input()]);
+await Promise.all([handlers.agent_settled(), handlers.agent_start(), handlers.input({}, inputContext)]);
 if (Date.now() - started >= 3000) throw new Error("delayed HTTP failure exceeded hook bound");
 """
     )
@@ -280,6 +306,7 @@ if (Date.now() - started >= 3000) throw new Error("delayed HTTP failure exceeded
 # 2119: REQ-016.1.1
 def test_turn_handlers_return_within_bound_after_successful_writes() -> None:
     source = TURN_EXTENSION.replace("export default function", "const extension = function")
+    source += "\nconst inputContext = { isIdle: () => true, model: {}, modelRegistry: { hasConfiguredAuth: () => true } };\n"
     probe = (
         source
         + """
@@ -288,7 +315,7 @@ const pi = { on(event, handler) { handlers[event] = handler; } };
 globalThis.fetch = () => Promise.resolve({ ok: true });
 extension(pi);
 const started = Date.now();
-await Promise.all([handlers.agent_settled(), handlers.agent_start(), handlers.input()]);
+await Promise.all([handlers.agent_settled(), handlers.agent_start(), handlers.input({}, inputContext)]);
 if (Date.now() - started >= 3000) throw new Error("successful hooks exceeded callback bound");
 """
     )
@@ -306,6 +333,7 @@ if (Date.now() - started >= 3000) throw new Error("successful hooks exceeded cal
 # 2119: REQ-016.2.1
 def test_turn_signal_handlers_bound_requests_and_fail_open() -> None:
     source = TURN_EXTENSION.replace("export default function", "const extension = function")
+    source += "\nconst inputContext = { isIdle: () => true, model: {}, modelRegistry: { hasConfiguredAuth: () => true } };\n"
     probe = (
         source
         + """
@@ -323,7 +351,7 @@ globalThis.fetch = (_url, options) => {
 };
 extension(pi);
 const started = Date.now();
-await Promise.all([handlers.agent_settled(), handlers.agent_start(), handlers.input()]);
+await Promise.all([handlers.agent_settled(), handlers.agent_start(), handlers.input({}, inputContext)]);
 const elapsed = Date.now() - started;
 if (elapsed >= 3000) throw new Error(`handlers blocked for ${elapsed}ms`);
 """
@@ -342,6 +370,7 @@ if (elapsed >= 3000) throw new Error(`handlers blocked for ${elapsed}ms`);
 # 2119: REQ-016.2.1
 def test_turn_signal_handlers_do_not_surface_network_or_status_failures() -> None:
     source = TURN_EXTENSION.replace("export default function", "const extension = function")
+    source += "\nconst inputContext = { isIdle: () => true, model: {}, modelRegistry: { hasConfiguredAuth: () => true } };\n"
     probe = (
         source
         + """
@@ -355,9 +384,9 @@ globalThis.fetch = () => {
   return Promise.resolve({ ok: false, status: 503, statusText: "CONTROL_PLANE_FAILURE_SENTINEL" });
 };
 extension(pi);
-const networkResults = [await handlers.agent_settled(), await handlers.agent_start(), await handlers.input()];
+const networkResults = [await handlers.agent_settled(), await handlers.agent_start(), await handlers.input({}, inputContext)];
 failure = "status";
-const statusResults = [await handlers.agent_settled(), await handlers.agent_start(), await handlers.input()];
+const statusResults = [await handlers.agent_settled(), await handlers.agent_start(), await handlers.input({}, inputContext)];
 if ([...networkResults, ...statusResults].some((value) => value !== undefined)) {
   throw new Error("hook surfaced a control-plane failure as its resolved value");
 }
