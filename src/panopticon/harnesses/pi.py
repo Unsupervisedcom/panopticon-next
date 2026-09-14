@@ -22,15 +22,15 @@ and ``~/.pi/agent/mcp.json`` on that install is an empty ``{}`` — pi ships no 
 - **MCP: none** (confirmed above). The two core operations (advance/drop) this harness renders
   are REST calls against the task service's plain API instead of an MCP tool call — pi's own
   documented pattern ("build CLI tools with READMEs") for exactly this. This does not extend to
-  workflow-authored skills that name an MCP tool directly (``provision``'s ``set_slug``,
-  ``github_forge``'s ``set_url``, ``planned_workflow``'s ``put_artifact``/``set_token_estimate``,
+  workflow-authored skills that name an MCP tool directly (``github_forge``'s ``set_url``,
+  ``planned_workflow``'s ``put_artifact``/``set_token_estimate``,
   ``orchestrator``'s ``create_task``/``set_slug``/``resolve_responsibility``) — those assume an
   MCP-capable harness and won't work unmodified under pi; making every workflow skill
-  MCP-agnostic is out of scope for a harness adapter.
+  MCP-agnostic is out of scope for a harness adapter. The universal provision and artifacts
+  skills include their own REST fallbacks.
 
-- **Skills.** pi implements the Agent Skills standard and reads ``~/.agents/skills/`` at the
-  user scope, unaffected by the ``PI_CODING_AGENT_DIR`` redirect — the same directory and shape
-  codex renders to, reused directly (:func:`panopticon.harnesses.codex.write_skills`).
+- **Skills.** Reuse codex's Agent Skills rendering under ``~/.agents/skills/``. Pi's resource
+  loader discovers this shared user directory in addition to its native agent-directory skills.
 
 - **Turn signals.** pi has no Stop/UserPromptSubmit hook config, but its extension API has real
   equivalents, confirmed against the pi-mono TypeScript source (not just its docs): the
@@ -304,6 +304,11 @@ class PiHarness(Harness):
 
     def __init__(self, *, run: CommandRunner = _subprocess_run) -> None:
         self._run = run
+
+    def split_starting_model(self, value: str | None) -> tuple[str, str]:
+        # Pi resolves exact model IDs before interpreting thinking suffixes. A colon can
+        # belong to a model tag, even when the tag is also a valid thinking level.
+        return value or "", ""
 
     def suggested_models(self) -> Sequence[tuple[str, str]]:
         """Ask pi for its available models; a missing/broken CLI leaves free text available."""

@@ -1099,13 +1099,6 @@ class _HarnessSuggestions:
     efforts: tuple[tuple[str, str], ...]
 
 
-def _split_model(value: str | None) -> tuple[str, str]:
-    if not value:
-        return "", ""
-    model, separator, effort = value.rpartition(":")
-    return (model, effort) if separator else (value, "")
-
-
 def resolve_launch_selection(
     repo: JsonObj,
     workflow: JsonObj,
@@ -1128,7 +1121,9 @@ def resolve_launch_selection(
         source = "app default"
     if harness not in HARNESSES:
         harness = DEFAULT_HARNESS
-    model, effort = _split_model(str(raw_model) if raw_model else None)
+    model, effort = HARNESSES[str(harness)].split_starting_model(
+        str(raw_model) if raw_model else None
+    )
     values = {"harness": str(harness), "model": model, "effort": effort}
     touched_set = set(touched)
     for field in touched_set:

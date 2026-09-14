@@ -199,6 +199,13 @@ class Harness(ABC):
         """Static effort suggestions for ``model``; unknown and free-text values stay valid."""
         return ()
 
+    def split_starting_model(self, value: str | None) -> tuple[str, str]:
+        """Separate the stored model and effort for the dashboard's editable fields."""
+        if not value:
+            return "", ""
+        model, separator, effort = value.rpartition(":")
+        return (model, effort) if separator else (value, "")
+
     def config_dir(self, home: Path) -> Path:
         """The CLI's config dir under ``home`` — the per-task volume's in-container path."""
         return home / self.config_dirname
