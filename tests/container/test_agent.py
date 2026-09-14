@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 from pathlib import Path
@@ -429,6 +430,54 @@ def test_pi_diagnosis_precedes_reporting_errors_and_exit_still_runs(
         {"task_id": "t1", "runner_id": "runner-1", "phase": "failed", "detail": expected}
     ]
     assert exits == ["exit"]
+
+
+# 2119: REQ-051.4.5
+@pytest.mark.parametrize("stage", ["preflight", "transport"])
+def test_pi_failure_flushes_buffered_stderr_before_reporting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("PANOPTICON_HARNESS", "pi")
+    monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    monkeypatch.setattr(
+        PiHarness,
+        "missing_auth",
+        lambda *_args, **_kwargs: "Missing pi credentials" if stage == "preflight" else None,
+    )
+    expected = (
+        "Missing pi credentials"
+        if stage == "preflight"
+        else "Could not load the workflow (ReadTimeout). " + agent.SERVICE_CONNECTIVITY_HINT
+    )
+    output = io.BytesIO()
+    available_at_report: list[bytes] = []
+
+    class _ObservingClient(_FakeClient):
+        def list_skills(self, task_id: str) -> list[dict[str, str]]:
+            raise httpx.ReadTimeout("workflow unavailable")
+
+        def report_launcher_failure(
+            self, task_id: str, runner_id: str, detail: str
+        ) -> dict[str, str | None]:
+            available_at_report.append(output.getvalue())
+            return super().report_launcher_failure(task_id, runner_id, detail)
+
+    # A newline alone cannot expose bytes here: only an explicit flush drains this buffer.
+    with (
+        io.TextIOWrapper(
+            output, encoding="utf-8", line_buffering=False, write_through=False
+        ) as stderr,
+        monkeypatch.context() as patch,
+    ):
+        patch.setattr(agent.sys, "stderr", stderr)
+        agent.main(
+            client_factory=lambda _url: _ObservingClient(),  # type: ignore[arg-type,return-value]
+            home=tmp_path,
+            launch=lambda *_args: pytest.fail("must fail before launch"),
+            on_exit=lambda: None,
+        )
+        assert available_at_report == [(expected + "\n").encode("utf-8")]
 
 
 # 2119: REQ-051.4.5
