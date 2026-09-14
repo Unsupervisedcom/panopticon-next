@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.12](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.11...v0.2.12) (2026-09-14)
+
+
+### Bug Fixes
+
+* **install:** configure agents before launching repository tasks ([#17](https://github.com/Unsupervisedcom/panopticon-next/issues/17)) ([5941608](https://github.com/Unsupervisedcom/panopticon-next/commit/5941608cd2d2a43cb6c1fae4bb34d0d7e0e06808))
+
 ## [0.2.11](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.10...v0.2.11) (2026-09-10)
 
 
