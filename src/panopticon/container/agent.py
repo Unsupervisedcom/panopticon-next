@@ -23,11 +23,13 @@ import signal
 import subprocess
 import sys
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 
 import httpx
 
 from panopticon.client import TaskServiceClient
+from panopticon.container.entrypoint import SERVICE_CONNECTIVITY_HINT
 from panopticon.core.models import Skill
 from panopticon.harnesses import BootstrapContext, Harness, LaunchContext, get_harness
 from panopticon.taskservice.auth import environment_token
@@ -114,6 +116,17 @@ def main(
             ),
         )
     except Exception as exc:
+        if stage == "workflow-surface-fetch" and isinstance(exc, httpx.TransportError):
+            detail = (
+                f"Could not load the workflow ({type(exc).__name__}). " + SERVICE_CONNECTIVITY_HINT
+            )
+            print(detail, file=sys.stderr, flush=True)
+            if harness.name != "pi":
+                raise RuntimeError(detail) from None
+            if runner_id:
+                with suppress(Exception):  # the same unreachable service may reject this report
+                    client.report_lifecycle(task_id, runner_id, phase="failed", detail=detail)
+            return
         if harness.name != "pi":
             raise
         detail = f"pi {stage} failure: {exc}"

@@ -7,6 +7,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import httpx
 import pytest
 
 from panopticon.container import agent
@@ -68,6 +69,101 @@ def _base_env(monkeypatch: pytest.MonkeyPatch, probe_status: int | None = 200) -
         "PANOPTICON_CREDENTIALS",
     ):
         monkeypatch.delenv(var, raising=False)
+
+
+@pytest.mark.parametrize("harness", ["claude", "codex", "pi"])
+@pytest.mark.parametrize("fetch", ["list_skills", "list_operations", "workflow_overview"])
+def test_workflow_transport_failure_prints_safe_guidance_before_failed_reporting(
+    harness: str,
+    fetch: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("PANOPTICON_HARNESS", harness)
+    monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", VALID_ANTHROPIC_API_KEY)
+    monkeypatch.setenv("CODEX_API_KEY", VALID_CODEX_API_KEY)
+    secret = "workflow-secret-sentinel"
+    monkeypatch.setenv("PANOPTICON_SERVICE_URL", f"http://user:{secret}@svc?token={secret}")
+    request = httpx.Request("GET", f"http://user:{secret}@svc?token={secret}")
+    detail = "Could not load the workflow (ReadTimeout). " + agent.SERVICE_CONNECTIVITY_HINT
+    printed_before_report: list[str] = []
+
+    class _OfflineClient(_FakeClient):
+        def report_lifecycle(
+            self, task_id: str, runner_id: str, phase: str, detail: str | None = None
+        ) -> dict[str, str | None]:
+            printed_before_report.append(capsys.readouterr().err)
+            super().report_lifecycle(task_id, runner_id, phase, detail)
+            raise httpx.ConnectError(secret, request=request)
+
+    client = _OfflineClient()
+
+    def fail_fetch(task_id: str) -> object:
+        raise httpx.ReadTimeout(secret, request=request)
+
+    monkeypatch.setattr(client, fetch, fail_fetch)
+    events: list[str] = []
+
+    def run() -> None:
+        agent.main(
+            client_factory=lambda _url: client,  # type: ignore[arg-type,return-value]
+            home=tmp_path,
+            launch=lambda _harness, _ctx: events.append("launch"),
+            on_exit=lambda: events.append("on_exit"),
+        )
+
+    if harness == "pi":
+        run()  # reporting failure must not replace the already printed diagnosis
+        assert printed_before_report == [detail + "\n"]
+        assert client.lifecycle_calls[-1]["detail"] == detail
+        assert capsys.readouterr().err == ""
+    else:
+        with pytest.raises(RuntimeError) as error:
+            run()
+        assert str(error.value) == detail
+        assert error.value.__suppress_context__  # do not expose the raw transport exception
+        assert capsys.readouterr().err == detail + "\n"
+        assert client.lifecycle_calls == []
+    assert secret not in detail
+    assert events == []
+
+
+@pytest.mark.parametrize("stage", ["http-status", "bootstrap", "launcher"])
+def test_unrelated_launcher_failures_keep_their_existing_behavior(
+    stage: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", VALID_ANTHROPIC_API_KEY)
+    request = httpx.Request("GET", "http://svc")
+    failure = (
+        httpx.HTTPStatusError("unavailable", request=request, response=httpx.Response(503))
+        if stage == "http-status"
+        else httpx.ConnectError("unrelated transport failure", request=request)
+    )
+
+    def fail(*_args: object) -> None:
+        raise failure
+
+    client = _FakeClient()
+    if stage == "http-status":
+        monkeypatch.setattr(client, "list_skills", fail)
+    elif stage == "bootstrap":
+        monkeypatch.setattr(claude_harness.ClaudeHarness, "bootstrap", fail)
+    with pytest.raises(type(failure)) as error:
+        agent.main(
+            client_factory=lambda _url: client,  # type: ignore[arg-type,return-value]
+            home=tmp_path,
+            launch=fail,
+            on_exit=lambda: pytest.fail("must not exit after a failed launch"),
+        )
+    assert error.value is failure
+    assert capsys.readouterr().err == ""
 
 
 def test_main_bootstraps_the_default_claude_harness_then_launches(
