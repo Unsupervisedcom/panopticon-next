@@ -436,12 +436,18 @@ def test_hold_runner_liveness_reconnects_after_a_drop_until_stopped() -> None:
     attempts: list[tuple[str, str | None]] = []
     closes = {"n": 0}
     naps: list[float] = []
+    events: list[str] = []
+
+    def backoff(seconds: float) -> None:
+        events.append("backoff")
+        naps.append(seconds)
 
     class _DroppingClient:
         def live_runner(
             self, runner_id: str, *, host: str | None = None
         ) -> Generator[None, None, None]:
             opens["n"] += 1
+            events.append("open")
             attempts.append((runner_id, host))
 
             def gen() -> Generator[None, None, None]:
@@ -451,6 +457,7 @@ def test_hold_runner_liveness_reconnects_after_a_drop_until_stopped() -> None:
                     raise httpx.ReadTimeout("simulated silent stream", request=request)
                 finally:
                     closes["n"] += 1
+                    events.append("close")
 
             return gen()
 
@@ -461,12 +468,13 @@ def test_hold_runner_liveness_reconnects_after_a_drop_until_stopped() -> None:
         running=daemon_running,
         host="box.example.com",
         reconnect_backoff=0.25,
-        sleep=naps.append,
+        sleep=backoff,
     )
     assert opens["n"] == 3  # reconnected after each drop until `running()` said stop
     assert attempts == [("host-1", "box.example.com")] * 3
     assert closes["n"] == 3
     assert naps == [0.25, 0.25]
+    assert events == ["open", "close", "backoff", "open", "close", "backoff", "open", "close"]
 
 
 @pytest.mark.parametrize("status_code", [401, 403])

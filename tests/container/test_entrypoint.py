@@ -116,6 +116,11 @@ def test_serve_holds_liveness_connection_and_closes_cleanly() -> None:
 def test_serve_reconnects_after_a_dropped_connection() -> None:
     client = _FakeClient(drops=1)  # first connection drops underneath us
     naps: list[float] = []
+
+    def backoff(seconds: float) -> None:
+        client.calls.append("backoff")
+        naps.append(seconds)
+
     entrypoint.serve(
         client,  # type: ignore[arg-type]
         "t1",
@@ -123,13 +128,13 @@ def test_serve_reconnects_after_a_dropped_connection() -> None:
         runner_id="runner-1",
         running=_stop_after(3),
         reconnect_backoff=0.25,
-        sleep=naps.append,
+        sleep=backoff,
     )
     assert client.live_connections == 2  # dropped once, re-opened
     assert client.tasks == ["t1", "t1"]
     assert client.containers == ["c1", "c1"]  # the same container re-asserts liveness
     assert client.runners == ["runner-1", "runner-1"]
-    assert client.calls == ["live", "close", "live", "close"]
+    assert client.calls == ["live", "close", "backoff", "live", "close"]
     assert naps == [0.25]  # backed off once before reconnecting
 
 
