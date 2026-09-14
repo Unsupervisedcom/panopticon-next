@@ -84,11 +84,18 @@ def main(
     home = home or Path.home()
     task_id = env["PANOPTICON_TASK_ID"]
     runner_id = env.get("PANOPTICON_RUNNER_ID")
-    if detail := harness.missing_auth(env, home=home):
+
+    def report_failure(detail: str, *, echo: bool = True) -> None:
+        if echo:
+            print(detail, file=sys.stderr, flush=True)
         if runner_id:
-            client.report_lifecycle(task_id, runner_id, phase="failed", detail=detail)
-        if harness.name == "pi":
-            print(detail, file=sys.stderr)
+            # Reporting must not replace the diagnosis or interrupt the normal exit path.
+            with suppress(Exception):
+                client.report_launcher_failure(task_id, runner_id, detail[:4096])
+
+    if detail := harness.missing_auth(env, home=home):
+        report_failure(detail)
+        on_exit()
         return
     stage = "workflow-surface-fetch"
     try:
@@ -123,22 +130,18 @@ def main(
             print(detail, file=sys.stderr, flush=True)
             if harness.name != "pi":
                 raise RuntimeError(detail) from None
-            if runner_id:
-                with suppress(Exception):  # the same unreachable service may reject this report
-                    client.report_lifecycle(task_id, runner_id, phase="failed", detail=detail)
+            report_failure(detail, echo=False)
+            on_exit()
             return
         if harness.name != "pi":
             raise
         detail = f"pi {stage} failure: {exc}"
-        if runner_id:
-            client.report_lifecycle(task_id, runner_id, phase="failed", detail=detail)
-        print(detail, file=sys.stderr)
+        report_failure(detail)
+        on_exit()
         return
     if harness.name == "pi" and isinstance(status, int):
         detail = f"pi exited unexpectedly with status {status}"
-        if runner_id:
-            client.report_lifecycle(task_id, runner_id, phase="failed", detail=detail)
-        print(detail, file=sys.stderr)
+        report_failure(detail)
     on_exit()  # ...then stop the container (task → down → respawn)
 
 

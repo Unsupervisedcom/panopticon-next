@@ -495,6 +495,9 @@ class LocalRunner(Runner):
                 prefix=self._tmux(),
                 raw_log=readiness_log(container),
             )
+            # Publish spawn progress before the agent can report a terminal launcher failure.
+            # PID 1 and the tmux pane exist; a later AWAITING write could erase that failure.
+            _report(LifecyclePhase.AWAITING)
             self._run(
                 self._tmux(
                     "respawn-pane",
@@ -511,9 +514,6 @@ class LocalRunner(Runner):
                     *self._agent_command,
                 )
             )
-            _report(
-                LifecyclePhase.AWAITING
-            )  # container + tmux up; waiting for its /live registration
         except BaseException:
             try:
                 self._run(self._tmux("kill-session", "-t", container), check=False)

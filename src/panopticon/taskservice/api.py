@@ -668,6 +668,13 @@ class LifecycleIn(BaseModel):
     pause_launch: bool = False
 
 
+class LauncherFailureIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    runner_id: str = Field(strict=True, min_length=1, pattern=r"\S")
+    detail: str = Field(strict=True, min_length=1, max_length=4096, pattern=r"\S")
+
+
 class RegistrationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -1746,6 +1753,11 @@ def create_app(
     # The runner pushes its spawn phase here as it claims → prepares → builds → starts a container,
     # so the dashboard can surface the steps to becoming live (and a failure) instead of guessing.
     # Folded into TaskOut.container_status; cleared on claim release/reclaim (see the service).
+
+    @app.post("/tasks/{task_id}/launcher-failure")
+    async def report_launcher_failure(task_id: str, body: LauncherFailureIn) -> TaskOut:
+        await service.report_launcher_failure(task_id, body.runner_id, body.detail)
+        return await _task_out(await service.get_task(task_id))
 
     @app.put("/tasks/{task_id}/lifecycle")
     async def report_lifecycle(task_id: str, body: LifecycleIn) -> TaskOut:

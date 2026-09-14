@@ -132,8 +132,8 @@ def compose_container_status(
     """Fold the lifecycle signals into one displayed status — pure, so it's unit-testable alone.
 
     Order matters (first match wins): a terminal task has no container; an unclaimed one is
-    ``QUEUED``; an open container registration is ``LIVE`` regardless of anything else (the
-    container holds its own ``/live`` connection independent of its runner); a claim held by a
+    ``QUEUED``; an open container registration is ``LIVE`` unless its launcher or runner reported
+    ``FAILED`` (the container's liveness process can outlive its agent); a claim held by a
     runner that's no longer connected is ``DISCONNECTED`` (even if it left a stale phase behind);
     otherwise a reported spawn ``phase`` shows through; and a claimed task with a live runner but
     no phase and no registration is ``DOWN`` (came up and vanished, or never reported).
@@ -147,7 +147,7 @@ def compose_container_status(
     if not claimed:
         return ContainerStatus.QUEUED
     if registered:
-        return ContainerStatus.LIVE
+        return ContainerStatus.FAILED if phase is LifecyclePhase.FAILED else ContainerStatus.LIVE
     if not runner_live:
         return ContainerStatus.DISCONNECTED
     if phase is not None:

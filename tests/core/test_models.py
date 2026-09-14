@@ -119,12 +119,13 @@ def test_container_status_composer_is_determined_by_supplied_dependency_fact() -
     list(product((False, True), (None, *LifecyclePhase))),
 )
 # 2119: REQ-011.1.3
-def test_open_registration_is_live_regardless_of_phase_or_runner(
+def test_open_registration_preserves_explicit_failure_and_otherwise_is_live(
     runner_live: bool, phase: LifecyclePhase | None
 ) -> None:
-    # The container holds its own /live connection, so a registration means live even if the
-    # runner's own liveness dropped or a stale spawn phase lingers.
-    assert _compose(registered=True, runner_live=runner_live, phase=phase) == "live"
+    # The liveness process can survive a failed launcher; other phases and a disconnected
+    # runner do not hide the open registration.
+    expected = "failed" if phase is LifecyclePhase.FAILED else "live"
+    assert _compose(registered=True, runner_live=runner_live, phase=phase) == expected
 
 
 @pytest.mark.parametrize("phase", (None, *LifecyclePhase))

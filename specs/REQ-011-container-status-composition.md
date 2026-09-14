@@ -12,7 +12,7 @@ The requirements are ordered by precedence.
 
 1. A terminal task MUST compose to `–` regardless of claim, registration, runner-liveness, or lifecycle-phase inputs.
 2. A non-terminal unclaimed task MUST compose to `queued` regardless of registration, runner-liveness, or lifecycle-phase inputs.
-3. A claimed non-terminal task with an open container registration MUST compose to `live` regardless of runner-liveness or lifecycle-phase inputs.
+3. A claimed non-terminal task with an open container registration MUST compose to `failed` when its reported lifecycle phase is `failed`, and otherwise to `live`, regardless of runner-liveness input.
 4. A claimed, non-terminal, unregistered task whose runner is not live MUST compose to `disconnected` regardless of lifecycle-phase input.
 5. A claimed, non-terminal, unregistered task with a live runner and a reported lifecycle phase MUST compose to the status having the same value as that phase.
 6. A claimed, non-terminal, unregistered task with a live runner and no lifecycle phase MUST compose to `down`.
