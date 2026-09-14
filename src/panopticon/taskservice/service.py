@@ -1518,6 +1518,16 @@ class TaskService:
     # cleared on claim release/reclaim — and folded with registration presence + runner liveness
     # into the displayed :class:`ContainerStatus` by :meth:`container_status`.
 
+    async def report_launcher_failure(
+        self, task_id: str, runner_id: str, detail: str
+    ) -> ContainerLifecycle:
+        """Accept only an active task's failure under its current runner claim."""
+        task = await self.get_task(task_id)
+        if not runner_id.strip() or task.claimed_by != runner_id or self._task_is_terminal(task):
+            raise NotReady("Launcher failure requires an active task claimed by that runner.")
+        # No await between checking the fetched task and recording its fixed failure phase.
+        return self._record_lifecycle(task_id, runner_id, LifecyclePhase.FAILED, detail)
+
     async def report_lifecycle(
         self,
         task_id: str,
@@ -1536,6 +1546,11 @@ class TaskService:
                 await self._store.set_task_launch_pause(task_id, True, detail)
         else:
             await self.get_task(task_id)  # ensure the task exists
+        return self._record_lifecycle(task_id, runner_id, phase, detail)
+
+    def _record_lifecycle(
+        self, task_id: str, runner_id: str, phase: LifecyclePhase, detail: str | None
+    ) -> ContainerLifecycle:
         lifecycle = ContainerLifecycle(
             task_id=task_id, runner_id=runner_id, phase=phase, detail=detail, at=self._clock()
         )

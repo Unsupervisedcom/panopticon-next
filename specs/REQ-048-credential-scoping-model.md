@@ -65,11 +65,12 @@ reasonable.
 1. A task capability MUST persist the requested effect when its subject invokes a declared workflow operation or transition, resolves a current responsibility, or sets its state, slug, URL, token reports, turn, blocked marker, attention marker, or an in-scope dependency list (`mcp-credential-uri-normalization.3` defines which proposed dependency ids are in scope).
 2. A task capability MUST allow its subject to create, list, read, and replace its own artifacts.
 3. A task capability MUST allow its subject to open and close its own container registration and hold its own task-liveness stream.
+4. The launcher-failure operation MUST enforce all of these conditions: (a) a task capability can report only for its own active, claimed task, with the matching nonempty runner ID and a nonempty diagnostic of at most 4096 characters; (b) the only effects are setting the failed lifecycle phase and detail; (c) additional request fields, terminal or unclaimed tasks, and mismatched claims are rejected.
 
 ### REQ-048.6: Fleet boundary
 
 1. A task capability MUST reject every action classified as task-targeted when its target is an unrelated task, including an attempt to drop that task.
-2. A task capability MUST reject repo administration except for the narrow setup-repo mutation in REQ-048.6.4, plus task claiming, provisioning, migration, lifecycle reporting, runner administration, workflow-file administration, and operator migration operations.
+2. A task capability MUST reject repo administration except for the narrow setup-repo mutation in REQ-048.6.4, plus task claiming, provisioning, migration, general runner lifecycle reporting, runner administration, workflow-file administration, and operator migration operations. The fixed self-launcher-failure report in REQ-048.5.4 is the only lifecycle-reporting exception.
 3. An out-of-scope task target that exists and one that does not exist MUST produce the same generic scope-denial status and body.
 4. An active task whose stored workflow declares `configures_repo_credentials=True` MUST be allowed to set only its own repository's `credential_dir` to a non-empty directory name below the secrets root, while rejecting sibling repositories, every other repo field, malformed or root/path-shaped values, non-opted-in workflows, and terminal setup tasks.
 

@@ -2,7 +2,7 @@
 (https://github.com/earendil-works/pi, npm ``@earendil-works/pi-coding-agent``) as a third
 harness adapter, alongside claude and codex.
 
-Verified against a real pi 0.80.3 install: its ``--help`` surface matches this module
+Verified against the pinned pi 0.80.5 package: its ``--help`` surface matches this module
 (``--append-system-prompt``, ``--continue``, ``--skill``, sessions under the agent dir),
 ``PI_CODING_AGENT_DIR`` really relocates the whole config root (confirmed via its auth lookup),
 and ``~/.pi/agent/mcp.json`` on that install is an empty ``{}`` — pi ships no MCP client.
@@ -22,15 +22,15 @@ and ``~/.pi/agent/mcp.json`` on that install is an empty ``{}`` — pi ships no 
 - **MCP: none** (confirmed above). The two core operations (advance/drop) this harness renders
   are REST calls against the task service's plain API instead of an MCP tool call — pi's own
   documented pattern ("build CLI tools with READMEs") for exactly this. This does not extend to
-  workflow-authored skills that name an MCP tool directly (``provision``'s ``set_slug``,
-  ``github_forge``'s ``set_url``, ``planned_workflow``'s ``put_artifact``/``set_token_estimate``,
+  workflow-authored skills that name an MCP tool directly (``github_forge``'s ``set_url``,
+  ``planned_workflow``'s ``put_artifact``/``set_token_estimate``,
   ``orchestrator``'s ``create_task``/``set_slug``/``resolve_responsibility``) — those assume an
   MCP-capable harness and won't work unmodified under pi; making every workflow skill
-  MCP-agnostic is out of scope for a harness adapter.
+  MCP-agnostic is out of scope for a harness adapter. The universal provision and artifacts
+  skills include their own REST fallbacks.
 
-- **Skills.** pi implements the Agent Skills standard and reads ``~/.agents/skills/`` at the
-  user scope, unaffected by the ``PI_CODING_AGENT_DIR`` redirect — the same directory and shape
-  codex renders to, reused directly (:func:`panopticon.harnesses.codex.write_skills`).
+- **Skills.** Reuse codex's Agent Skills rendering under ``~/.agents/skills/``. Pi's resource
+  loader discovers this shared user directory in addition to its native agent-directory skills.
 
 - **Turn signals.** pi has no Stop/UserPromptSubmit hook config, but its extension API has real
   equivalents, confirmed against the pi-mono TypeScript source (not just its docs): the
@@ -38,12 +38,13 @@ and ``~/.pi/agent/mcp.json`` on that install is an empty ``{}`` — pi ships no 
   signatures in ``core/extensions/types.ts``. :data:`TURN_EXTENSION` is a minimal extension
   rendered at bootstrap and loaded via ``--extension <path>`` on every launch; it mirrors
   :mod:`panopticon.container.hook`'s contract exactly — ``PUT .../tasks/{id}/turn`` with
-  ``{"turn": "user"}`` on ``agent_end`` (pi "will not continue running automatically", the
-  closest analog to Stop), ``{"turn": "agent"}`` on ``input`` (fired when user input arrives).
+  ``{"turn": "user"}`` on ``agent_settled``, after automatic retries and continuations finish;
+  ``{"turn": "agent"}`` on active-run ``input``, idle ``input`` with a selected model and
+  configured auth, and ``agent_start`` (including autonomous starts). Known missing-model/auth
+  inputs while idle keep the user turn, since Pi rejects those before a run.
   It reads ``PANOPTICON_SERVICE_URL``/``PANOPTICON_TASK_ID`` from the environment the launcher
-  already sets, so its content needs no per-task templating. Not run against a live pi process —
-  no Node/pi runtime was available while writing this, so the source-level type-checking above
-  is the strongest evidence short of that.
+  already sets, so its content needs no per-task templating. Native SDK integration tests use
+  a synthetic HTTP model server to exercise retry, exhaustion, and abort without inference.
 
 - **Auth.** Subscription OAuth and API keys share ``<config_dir>/auth.json``. Preflight accepts
   pi's native provider-generic OAuth/API-key shapes (including the additional ``accountId`` field
@@ -78,7 +79,7 @@ from panopticon.harnesses.config import update_json_config
 
 #: The pi-coding-agent release the harness image layer installs (published npm manifest:
 #: ``engines.node >= 22.19.0``, ``bin.pi = dist/cli.js``) — the version verified locally.
-PI_VERSION = "0.80.3"
+PI_VERSION = "0.80.5"
 
 #: The Node.js release installed alongside it — the minimum pi's own ``engines`` requires;
 #: pi ships no static binary, so a Node runtime is a real prerequisite in the image (unlike codex).
@@ -132,8 +133,11 @@ export default function (pi) {
     }
   };
 
-  pi.on("agent_end", () => setTurn("user"));
-  pi.on("input", () => setTurn("agent"));
+  pi.on("agent_settled", () => setTurn("user"));
+  pi.on("agent_start", () => setTurn("agent"));
+  pi.on("input", (_event, ctx) => setTurn(
+    !ctx.isIdle() || (ctx.model && ctx.modelRegistry.hasConfiguredAuth(ctx.model)) ? "agent" : "user"
+  ));
 }
 """
 
@@ -304,6 +308,11 @@ class PiHarness(Harness):
 
     def __init__(self, *, run: CommandRunner = _subprocess_run) -> None:
         self._run = run
+
+    def split_starting_model(self, value: str | None) -> tuple[str, str]:
+        # Pi resolves exact model IDs before interpreting thinking suffixes. A colon can
+        # belong to a model tag, even when the tag is also a valid thinking level.
+        return value or "", ""
 
     def suggested_models(self) -> Sequence[tuple[str, str]]:
         """Ask pi for its available models; a missing/broken CLI leaves free text available."""

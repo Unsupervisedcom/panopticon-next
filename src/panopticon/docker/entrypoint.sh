@@ -27,13 +27,15 @@ if [ "$(id --user panopticon)" != "$puid" ]; then
         userdel "$existing_user"
     fi
     usermod --uid "$puid" --gid "$pgid" panopticon
-    chown --recursive "$puid:$pgid" /home/panopticon
+    chown --recursive --no-dereference "$puid:$pgid" /home/panopticon
 fi
-# Hand the per-task config volume at the agent's config dir (claude's history lives here) to the
-# adopted user: a
-# fresh volume is root-owned, and one written by a different uid before would be unreadable.
-# Best-effort — it may not be a mount (a task without the config volume).
-chown --recursive "$puid:$pgid" /home/panopticon/.claude 2>/dev/null || true
+# Fresh task volumes are root-owned even when the baked uid already matches. Resumed volumes
+# may belong to another host's uid. Leave imported credential symlink targets untouched.
+for config_dir in /home/panopticon/.{claude,codex,pi,outfitter}; do
+    if [ -d "$config_dir" ] && [ ! -L "$config_dir" ]; then
+        chown --recursive --no-dereference "$puid:$pgid" "$config_dir"
+    fi
+done
 
 # docker_in_docker capability (ADR-0005 repo capability): a privileged container running a nested
 # Docker daemon. dockerd needs root, so start it here — before we drop privileges — and put the

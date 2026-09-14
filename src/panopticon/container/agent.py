@@ -23,11 +23,13 @@ import signal
 import subprocess
 import sys
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 
 import httpx
 
 from panopticon.client import TaskServiceClient
+from panopticon.container.entrypoint import SERVICE_CONNECTIVITY_HINT
 from panopticon.core.models import Skill
 from panopticon.harnesses import BootstrapContext, Harness, LaunchContext, get_harness
 from panopticon.taskservice.auth import environment_token
@@ -82,11 +84,18 @@ def main(
     home = home or Path.home()
     task_id = env["PANOPTICON_TASK_ID"]
     runner_id = env.get("PANOPTICON_RUNNER_ID")
-    if detail := harness.missing_auth(env, home=home):
+
+    def report_failure(detail: str, *, echo: bool = True) -> None:
+        if echo:
+            print(detail, file=sys.stderr, flush=True)
         if runner_id:
-            client.report_lifecycle(task_id, runner_id, phase="failed", detail=detail)
-        if harness.name == "pi":
-            print(detail, file=sys.stderr)
+            # Reporting must not replace the diagnosis or interrupt the normal exit path.
+            with suppress(Exception):
+                client.report_launcher_failure(task_id, runner_id, detail[:4096])
+
+    if detail := harness.missing_auth(env, home=home):
+        report_failure(detail)
+        on_exit()
         return
     stage = "workflow-surface-fetch"
     try:
@@ -114,18 +123,25 @@ def main(
             ),
         )
     except Exception as exc:
+        if stage == "workflow-surface-fetch" and isinstance(exc, httpx.TransportError):
+            detail = (
+                f"Could not load the workflow ({type(exc).__name__}). " + SERVICE_CONNECTIVITY_HINT
+            )
+            print(detail, file=sys.stderr, flush=True)
+            if harness.name != "pi":
+                raise RuntimeError(detail) from None
+            report_failure(detail, echo=False)
+            on_exit()
+            return
         if harness.name != "pi":
             raise
         detail = f"pi {stage} failure: {exc}"
-        if runner_id:
-            client.report_lifecycle(task_id, runner_id, phase="failed", detail=detail)
-        print(detail, file=sys.stderr)
+        report_failure(detail)
+        on_exit()
         return
     if harness.name == "pi" and isinstance(status, int):
         detail = f"pi exited unexpectedly with status {status}"
-        if runner_id:
-            client.report_lifecycle(task_id, runner_id, phase="failed", detail=detail)
-        print(detail, file=sys.stderr)
+        report_failure(detail)
     on_exit()  # ...then stop the container (task → down → respawn)
 
 

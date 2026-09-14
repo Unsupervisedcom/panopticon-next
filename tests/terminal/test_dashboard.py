@@ -20,6 +20,7 @@ from textual.app import App
 from textual.containers import VerticalScroll
 from textual.widgets import Button, Checkbox, DataTable, Input, Label, OptionList, Select, Static
 
+from panopticon.harnesses.base import Harness
 from panopticon.terminal import dashboard
 from panopticon.terminal.dashboard import (
     _ENSEMBLE_KEY_PREFIX,
@@ -279,6 +280,8 @@ class _FakeClient:
 
 
 class _SuggestionHarness:
+    split_starting_model = Harness.split_starting_model
+
     """Controllable harness discovery fake for the memo modal's Pilot tests."""
 
     field_label = "model"
@@ -3633,6 +3636,28 @@ def test_launch_resolution_and_provenance_for_every_source() -> None:
         overrides={"model": "free/form", "effort": "maximum"},
         touched={"model", "effort"},
     ) == dashboard.LaunchSelection("claude", "free/form", "maximum", "this task")
+
+
+@pytest.mark.parametrize(
+    "value", ["provider/model:20b", "provider/model:high", "provider/model:20b:high"]
+)
+def test_pi_model_tags_remain_opaque_when_editing_task_effort(value: str) -> None:
+    repo = {"default_harness": "pi", "default_model": value}
+    selection = dashboard.resolve_launch_selection(repo, {})
+    assert (selection.model, selection.effort, selection.starting_model) == (value, "", value)
+    changed = dashboard.resolve_launch_selection(
+        repo, {}, overrides={"effort": "high"}, touched={"effort"}
+    )
+    assert changed.model == value
+    assert changed.starting_model == f"{value}:high"
+
+
+def test_other_harness_model_effort_splitting_preserves_custom_values() -> None:
+    selection = dashboard.resolve_launch_selection(
+        {"default_harness": "codex", "default_model": "model:custom-effort"}, {}
+    )
+    assert (selection.model, selection.effort) == ("model", "custom-effort")
+    assert selection.starting_model == "model:custom-effort"
 
 
 def test_touched_launch_fields_survive_workflow_reselection() -> None:

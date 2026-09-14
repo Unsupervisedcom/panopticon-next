@@ -54,7 +54,8 @@ Panopticon's MCP tools.
 On macOS, use OrbStack or Docker Desktop and see [macOS setup](macos-setup.md). On Linux, the
 authenticated task service binds to `0.0.0.0` so bridge containers can reach it. Restrict inbound
 access with a host firewall or encrypted, access-controlled transport before using Panopticon on
-an untrusted network; see [authentication](auth.md).
+an untrusted network; see [authentication](auth.md). Allow the Docker container network to reach
+the task-service port. If a task stays `awaiting`, see [container troubleshooting](container.md#when-it-goes-wrong).
 
 ## 2. Connect an agent and select the repository
 

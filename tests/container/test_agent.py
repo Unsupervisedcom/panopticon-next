@@ -3,17 +3,19 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 from pathlib import Path
 
+import httpx
 import pytest
 
 from panopticon.container import agent
 from panopticon.harnesses import Harness, LaunchContext
 from panopticon.harnesses import claude as claude_harness
 from panopticon.harnesses.claude import MCP_CONFIG_FILE, WORKFLOW_OVERVIEW_FILE
-from panopticon.harnesses.pi import PiHarness
+from panopticon.harnesses.pi import API_KEY_ENV_VARS, PiHarness
 
 # Plausible-length stand-ins for real credentials — the harnesses' shape checks reject anything
 # shorter (see tests/harnesses/test_claude.py, test_codex.py for the length-bound tests).
@@ -43,11 +45,11 @@ class _FakeClient:
     def workflow_overview(self, task_id: str) -> str:
         return self._overview
 
-    def report_lifecycle(
-        self, task_id: str, runner_id: str, phase: str, detail: str | None = None
+    def report_launcher_failure(
+        self, task_id: str, runner_id: str, detail: str
     ) -> dict[str, str | None]:
         self.lifecycle_calls.append(
-            {"task_id": task_id, "runner_id": runner_id, "phase": phase, "detail": detail}
+            {"task_id": task_id, "runner_id": runner_id, "phase": "failed", "detail": detail}
         )
         return {}
 
@@ -68,6 +70,103 @@ def _base_env(monkeypatch: pytest.MonkeyPatch, probe_status: int | None = 200) -
         "PANOPTICON_CREDENTIALS",
     ):
         monkeypatch.delenv(var, raising=False)
+
+
+# 2119: REQ-051.4.4
+# 2119: REQ-051.4.7
+@pytest.mark.parametrize("harness", ["claude", "codex", "pi"])
+@pytest.mark.parametrize("fetch", ["list_skills", "list_operations", "workflow_overview"])
+def test_workflow_transport_failure_prints_safe_guidance_before_failed_reporting(
+    harness: str,
+    fetch: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("PANOPTICON_HARNESS", harness)
+    monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", VALID_ANTHROPIC_API_KEY)
+    monkeypatch.setenv("CODEX_API_KEY", VALID_CODEX_API_KEY)
+    secret = "workflow-secret-sentinel"
+    monkeypatch.setenv("PANOPTICON_SERVICE_URL", f"http://user:{secret}@svc?token={secret}")
+    request = httpx.Request("GET", f"http://user:{secret}@svc?token={secret}")
+    detail = "Could not load the workflow (ReadTimeout). " + agent.SERVICE_CONNECTIVITY_HINT
+    printed_before_report: list[str] = []
+
+    class _OfflineClient(_FakeClient):
+        def report_launcher_failure(
+            self, task_id: str, runner_id: str, detail: str
+        ) -> dict[str, str | None]:
+            printed_before_report.append(capsys.readouterr().err)
+            super().report_launcher_failure(task_id, runner_id, detail)
+            raise httpx.ConnectError(secret, request=request)
+
+    client = _OfflineClient()
+
+    def fail_fetch(task_id: str) -> object:
+        raise httpx.ReadTimeout(secret, request=request)
+
+    monkeypatch.setattr(client, fetch, fail_fetch)
+    events: list[str] = []
+
+    def run() -> None:
+        agent.main(
+            client_factory=lambda _url: client,  # type: ignore[arg-type,return-value]
+            home=tmp_path,
+            launch=lambda _harness, _ctx: events.append("launch"),
+            on_exit=lambda: events.append("on_exit"),
+        )
+
+    if harness == "pi":
+        run()  # reporting failure must not replace the already printed diagnosis
+        assert printed_before_report == [detail + "\n"]
+        assert client.lifecycle_calls[-1]["detail"] == detail
+        assert capsys.readouterr().err == ""
+    else:
+        with pytest.raises(RuntimeError) as error:
+            run()
+        assert str(error.value) == detail
+        assert error.value.__suppress_context__  # do not expose the raw transport exception
+        assert capsys.readouterr().err == detail + "\n"
+        assert client.lifecycle_calls == []
+    assert secret not in detail
+    assert events == (["on_exit"] if harness == "pi" else [])
+
+
+@pytest.mark.parametrize("stage", ["http-status", "bootstrap", "launcher"])
+def test_unrelated_launcher_failures_keep_their_existing_behavior(
+    stage: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", VALID_ANTHROPIC_API_KEY)
+    request = httpx.Request("GET", "http://svc")
+    failure = (
+        httpx.HTTPStatusError("unavailable", request=request, response=httpx.Response(503))
+        if stage == "http-status"
+        else httpx.ConnectError("unrelated transport failure", request=request)
+    )
+
+    def fail(*_args: object) -> None:
+        raise failure
+
+    client = _FakeClient()
+    if stage == "http-status":
+        monkeypatch.setattr(client, "list_skills", fail)
+    elif stage == "bootstrap":
+        monkeypatch.setattr(claude_harness.ClaudeHarness, "bootstrap", fail)
+    with pytest.raises(type(failure)) as error:
+        agent.main(
+            client_factory=lambda _url: client,  # type: ignore[arg-type,return-value]
+            home=tmp_path,
+            launch=fail,
+            on_exit=lambda: pytest.fail("must not exit after a failed launch"),
+        )
+    assert error.value is failure
+    assert capsys.readouterr().err == ""
 
 
 def test_main_bootstraps_the_default_claude_harness_then_launches(
@@ -212,9 +311,12 @@ def test_pi_preflight_failure_is_identical_in_lifecycle_and_stderr(
     _base_env(monkeypatch)
     monkeypatch.setenv("PANOPTICON_HARNESS", "pi")
     monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    for key in API_KEY_ENV_VARS:
+        monkeypatch.delenv(key, raising=False)
     credentials = tmp_path / "credentials"
-    credentials.mkdir()
-    (credentials / "auth.json").write_text(contents)
+    native = credentials / "pi" / "agent"
+    native.mkdir(parents=True)
+    (native / "auth.json").write_text(contents)
     monkeypatch.setenv("PANOPTICON_CREDENTIALS", str(credentials))
     fake = _FakeClient()
 
@@ -238,6 +340,169 @@ def test_pi_preflight_failure_is_identical_in_lifecycle_and_stderr(
     assert stderr == f"{expected}\n"
     assert not (tmp_path / ".pi" / "agent" / "settings.json").exists()
     assert "must-not-leak" not in detail and "must-not-leak" not in stderr
+
+
+def test_pi_native_credential_file_allows_launch_without_environment_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("PANOPTICON_HARNESS", "pi")
+    monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    for key in API_KEY_ENV_VARS:
+        monkeypatch.delenv(key, raising=False)
+    credentials = tmp_path / "credentials"
+    native = credentials / "pi" / "agent"
+    native.mkdir(parents=True)
+    (native / "auth.json").write_text(
+        '{"anthropic":{"type":"api_key","key":"native-file-test-key"}}'
+    )
+    monkeypatch.setenv("PANOPTICON_CREDENTIALS", str(credentials))
+    client = _FakeClient()
+    events: list[str] = []
+    agent.main(
+        client_factory=lambda _url: client,  # type: ignore[arg-type,return-value]
+        home=tmp_path,
+        launch=lambda _harness, _ctx: events.append("launch"),
+        on_exit=lambda: events.append("exit"),
+    )
+    assert events == ["launch", "exit"]
+    assert client.lifecycle_calls == []
+    assert capsys.readouterr().err == ""
+
+
+# 2119: REQ-051.4.5
+# 2119: REQ-051.4.7
+@pytest.mark.parametrize("stage", ["preflight", "bootstrap", "exit"])
+@pytest.mark.parametrize("report_error", ["forbidden", "timeout"])
+def test_pi_diagnosis_precedes_reporting_errors_and_exit_still_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stage: str,
+    report_error: str,
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("PANOPTICON_HARNESS", "pi")
+    monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    monkeypatch.setattr(
+        PiHarness,
+        "missing_auth",
+        lambda *_args, **_kw: "Missing pi credentials" if stage == "preflight" else None,
+    )
+    printed: list[str] = []
+    exits: list[str] = []
+    request = httpx.Request("POST", "http://svc/tasks/t1/launcher-failure")
+
+    class _RejectedReportClient(_FakeClient):
+        def report_launcher_failure(
+            self, task_id: str, runner_id: str, detail: str
+        ) -> dict[str, str | None]:
+            printed.append(capsys.readouterr().err)
+            super().report_launcher_failure(task_id, runner_id, detail)
+            if report_error == "forbidden":
+                raise httpx.HTTPStatusError(
+                    "secondary-report-error",
+                    request=request,
+                    response=httpx.Response(403, request=request),
+                )
+            raise httpx.ConnectTimeout("secondary-report-error", request=request)
+
+    def bootstrap(*_args: object, **_kwargs: object) -> None:
+        if stage == "bootstrap":
+            raise PermissionError("Cannot write pi settings")
+
+    monkeypatch.setattr(PiHarness, "bootstrap", bootstrap)
+    client = _RejectedReportClient()
+    agent.main(
+        client_factory=lambda _url: client,  # type: ignore[arg-type,return-value]
+        home=tmp_path,
+        launch=lambda *_args: 7,
+        on_exit=lambda: exits.append("exit"),
+    )
+    expected = {
+        "preflight": "Missing pi credentials",
+        "bootstrap": "pi bootstrap failure: Cannot write pi settings",
+        "exit": "pi exited unexpectedly with status 7",
+    }[stage]
+    assert printed == [expected + "\n"]
+    assert capsys.readouterr().err == ""
+    assert client.lifecycle_calls == [
+        {"task_id": "t1", "runner_id": "runner-1", "phase": "failed", "detail": expected}
+    ]
+    assert exits == ["exit"]
+
+
+# 2119: REQ-051.4.5
+@pytest.mark.parametrize("stage", ["preflight", "transport"])
+def test_pi_failure_flushes_buffered_stderr_before_reporting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("PANOPTICON_HARNESS", "pi")
+    monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    monkeypatch.setattr(
+        PiHarness,
+        "missing_auth",
+        lambda *_args, **_kwargs: "Missing pi credentials" if stage == "preflight" else None,
+    )
+    expected = (
+        "Missing pi credentials"
+        if stage == "preflight"
+        else "Could not load the workflow (ReadTimeout). " + agent.SERVICE_CONNECTIVITY_HINT
+    )
+    output = io.BytesIO()
+    available_at_report: list[bytes] = []
+
+    class _ObservingClient(_FakeClient):
+        def list_skills(self, task_id: str) -> list[dict[str, str]]:
+            raise httpx.ReadTimeout("workflow unavailable")
+
+        def report_launcher_failure(
+            self, task_id: str, runner_id: str, detail: str
+        ) -> dict[str, str | None]:
+            available_at_report.append(output.getvalue())
+            return super().report_launcher_failure(task_id, runner_id, detail)
+
+    # A newline alone cannot expose bytes here: only an explicit flush drains this buffer.
+    with (
+        io.TextIOWrapper(
+            output, encoding="utf-8", line_buffering=False, write_through=False
+        ) as stderr,
+        monkeypatch.context() as patch,
+    ):
+        patch.setattr(agent.sys, "stderr", stderr)
+        agent.main(
+            client_factory=lambda _url: _ObservingClient(),  # type: ignore[arg-type,return-value]
+            home=tmp_path,
+            launch=lambda *_args: pytest.fail("must fail before launch"),
+            on_exit=lambda: None,
+        )
+        assert available_at_report == [(expected + "\n").encode("utf-8")]
+
+
+# 2119: REQ-051.4.5
+def test_pi_long_failure_keeps_full_stderr_and_bounds_the_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("PANOPTICON_HARNESS", "pi")
+    monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    monkeypatch.setattr(PiHarness, "missing_auth", lambda *_args, **_kwargs: None)
+
+    def bootstrap(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError("x" * 5000)
+
+    monkeypatch.setattr(PiHarness, "bootstrap", bootstrap)
+    client = _FakeClient()
+    agent.main(
+        client_factory=lambda _url: client,  # type: ignore[arg-type,return-value]
+        home=tmp_path,
+        launch=lambda *_args: pytest.fail("must not launch"),
+        on_exit=lambda: None,
+    )
+    diagnostic = "pi bootstrap failure: " + "x" * 5000
+    assert capsys.readouterr().err == diagnostic + "\n"
+    assert client.lifecycle_calls[0]["detail"] == diagnostic[:4096]
 
 
 # 2119: REQ-051.4.1
@@ -266,11 +531,11 @@ def test_pi_cli_exit_latches_and_prints_an_actionable_failure(
     )
 
     class _OrderedClient(_FakeClient):
-        def report_lifecycle(
-            self, task_id: str, runner_id: str, phase: str, detail: str | None = None
+        def report_launcher_failure(
+            self, task_id: str, runner_id: str, detail: str
         ) -> dict[str, str | None]:
-            order.append(f"report:{phase}")
-            return super().report_lifecycle(task_id, runner_id, phase, detail)
+            order.append("report:failed")
+            return super().report_launcher_failure(task_id, runner_id, detail)
 
     fake = _OrderedClient()
 
@@ -396,12 +661,47 @@ def test_main_fails_fast_when_no_auth_token_is_set(
         launch=lambda harness, ctx: launched.append("launched"),
         on_exit=lambda: launched.append("on_exit"),
     )
-    assert launched == []  # launch must not be called
+    assert launched == ["on_exit"]  # stop the container without launching
     assert len(fake.lifecycle_calls) == 1
     call = fake.lifecycle_calls[0]
     assert call["phase"] == "failed"
     assert call["runner_id"] == "runner-1"
     assert "CLAUDE_CODE_OAUTH_TOKEN" in (call["detail"] or "")
+
+
+@pytest.mark.parametrize("harness", ["claude", "codex"])
+def test_missing_auth_remains_visible_when_failure_report_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    harness: str,
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("PANOPTICON_HARNESS", harness)
+    monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    printed: list[str] = []
+    reported: list[str] = []
+    exits: list[str] = []
+
+    class _OfflineClient(_FakeClient):
+        def report_launcher_failure(
+            self, task_id: str, runner_id: str, detail: str
+        ) -> dict[str, str | None]:
+            printed.append(capsys.readouterr().err)
+            reported.append(detail)
+            raise httpx.ConnectTimeout("secondary-report-error")
+
+    agent.main(
+        client_factory=lambda _url: _OfflineClient(),  # type: ignore[arg-type,return-value]
+        home=tmp_path,
+        launch=lambda *_args: pytest.fail("must not launch"),
+        on_exit=lambda: exits.append("exit"),
+    )
+    assert len(reported) == 1
+    assert printed == [reported[0] + "\n"]
+    assert exits == ["exit"]
+    assert ("CLAUDE_CODE_OAUTH_TOKEN" if harness == "claude" else "CODEX_API_KEY") in printed[0]
+    assert capsys.readouterr().err == ""
 
 
 def test_main_fails_fast_on_a_rejected_credential_naming_the_env_file_fix(
@@ -451,7 +751,7 @@ def test_main_returns_early_without_lifecycle_call_when_runner_id_absent(
         launch=lambda harness, ctx: launched.append("launched"),
         on_exit=lambda: launched.append("on_exit"),
     )
-    assert launched == []  # still returns early without launching
+    assert launched == ["on_exit"]  # stop the container even without a runner ID
     assert fake.lifecycle_calls == []  # no lifecycle call when runner_id absent
 
 

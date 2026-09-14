@@ -98,6 +98,25 @@ surfaces, and waits for explicit operator release after the underlying issue is 
 4. A pi credential-preflight, workflow-surface-fetch, bootstrap, or launcher failure that occurs
    before any readiness marker is observed MUST be recorded as a `failed` lifecycle detail and
    remain available through repeated daemon passes until explicit claim release.
+5. Launcher failure reporting MUST satisfy all of these conditions: (a) with enforced task-service
+   authentication, the launcher uses its derived task capability to report its own failure through
+   the fixed launcher-failure operation without runner lifecycle privileges; (b) Pi prints and flushes
+   the original diagnostic before attempting the report; (c) a rejected or unavailable reporting
+   request neither replaces that diagnostic nor interrupts the normal exit path; (d) reports longer
+   than 4096 characters retain the first 4096 characters while standard error retains the full diagnostic.
+6. Pi pane startup MUST preserve launcher failures by both (a) publishing the runner's `awaiting`
+   progress before starting the agent and (b) retaining a failure reported during pane startup as
+   `failed` when the runner's spawn call completes.
+7. Pi launcher failure recovery MUST satisfy both conditions: (a) after a preflight, workflow-fetch,
+   bootstrap, or launcher failure, the launcher invokes its container-stop callback after best-effort
+   failure reporting, including when reporting fails; (b) once that callback removes the live
+   registration, explicit operator retry clears the failed lifecycle and releases the claim so the
+   corrected task can launch again.
+
+### REQ-051.5: Task skills
+
+1. Pi MUST load the rendered task skills from the shared `~/.agents/skills` directory on both
+   first launch and resume.
 
 ## Non-goals
 

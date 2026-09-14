@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from panopticon.sessionservice.docker_daemon import FIX_HINT
 from panopticon.terminal import doctor
 from panopticon.terminal.doctor import CheckResult
 
@@ -119,6 +120,16 @@ def test_docker_present_but_daemon_down_fails() -> None:
     assert by_name["docker"].ok  # the binary is present
     assert not by_name["docker daemon"].ok  # but the daemon isn't reachable
     assert doctor.report(results) == 1
+
+
+def test_doctor_renders_shared_docker_recovery_guidance() -> None:
+    result = doctor.check_docker_daemon(_run_fail)
+    assert result.detail == "docker is installed but its daemon isn't reachable by this user"
+    assert result.hint == FIX_HINT
+    lines = doctor.render([result]).splitlines()
+    for index, hint_line in enumerate(FIX_HINT.splitlines()):
+        prefix = "      → " if index == 0 else "        "
+        assert prefix + hint_line in lines
 
 
 def test_docker_absent_skips_the_daemon_check() -> None:

@@ -495,6 +495,18 @@ class TaskServiceClient:
 
     # -- container lifecycle (the session service reports its spawn progress) -----
 
+    def report_launcher_failure(self, task_id: str, runner_id: str, detail: str) -> JsonObj:
+        """Latch this task's launcher failure without granting runner lifecycle control."""
+        return cast(
+            JsonObj,
+            self._json(
+                self._http.post(
+                    f"/tasks/{task_id}/launcher-failure",
+                    json={"runner_id": runner_id, "detail": detail},
+                )
+            ),
+        )
+
     def report_lifecycle(
         self,
         task_id: str,

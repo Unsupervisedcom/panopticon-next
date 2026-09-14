@@ -124,6 +124,7 @@ class Action(str, Enum):
     PROVISION_TASK = "provision_task"
     MIGRATE_TASK = "migrate_task"
     REPORT_LIFECYCLE = "report_lifecycle"
+    REPORT_LAUNCHER_FAILURE = "report_launcher_failure"
     SET_GOVERNOR = "set_governor"
     SNOOZE_TASK = "snooze_task"
     PREPLAN_CHILD = "preplan_child"
@@ -193,6 +194,7 @@ _SELF_ACTIONS = frozenset(
         Action.REGISTER_CONTAINER,
         Action.DEREGISTER_CONTAINER,
         Action.TASK_LIVENESS,
+        Action.REPORT_LAUNCHER_FAILURE,
     }
 )
 _CHILD_ACTIONS = frozenset(
@@ -263,6 +265,7 @@ _REST_ACTIONS: dict[tuple[str, str], Action] = {
     ("PUT", "/tasks/{task_id}/provisioning"): Action.PROVISION_TASK,
     ("PUT", "/tasks/{task_id}/migration"): Action.MIGRATE_TASK,
     ("PUT", "/tasks/{task_id}/lifecycle"): Action.REPORT_LIFECYCLE,
+    ("POST", "/tasks/{task_id}/launcher-failure"): Action.REPORT_LAUNCHER_FAILURE,
     ("DELETE", "/tasks/{task_id}/lifecycle"): Action.REPORT_LIFECYCLE,
     ("PUT", "/tasks/{task_id}/governor"): Action.SET_GOVERNOR,
     ("PUT", "/tasks/{task_id}/snooze"): Action.SNOOZE_TASK,

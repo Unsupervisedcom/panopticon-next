@@ -121,6 +121,18 @@ For what a slug, branch, clone, and `provisioned` mean as task concepts, see [ta
 A container can disappear out from under a live task — an OOM kill, a host reboot, a `docker rm`.
 The system distinguishes a few cases:
 
+- **Lingering `awaiting`** — the container may be unable to reach the task service even when
+  the host dashboard works. Inspect Docker logs for the current or surviving container and
+  the task pane if it is still available. A failed launcher can close its pane; recovery may
+  restart the container and replace its logs. Check the container's `PANOPTICON_SERVICE_URL`,
+  the service listener, the Docker bridge route, and host firewall rules. On Linux, allow only
+  the required container network
+  to reach the task-service port; do not disable the firewall or expose the service broadly.
+  An unauthenticated request from inside the container that receives HTTP **401** proves
+  network reachability, **not successful authentication**. Connection timeouts or refusals
+  need network/listener repair; 401/403 responses need credential repair instead. Liveness
+  retries automatically and logs recovery on the next keepalive. After fixing connectivity,
+  use **`R`** to retry a task whose agent launcher already failed.
 - **`down`** — the container is gone but its runner is alive. The runner's **reconcile** pass
   notices the container has vanished and clears the stale spawn phase, so the task composes to
   `down` rather than lying at `awaiting`.

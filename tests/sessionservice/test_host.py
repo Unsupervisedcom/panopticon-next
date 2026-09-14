@@ -17,6 +17,7 @@ from panopticon.client import JsonObj, TaskServiceClient
 from panopticon.core.git import GitClones
 from panopticon.core.models import Repo
 from panopticon.sessionservice.clones import CloneCache
+from panopticon.sessionservice.docker_daemon import FIX_HINT
 from panopticon.sessionservice.host import (
     HostDaemon,
     build_arg_parser,
@@ -242,21 +243,32 @@ def test_tick_skips_only_provisioning_for_terminal_tasks(
             cleaned.append(task["id"])
 
     class _Provisioner:
-        def provision(self, task: JsonObj) -> None:
+        def provision(self, task: JsonObj, *, runner_id: str) -> None:
+            assert runner_id == "host-1"
             provisioned.append(task["id"])
 
-    daemon = HostDaemon(_FakeClient([]), _Spawner(), _Provisioner())  # type: ignore[arg-type]
+    daemon = HostDaemon(
+        _FakeClient([]),
+        _Spawner(),
+        _Provisioner(),
+        runner_id="host-1",  # type: ignore[arg-type]
+    )
 
     # 2119-spec: skip-terminal-provisioner
     # 2119: 1.1
     # 2119: 1.2
     terminal_task = _host_task("terminal", state=terminal_state)
+    terminal_task["claimed_by"] = "host-1"
     if projected_terminal is not None:
         terminal_task["terminal"] = projected_terminal
     daemon.tick([terminal_task])
 
     assert provisioned == []  # invocation, not error swallowing, is the observable contract
     assert cleaned == ["terminal"]  # cleanup is why the host pass cannot skip terminal tasks
+    active_task = _host_task("active", state="ITERATING")
+    active_task["claimed_by"] = "host-1"
+    daemon.tick([active_task])
+    assert provisioned == ["active"]  # the same runner/claim permits nonterminal provisioning
 
 
 def test_tick_flags_every_orphan_healing_before_any_respawn() -> None:
@@ -435,12 +447,18 @@ def test_hold_runner_liveness_reconnects_after_a_drop_until_stopped() -> None:
     attempts: list[tuple[str, str | None]] = []
     closes = {"n": 0}
     naps: list[float] = []
+    events: list[str] = []
+
+    def backoff(seconds: float) -> None:
+        events.append("backoff")
+        naps.append(seconds)
 
     class _DroppingClient:
         def live_runner(
             self, runner_id: str, *, host: str | None = None
         ) -> Generator[None, None, None]:
             opens["n"] += 1
+            events.append("open")
             attempts.append((runner_id, host))
 
             def gen() -> Generator[None, None, None]:
@@ -450,6 +468,7 @@ def test_hold_runner_liveness_reconnects_after_a_drop_until_stopped() -> None:
                     raise httpx.ReadTimeout("simulated silent stream", request=request)
                 finally:
                     closes["n"] += 1
+                    events.append("close")
 
             return gen()
 
@@ -460,12 +479,13 @@ def test_hold_runner_liveness_reconnects_after_a_drop_until_stopped() -> None:
         running=daemon_running,
         host="box.example.com",
         reconnect_backoff=0.25,
-        sleep=naps.append,
+        sleep=backoff,
     )
     assert opens["n"] == 3  # reconnected after each drop until `running()` said stop
     assert attempts == [("host-1", "box.example.com")] * 3
     assert closes["n"] == 3
     assert naps == [0.25, 0.25]
+    assert events == ["open", "close", "backoff", "open", "close", "backoff", "open", "close"]
 
 
 @pytest.mark.parametrize("status_code", [401, 403])
@@ -575,12 +595,9 @@ def test_preflight_or_exit_names_the_real_fix_when_the_real_docker_probe_fails(
     monkeypatch.setattr("subprocess.run", MagicMock(return_value=docker_info_failed))
     with pytest.raises(SystemExit) as exc_info:
         preflight_or_exit()
-    # Full-string equality, not a substring check: a substring check is a keyword-theater trap
-    # here — it would pass a *negated* remediation ("Never start OrbStack or Docker Desktop
-    # (macOS)") just as readily as the real, actionable one.
+    # The shared guidance is content-tested in test_docker_daemon; verify delivery here.
     assert str(exc_info.value) == (
-        "Docker daemon unreachable — start OrbStack or Docker Desktop (macOS), or "
-        "`systemctl start docker` (Linux), then rerun `panopticon host`."
+        f"Docker daemon unreachable for this user.\n{FIX_HINT}\nThen rerun `panopticon host`."
     )
 
 

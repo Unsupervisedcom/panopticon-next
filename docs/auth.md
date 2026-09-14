@@ -283,8 +283,10 @@ OpenAI's Codex CLI in its container. Three credential tiers, in order of setup e
    CODEX_HOME=~/.config/panopticon/secrets/codex-manual.d \
      codex -c 'cli_auth_credentials_store="file"' login
    chmod 0600 ~/.config/panopticon/secrets/codex-manual.d/auth.json
-   # then set credential_dir to codex-manual.d in the dashboard's repo form
    ```
+
+   Bind `codex-manual.d` using the [manual binding procedure](#manually-managed-credential-directories)
+   below, with `default_harness` set to `codex` and `default_model` set to `null`.
 
    The runner mounts the dir **read-write and shared** into that repo's task containers; the
    harness symlinks `auth.json` into each task's `CODEX_HOME`. Sharing is deliberate: ChatGPT
@@ -299,6 +301,26 @@ Pick the model per task via `starting_model` (e.g. `gpt-5.6-sol`, `gpt-5.6-terra
 `gpt-5.6-luna`), with an optional reasoning-effort suffix (`gpt-5.6-sol:high`); unset, codex
 picks its own default. Note the fleet-level constraint: plan
 rate limits (not auth) cap concurrent Codex throughput on Plus/Pro.
+
+## Manually managed credential directories
+
+Foreground setup is the ordinary connection and repair path. For an advanced configuration,
+bind an existing private directory through authenticated `PATCH /repos/{repo_id}`. The repository
+form does not expose `credential_dir`. For example, using task-service write authorization:
+
+```json
+{
+  "credential_dir": "pi.d",
+  "default_harness": "pi",
+  "default_model": "provider/model"
+}
+```
+
+The directory must exist under the task-service host's configured secrets directory for this
+request to pass validation. On a separate runner host, provide the same relative directory there
+with the files needed at launch. Credential contents never go in the request. Set the harness and
+model to match the files being transported. Configure
+this before launching tasks; use foreground repository setup for repairs to an existing connection.
 
 ## Pi (earendil-works/pi)
 
@@ -328,8 +350,10 @@ variables directly, while OAuth and stored API-key credentials live in `auth.jso
    mkdir -p ~/.config/panopticon/secrets/pi.d/pi/agent
    cp ~/.pi/agent/auth.json ~/.config/panopticon/secrets/pi.d/pi/agent/
    chmod 0600 ~/.config/panopticon/secrets/pi.d/pi/agent/auth.json
-   # then set credential_dir to pi.d in the dashboard's repo form
    ```
+
+   Bind `pi.d` using the [manual binding procedure](#manually-managed-credential-directories),
+   selecting the provider/model to launch.
 
    The runner mounts the directory **read-write and shared** into that repo's task containers; the
    harness imports `pi/agent/auth.json` into each task's native directory. Pi's provider-generic
@@ -339,7 +363,8 @@ variables directly, while OAuth and stored API-key credentials live in `auth.jso
    failure.
 
 3. **Personal pi config** (custom providers, local models, and other host-managed config): put
-   the pi files in a `pi/agent/` subdirectory of the repo's existing credential directory. For example,
+   the pi files in a `pi/agent/` subdirectory of the repo's credential directory, using the
+   [manual binding procedure](#manually-managed-credential-directories) if it is not yet bound. For example,
    if the repo uses `credential_dir: "openai.d"`:
 
    ```sh
@@ -352,6 +377,11 @@ variables directly, while OAuth and stored API-key credentials live in `auth.jso
    `::1` are adapted to `host.docker.internal`, so a model server on the runner host is reachable
    from the container. LAN and public URLs remain unchanged. Existing files in the persistent Pi
    volume are never overwritten.
+
+   For Ollama gpt-oss templates without a `developer` message role, set
+   `"compat": {"supportsDeveloperRole": false}` on the model entry in `models.json` so Pi's
+   system instructions reach the model. Set `contextWindow` to match the model server's
+   configured context size; declaring a larger window in Pi does not enlarge the server's window.
 
 Anthropic API keys are supported and first-class. Anthropic OAuth in pi is not recommended or supported by Panopticon and may risk your Anthropic account. Panopticon does not suggest or
 generate that credential path, but it does not block an operator who explicitly supplies

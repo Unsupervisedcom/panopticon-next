@@ -616,8 +616,8 @@ globalThis.fetch = (url, options) => {
   return Promise.resolve({ ok: true });
 };
 extension(pi);
-await handlers.agent_end();
-await handlers.input();
+await handlers.agent_settled();
+await handlers.input({}, { isIdle: () => true, model: {}, modelRegistry: { hasConfiguredAuth: () => true } });
 if (JSON.stringify(turns) !== JSON.stringify(["user", "agent"])) {
   throw new Error(`unexpected pi turns: ${turns}`);
 }

@@ -116,6 +116,11 @@ def test_serve_holds_liveness_connection_and_closes_cleanly() -> None:
 def test_serve_reconnects_after_a_dropped_connection() -> None:
     client = _FakeClient(drops=1)  # first connection drops underneath us
     naps: list[float] = []
+
+    def backoff(seconds: float) -> None:
+        client.calls.append("backoff")
+        naps.append(seconds)
+
     entrypoint.serve(
         client,  # type: ignore[arg-type]
         "t1",
@@ -123,18 +128,76 @@ def test_serve_reconnects_after_a_dropped_connection() -> None:
         runner_id="runner-1",
         running=_stop_after(3),
         reconnect_backoff=0.25,
-        sleep=naps.append,
+        sleep=backoff,
     )
     assert client.live_connections == 2  # dropped once, re-opened
     assert client.tasks == ["t1", "t1"]
     assert client.containers == ["c1", "c1"]  # the same container re-asserts liveness
     assert client.runners == ["runner-1", "runner-1"]
-    assert client.calls == ["live", "close", "live", "close"]
+    assert client.calls == ["live", "close", "backoff", "live", "close"]
     assert naps == [0.25]  # backed off once before reconnecting
 
 
+def test_transport_warning_is_once_per_outage_and_recovers_on_keepalive(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    secret = "transport-secret-sentinel"
+    request = httpx.Request("GET", f"http://user:{secret}@service/live?token={secret}")
+
+    class _IntermittentClient(_FakeClient):
+        done = False
+
+        def live(self, *_args: object, **_kwargs: object) -> Iterator[None]:
+            self.live_connections += 1
+            attempt = self.live_connections
+
+            def stream() -> Iterator[None]:
+                try:
+                    if attempt == 3:
+                        yield None  # recovery, then a new outage in the same connection
+                    if attempt == 5:
+                        self.done = True
+                        yield None
+                        return
+                    if attempt == 1:
+                        raise httpx.ConnectTimeout(secret, request=request)
+                    raise httpx.ReadTimeout(secret, request=request)
+                finally:
+                    self.closed += 1
+
+            return stream()
+
+    client = _IntermittentClient()
+    naps: list[float] = []
+    _serve(client, running=lambda: not client.done, sleep=naps.append)
+
+    warning = entrypoint.SERVICE_CONNECTIVITY_HINT + " Retrying automatically."
+    assert capsys.readouterr().err.splitlines() == [
+        "ConnectTimeout: " + warning,
+        "Task-service connection restored.",
+        "ReadTimeout: " + warning,
+        "Task-service connection restored.",
+    ]
+    assert secret not in warning
+    assert client.live_connections == client.closed == 5
+    assert naps == [entrypoint.RECONNECT_BACKOFF_SECONDS] * 4
+
+
+def test_http_status_failure_does_not_claim_a_network_outage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    http = httpx.Client(
+        base_url="http://service",
+        transport=httpx.MockTransport(lambda request: httpx.Response(503)),
+    )
+    _serve(TaskServiceClient(http), running=_stop_after(2))  # type: ignore[arg-type]
+    assert capsys.readouterr().err == ""
+
+
 @pytest.mark.parametrize("status", [401, 403])
-def test_serve_stops_after_permanent_liveness_rejection(status: int) -> None:
+def test_serve_stops_after_permanent_liveness_rejection(
+    status: int, capsys: pytest.CaptureFixture[str]
+) -> None:
     # 2119: REQ-035.36.1
     request = httpx.Request("GET", "http://service/tasks/t1/live")
     response = httpx.Response(status, request=request)
@@ -156,6 +219,7 @@ def test_serve_stops_after_permanent_liveness_rejection(status: int) -> None:
         _serve(_RejectedClient(), running=lambda: True, sleep=naps.append)
     assert len(attempts) == 1
     assert naps == []
+    assert capsys.readouterr().err == ""
 
 
 @pytest.mark.parametrize("status", [401, 403])

@@ -1404,6 +1404,7 @@ def test_task_scope_action_table_is_exhaustive_and_relationship_sensitive() -> N
         "provision_task",
         "migrate_task",
         "report_lifecycle",
+        "report_launcher_failure",
         "set_governor",
         "snooze_task",
     }
@@ -1438,6 +1439,7 @@ def test_task_scope_action_table_is_exhaustive_and_relationship_sensitive() -> N
         "register_container",
         "deregister_container",
         "task_liveness",
+        "report_launcher_failure",
     }
     expected_child = {
         "read_task",

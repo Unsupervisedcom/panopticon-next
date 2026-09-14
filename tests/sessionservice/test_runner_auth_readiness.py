@@ -9,6 +9,7 @@ import subprocess
 import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import create_autospec
 
 import httpx
 import pytest
@@ -381,13 +382,11 @@ def test_resume_keeps_persistent_container_auth_path(
     monkeypatch.setenv("PANOPTICON_TASK_ID", "task")
     monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner")
     monkeypatch.setenv("PANOPTICON_HARNESS", "codex")
-    launched, failures = [], []
-    client = SimpleNamespace(
-        list_skills=lambda _task: [],
-        list_operations=lambda _task: {},
-        workflow_overview=lambda _task: "Resume existing work.",
-        report_lifecycle=lambda *args, **kwargs: failures.append((args, kwargs)),
-    )
+    launched = []
+    client = create_autospec(TaskServiceClient, instance=True, spec_set=True)
+    client.list_skills.return_value = []
+    client.list_operations.return_value = {}
+    client.workflow_overview.return_value = "Resume existing work."
 
     def launch(harness, context):
         assert context.home == home and harness.name == "codex"
@@ -395,14 +394,17 @@ def test_resume_keeps_persistent_container_auth_path(
         launched.append(harness.name)
 
     agent.main(client_factory=lambda _url: client, home=home, launch=launch, on_exit=lambda: None)
-    assert launched == ["codex"] and failures == []
+    assert launched == ["codex"]
+    client.report_launcher_failure.assert_not_called()
     # If the actual in-container check is removed, this second launch incorrectly succeeds.
     auth.unlink()
     agent.main(client_factory=lambda _url: client, home=home, launch=launch, on_exit=lambda: None)
     assert launched == ["codex"]
-    assert len(failures) == 1
-    assert failures[0][1]["phase"] == "failed"
-    assert "No codex credentials" in failures[0][1]["detail"]
+    client.report_launcher_failure.assert_called_once()
+    task_id, runner_id, detail = client.report_launcher_failure.call_args.args
+    assert (task_id, runner_id) == ("task", "runner")
+    assert "No codex credentials" in detail
+    client.report_lifecycle.assert_not_called()
 
 
 # 2119: 3.7

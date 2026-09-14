@@ -23,6 +23,11 @@ def update_json_config(path: Path) -> Iterator[dict[str, Any]]:
     the ``with`` block raises, the file is left untouched — no half-written config.
     """
     data: dict[str, Any] = json.loads(path.read_text()) if path.exists() else {}
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"Config file {path} must contain a JSON object. "
+            "Restore or repair the file, then retry the task."
+        )
     yield data
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2))

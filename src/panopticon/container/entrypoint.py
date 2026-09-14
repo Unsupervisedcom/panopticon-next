@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import signal
+import sys
 import time
 from collections.abc import Callable
 
@@ -40,6 +41,14 @@ Work = Callable[[TaskServiceClient, str], None]
 #: running container (a transient network blip). Small: the gap is a brief ``down`` flicker that
 #: self-heals on reconnect, and respawn is operator-gated, so nothing auto-acts on the flicker.
 RECONNECT_BACKOFF_SECONDS = 1.0
+
+# Static text only: transport exceptions and configured URLs may contain credentials.
+SERVICE_CONNECTIVITY_HINT = (
+    "Cannot reach the task service from this container. Check that PANOPTICON_SERVICE_URL "
+    "uses an address reachable inside the container, that the task-service listener accepts "
+    "connections on that address, and that the Docker bridge route and host firewall allow "
+    "the container network to reach the service port."
+)
 
 
 def _set_slug_if_unset(client: TaskServiceClient, task_id: str, proposed_slug: str | None) -> None:
@@ -91,10 +100,14 @@ def serve(
     blip) we reconnect after a short backoff — a brief ``down`` flicker that self-heals.
     """
     _set_slug_if_unset(client, task_id, proposed_slug)
+    disconnected = False
     while running():
         live = client.live(task_id, container_id=container_id, runner_id=runner_id)
         try:
             for _ in live:  # each tick is a server keepalive; recheck whether to stop
+                if disconnected:
+                    print("Task-service connection restored.", file=sys.stderr, flush=True)
+                    disconnected = False
                 if not running():
                     break
         except httpx.HTTPStatusError as exc:
@@ -103,6 +116,14 @@ def serve(
                     "task-service permanently rejected the container liveness credential"
                 ) from exc
             # A transient status response may recover after the normal reconnect backoff.
+        except httpx.TransportError as exc:
+            if not disconnected:
+                print(
+                    f"{type(exc).__name__}: {SERVICE_CONNECTIVITY_HINT} Retrying automatically.",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                disconnected = True
         except httpx.HTTPError:
             pass  # connection dropped underneath us — fall through to reconnect
         finally:
