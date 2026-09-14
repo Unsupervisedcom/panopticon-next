@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.13](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.12...v0.2.13) (2026-09-14)
+
+
+### Bug Fixes
+
+* **runtime:** recover cleanly from Linux task startup failures ([#19](https://github.com/Unsupervisedcom/panopticon-next/issues/19)) ([11320f4](https://github.com/Unsupervisedcom/panopticon-next/commit/11320f4fd8802f12afddeada7a61c5779a52cf8e))
+
 ## [0.2.12](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.11...v0.2.12) (2026-09-14)
 
 
