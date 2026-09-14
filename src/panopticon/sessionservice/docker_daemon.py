@@ -29,9 +29,22 @@ def daemon_reachable(run: Run = _subprocess_status) -> bool:
     return run(["docker", "info"]) == 0
 
 
-#: The actionable fix, platform-agnostic (no `sys.platform` branch): names both the macOS app and
-#: the Linux service manager in one line, so the message is useful regardless of host platform.
-FIX_HINT = "start OrbStack or Docker Desktop (macOS), or `systemctl start docker` (Linux)"
+#: Shared by startup and doctor. A failed probe cannot distinguish a stopped engine from
+#: denied socket access; give conditional remedies without pretending to diagnose either.
+FIX_HINT = (
+    "Run `docker info` to see the error; `docker context show` identifies the selected engine.\n"
+    "macOS: start OrbStack or Docker Desktop. Linux system Docker: if stopped, run "
+    "`sudo systemctl start docker`.\n"
+    "For Linux system Docker socket permission denied, run "
+    '`sudo usermod --append --groups docker "$USER"` from your own account, '
+    "or ask an administrator to substitute your username. "
+    "The docker group grants root-equivalent access. Log out completely and log back in "
+    "(reconnect SSH) for the new group to take effect.\n"
+    "Existing tmux servers and background services keep their old groups; restart affected "
+    "processes after saving any running work.\n"
+    "For a rootless or remote engine, check that engine and its Docker context instead. "
+    "Confirm `docker info` works without sudo before retrying Panopticon."
+)
 
 
 def preflight_message(command: str, *, run: Run = _subprocess_status) -> str | None:
@@ -40,4 +53,6 @@ def preflight_message(command: str, *, run: Run = _subprocess_status) -> str | N
     the caller should refuse to start rather than spawn into failure (REQ-031.1/REQ-031.2)."""
     if daemon_reachable(run):
         return None
-    return f"Docker daemon unreachable — {FIX_HINT}, then rerun `panopticon {command}`."
+    return (
+        f"Docker daemon unreachable for this user.\n{FIX_HINT}\nThen rerun `panopticon {command}`."
+    )

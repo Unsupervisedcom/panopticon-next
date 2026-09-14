@@ -4,6 +4,8 @@ the command runner is a fake exit-status function."""
 
 from __future__ import annotations
 
+import pytest
+
 from panopticon.sessionservice.docker_daemon import daemon_reachable, preflight_message
 
 
@@ -40,21 +42,24 @@ def test_preflight_message_is_none_when_reachable() -> None:
     assert preflight_message("start", run=_run_ok) is None
 
 
-def test_preflight_message_names_the_fix_and_the_command_when_unreachable() -> None:
-    # Full-string equality, not a substring check: a substring check is a keyword-theater
-    # trap — it would pass a *negated* remediation ("Never start OrbStack or Docker Desktop
-    # (macOS)") just as readily as the real, actionable one.
-    # 2119: REQ-031.1.3
-    assert preflight_message("start", run=_run_fail) == (
-        "Docker daemon unreachable — start OrbStack or Docker Desktop (macOS), or "
-        "`systemctl start docker` (Linux), then rerun `panopticon start`."
-    )
-
-
-def test_preflight_message_names_the_host_command_when_refusing_host() -> None:
+@pytest.mark.parametrize("command", ["start", "host"])
+def test_preflight_explains_service_and_socket_recovery(command: str) -> None:
     # 2119: REQ-031.1.3
     # 2119: REQ-031.2.2
-    assert preflight_message("host", run=_run_fail) == (
-        "Docker daemon unreachable — start OrbStack or Docker Desktop (macOS), or "
-        "`systemctl start docker` (Linux), then rerun `panopticon host`."
+    # A failed probe alone cannot diagnose whether the engine is stopped or inaccessible.
+    assert preflight_message(command, run=_run_fail) == (
+        "Docker daemon unreachable for this user.\n"
+        "Run `docker info` to see the error; `docker context show` identifies the selected engine.\n"
+        "macOS: start OrbStack or Docker Desktop. Linux system Docker: if stopped, run "
+        "`sudo systemctl start docker`.\n"
+        "For Linux system Docker socket permission denied, run "
+        '`sudo usermod --append --groups docker "$USER"` from your own account, '
+        "or ask an administrator to substitute your username. "
+        "The docker group grants root-equivalent access. Log out completely and log back in "
+        "(reconnect SSH) for the new group to take effect.\n"
+        "Existing tmux servers and background services keep their old groups; restart affected "
+        "processes after saving any running work.\n"
+        "For a rootless or remote engine, check that engine and its Docker context instead. "
+        "Confirm `docker info` works without sudo before retrying Panopticon.\n"
+        f"Then rerun `panopticon {command}`."
     )

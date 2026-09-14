@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from panopticon.sessionservice.docker_daemon import FIX_HINT
 from panopticon.sessionservice.tmux_defaults import defaults_argv
 from panopticon.terminal.__main__ import main
 from panopticon.terminal.session_environment import SESSION_ENVIRONMENT
@@ -195,13 +196,9 @@ def test_start_with_a_task_arg_joins_it() -> None:
 
 
 def _expected_refusal_message(command: str) -> str:
-    """The exact refusal text `preflight_message` produces — pinned literally (not re-derived
-    from `docker_daemon.FIX_HINT`) so the test can assert full-string equality. A substring check
-    here is a keyword-theater trap: it would pass a *negated* remediation ("Never start OrbStack
-    or Docker Desktop (macOS)") just as readily as the real, actionable one."""
+    """Delivery check; the shared guidance content is pinned in test_docker_daemon."""
     return (
-        "Docker daemon unreachable — start OrbStack or Docker Desktop (macOS), or "
-        f"`systemctl start docker` (Linux), then rerun `panopticon {command}`."
+        f"Docker daemon unreachable for this user.\n{FIX_HINT}\nThen rerun `panopticon {command}`."
     )
 
 

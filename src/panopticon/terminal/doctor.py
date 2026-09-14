@@ -26,6 +26,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from panopticon.harnesses import HARNESSES
+from panopticon.sessionservice.docker_daemon import FIX_HINT
 
 #: The minimum Python the package supports (``pyproject`` ``requires-python``). The CLI re-execs
 #: ``sys.executable`` for the background services, so the running interpreter must satisfy it.
@@ -114,8 +115,8 @@ def check_docker_daemon(run: Run = _subprocess_status) -> CheckResult:
     return CheckResult(
         "docker daemon",
         False,
-        "docker is installed but its daemon isn't reachable",
-        hint="Start Docker Desktop, or `systemctl start docker` / `open -a Docker`.",
+        "docker is installed but its daemon isn't reachable by this user",
+        hint=FIX_HINT,
     )
 
 
@@ -172,7 +173,9 @@ def render(results: Sequence[CheckResult]) -> str:
         padding = "  " + "    " * result.indent
         lines.append(f"{padding}{mark} {result.name}: {result.detail}")
         if not result.ok and result.hint:
-            lines.append(f"{padding}    → {result.hint}")
+            for index, hint_line in enumerate(result.hint.splitlines()):
+                prefix = "→ " if index == 0 else "  "
+                lines.append(f"{padding}    {prefix}{hint_line}")
     failures = [result for result in results if result.required and not result.ok]
     lines.append("")
     if failures:

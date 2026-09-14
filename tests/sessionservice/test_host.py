@@ -17,6 +17,7 @@ from panopticon.client import JsonObj, TaskServiceClient
 from panopticon.core.git import GitClones
 from panopticon.core.models import Repo
 from panopticon.sessionservice.clones import CloneCache
+from panopticon.sessionservice.docker_daemon import FIX_HINT
 from panopticon.sessionservice.host import (
     HostDaemon,
     build_arg_parser,
@@ -575,12 +576,9 @@ def test_preflight_or_exit_names_the_real_fix_when_the_real_docker_probe_fails(
     monkeypatch.setattr("subprocess.run", MagicMock(return_value=docker_info_failed))
     with pytest.raises(SystemExit) as exc_info:
         preflight_or_exit()
-    # Full-string equality, not a substring check: a substring check is a keyword-theater trap
-    # here — it would pass a *negated* remediation ("Never start OrbStack or Docker Desktop
-    # (macOS)") just as readily as the real, actionable one.
+    # The shared guidance is content-tested in test_docker_daemon; verify delivery here.
     assert str(exc_info.value) == (
-        "Docker daemon unreachable — start OrbStack or Docker Desktop (macOS), or "
-        "`systemctl start docker` (Linux), then rerun `panopticon host`."
+        f"Docker daemon unreachable for this user.\n{FIX_HINT}\nThen rerun `panopticon host`."
     )
 
 
