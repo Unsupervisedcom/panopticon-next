@@ -243,21 +243,32 @@ def test_tick_skips_only_provisioning_for_terminal_tasks(
             cleaned.append(task["id"])
 
     class _Provisioner:
-        def provision(self, task: JsonObj) -> None:
+        def provision(self, task: JsonObj, *, runner_id: str) -> None:
+            assert runner_id == "host-1"
             provisioned.append(task["id"])
 
-    daemon = HostDaemon(_FakeClient([]), _Spawner(), _Provisioner())  # type: ignore[arg-type]
+    daemon = HostDaemon(
+        _FakeClient([]),
+        _Spawner(),
+        _Provisioner(),
+        runner_id="host-1",  # type: ignore[arg-type]
+    )
 
     # 2119-spec: skip-terminal-provisioner
     # 2119: 1.1
     # 2119: 1.2
     terminal_task = _host_task("terminal", state=terminal_state)
+    terminal_task["claimed_by"] = "host-1"
     if projected_terminal is not None:
         terminal_task["terminal"] = projected_terminal
     daemon.tick([terminal_task])
 
     assert provisioned == []  # invocation, not error swallowing, is the observable contract
     assert cleaned == ["terminal"]  # cleanup is why the host pass cannot skip terminal tasks
+    active_task = _host_task("active", state="ITERATING")
+    active_task["claimed_by"] = "host-1"
+    daemon.tick([active_task])
+    assert provisioned == ["active"]  # the same runner/claim permits nonterminal provisioning
 
 
 def test_tick_flags_every_orphan_healing_before_any_respawn() -> None:

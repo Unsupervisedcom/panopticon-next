@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from panopticon.client import TaskServiceClient
 from panopticon.container import agent
 from panopticon.core.models import Repo
+from panopticon.harnesses.pi import API_KEY_ENV_VARS
 from panopticon.sessionservice.host import HostDaemon
 from panopticon.sessionservice.local_runner import LocalRunner
 from panopticon.sessionservice.prefill import readiness_log, readiness_watch_command
@@ -22,6 +23,26 @@ from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
 from panopticon.taskservice.service import TaskService
 from panopticon.taskservice.store_sqlalchemy import SqlAlchemyStore
 from panopticon.workflows import Spike
+
+
+def _durability_spawner(
+    client: TaskServiceClient, tasks_root: Path
+) -> tuple[Spawner, mock.Mock, mock.Mock]:
+    runner = mock.create_autospec(LocalRunner, instance=True)
+    runner.has_session.return_value = False
+    executions = mock.Mock(name="executions")
+    executions.is_shell.return_value = False
+    spawner = Spawner(
+        client,
+        runner,
+        runner_id="host-1",
+        cache=mock.Mock(name="cache"),
+        tasks_root=str(tasks_root),
+        executions=executions,
+        images=mock.Mock(name="images"),
+        credential_check=lambda _task, _repo: "unexpected automatic retry",
+    )
+    return spawner, runner, executions
 
 
 # 2119: REQ-051.4.2
@@ -64,15 +85,7 @@ def test_failed_pi_exit_is_never_healed_across_repeated_daemon_passes(
         assert failed["harness"] == "pi"
         assert failed["container_status"] == "failed"
 
-        spawner = object.__new__(Spawner)
-        spawner._client = client  # type: ignore[attr-defined]
-        spawner._runner_id = "host-1"  # type: ignore[attr-defined]
-        spawner._runner = mock.Mock(name="runner")  # type: ignore[attr-defined]
-        spawner._runner.has_session.return_value = False  # type: ignore[attr-defined]
-        spawner._executions = mock.Mock(name="executions")  # type: ignore[attr-defined]
-        spawner._executions.is_shell.return_value = False  # type: ignore[attr-defined]
-        spawner._respawns = {}  # type: ignore[attr-defined]
-        spawner._pre_session_failures = set()  # type: ignore[attr-defined]
+        spawner, runner, executions = _durability_spawner(client, tmp_path / "tasks")
         provisioner = mock.Mock(name="provisioner")
         daemon = HostDaemon(client, spawner, provisioner, runner_id="host-1")
 
@@ -89,8 +102,8 @@ def test_failed_pi_exit_is_never_healed_across_repeated_daemon_passes(
         assert retained["claimed_by"] == "host-1"
         assert retained["container_status"] == "failed"
         assert retained["lifecycle_detail"] == detail
-        assert spawner._runner.mock_calls == []  # type: ignore[attr-defined]
-        assert spawner._executions.mock_calls == []  # type: ignore[attr-defined]
+        assert runner.mock_calls == []
+        assert executions.mock_calls == []
 
         released = client.release(task_id)
         assert released["claimed_by"] is None
@@ -115,8 +128,9 @@ def test_real_pi_preflight_failure_is_durable_before_readiness(
         task_id = client.create_task("repo", "spike", harness="pi")["id"]
         client.claim(task_id, "host-1")
         credentials = tmp_path / "credentials"
-        credentials.mkdir()
-        (credentials / "auth.json").write_text(
+        native = credentials / "pi" / "agent"
+        native.mkdir(parents=True)
+        (native / "auth.json").write_text(
             '{"tokens":{"access_token":"codex-only"},"last_refresh":"yesterday"}'
         )
         monkeypatch.setenv("PANOPTICON_SERVICE_URL", "http://service")
@@ -125,10 +139,8 @@ def test_real_pi_preflight_failure_is_durable_before_readiness(
         monkeypatch.setenv("PANOPTICON_HARNESS", "pi")
         monkeypatch.setenv("PANOPTICON_CREDENTIALS", str(credentials))
         for key in (
-            "ANTHROPIC_API_KEY",
-            "ANTHROPIC_OAUTH_TOKEN",
+            *API_KEY_ENV_VARS,
             "CLAUDE_CODE_OAUTH_TOKEN",
-            "OPENAI_API_KEY",
             "CODEX_API_KEY",
             "CODEX_ACCESS_TOKEN",
         ):
@@ -146,19 +158,15 @@ def test_real_pi_preflight_failure_is_durable_before_readiness(
         detail = failed["lifecycle_detail"]
         assert failed["claimed_by"] == "host-1"
         assert failed["container_status"] == "failed"
-        assert detail is not None and "~/.pi/agent/auth.json" in detail
+        assert detail == (
+            "No usable pi credentials: provide a valid ~/.pi/agent/auth.json, set "
+            "ANTHROPIC_API_KEY (or another pi provider API key), or configure the selected "
+            "provider's apiKey in models.json."
+        )
         assert capsys.readouterr().err == f"{detail}\n"
         assert not (home / ".pi" / "agent" / "settings.json").exists()
 
-        spawner = object.__new__(Spawner)
-        spawner._client = client  # type: ignore[attr-defined]
-        spawner._runner_id = "host-1"  # type: ignore[attr-defined]
-        spawner._runner = mock.Mock(name="runner")  # type: ignore[attr-defined]
-        spawner._runner.has_session.return_value = False  # type: ignore[attr-defined]
-        spawner._executions = mock.Mock(name="executions")  # type: ignore[attr-defined]
-        spawner._executions.is_shell.return_value = False  # type: ignore[attr-defined]
-        spawner._respawns = {}  # type: ignore[attr-defined]
-        spawner._pre_session_failures = set()  # type: ignore[attr-defined]
+        spawner, runner, executions = _durability_spawner(client, tmp_path / "tasks")
         daemon = HostDaemon(client, spawner, mock.Mock(name="provisioner"), runner_id="host-1")
         for _ in range(257):
             tasks, version_before = client.list_tasks_versioned()
@@ -169,6 +177,8 @@ def test_real_pi_preflight_failure_is_durable_before_readiness(
             assert retained["claimed_by"] == "host-1"
             assert retained["container_status"] == "failed"
             assert retained["lifecycle_detail"] == detail
+        assert runner.mock_calls == []
+        assert executions.mock_calls == []
         released = client.release(task_id)
         assert released["claimed_by"] is None
         assert released["lifecycle_detail"] is None
@@ -237,15 +247,7 @@ def test_arbitrary_pi_bootstrap_failure_reaches_real_lifecycle_before_readiness(
         assert expected_failure in failed["lifecycle_detail"]
         assert not marker.exists()
 
-        spawner = object.__new__(Spawner)
-        spawner._client = client  # type: ignore[attr-defined]
-        spawner._runner_id = "host-1"  # type: ignore[attr-defined]
-        spawner._runner = mock.Mock(name="runner")  # type: ignore[attr-defined]
-        spawner._runner.has_session.return_value = False  # type: ignore[attr-defined]
-        spawner._executions = mock.Mock(name="executions")  # type: ignore[attr-defined]
-        spawner._executions.is_shell.return_value = False  # type: ignore[attr-defined]
-        spawner._respawns = {}  # type: ignore[attr-defined]
-        spawner._pre_session_failures = set()  # type: ignore[attr-defined]
+        spawner, runner, executions = _durability_spawner(client, tmp_path / "tasks")
         daemon = HostDaemon(client, spawner, mock.Mock(name="provisioner"), runner_id="host-1")
         detail = failed["lifecycle_detail"]
         for _ in range(257):
@@ -258,6 +260,8 @@ def test_arbitrary_pi_bootstrap_failure_reaches_real_lifecycle_before_readiness(
             assert retained["container_status"] == "failed"
             assert retained["lifecycle_detail"] == detail
             assert not marker.exists()
+        assert runner.mock_calls == []
+        assert executions.mock_calls == []
         released = client.release(task_id)
         assert released["claimed_by"] is None
         assert released["lifecycle_detail"] is None

@@ -14,7 +14,7 @@ from panopticon.container import agent
 from panopticon.harnesses import Harness, LaunchContext
 from panopticon.harnesses import claude as claude_harness
 from panopticon.harnesses.claude import MCP_CONFIG_FILE, WORKFLOW_OVERVIEW_FILE
-from panopticon.harnesses.pi import PiHarness
+from panopticon.harnesses.pi import API_KEY_ENV_VARS, PiHarness
 
 # Plausible-length stand-ins for real credentials — the harnesses' shape checks reject anything
 # shorter (see tests/harnesses/test_claude.py, test_codex.py for the length-bound tests).
@@ -308,9 +308,12 @@ def test_pi_preflight_failure_is_identical_in_lifecycle_and_stderr(
     _base_env(monkeypatch)
     monkeypatch.setenv("PANOPTICON_HARNESS", "pi")
     monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    for key in API_KEY_ENV_VARS:
+        monkeypatch.delenv(key, raising=False)
     credentials = tmp_path / "credentials"
-    credentials.mkdir()
-    (credentials / "auth.json").write_text(contents)
+    native = credentials / "pi" / "agent"
+    native.mkdir(parents=True)
+    (native / "auth.json").write_text(contents)
     monkeypatch.setenv("PANOPTICON_CREDENTIALS", str(credentials))
     fake = _FakeClient()
 
@@ -334,6 +337,34 @@ def test_pi_preflight_failure_is_identical_in_lifecycle_and_stderr(
     assert stderr == f"{expected}\n"
     assert not (tmp_path / ".pi" / "agent" / "settings.json").exists()
     assert "must-not-leak" not in detail and "must-not-leak" not in stderr
+
+
+def test_pi_native_credential_file_allows_launch_without_environment_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _base_env(monkeypatch)
+    monkeypatch.setenv("PANOPTICON_HARNESS", "pi")
+    monkeypatch.setenv("PANOPTICON_RUNNER_ID", "runner-1")
+    for key in API_KEY_ENV_VARS:
+        monkeypatch.delenv(key, raising=False)
+    credentials = tmp_path / "credentials"
+    native = credentials / "pi" / "agent"
+    native.mkdir(parents=True)
+    (native / "auth.json").write_text(
+        '{"anthropic":{"type":"api_key","key":"native-file-test-key"}}'
+    )
+    monkeypatch.setenv("PANOPTICON_CREDENTIALS", str(credentials))
+    client = _FakeClient()
+    events: list[str] = []
+    agent.main(
+        client_factory=lambda _url: client,  # type: ignore[arg-type,return-value]
+        home=tmp_path,
+        launch=lambda _harness, _ctx: events.append("launch"),
+        on_exit=lambda: events.append("exit"),
+    )
+    assert events == ["launch", "exit"]
+    assert client.lifecycle_calls == []
+    assert capsys.readouterr().err == ""
 
 
 # 2119: REQ-051.4.1
