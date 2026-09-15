@@ -1,10 +1,10 @@
 """Spawn-prep (ADR 0011): clone the per-task checkout before launching the container.
 
 Before the runner spawns a task's container, the session service gives it a writable working copy:
-it makes the repo's cache clone current (`CloneCache`) and `git clone --local`s it to the per-task
-path that gets bind-mounted at ``/workspace``. A ``--local`` clone is self-contained (hardlinked
-objects), so it mounts at any container path; the agent works there the whole task and the slug
-later just branches it (`Provisioner`).
+it makes the repo's cache clone current (`CloneCache`) and clones it to the per-task
+path that gets bind-mounted at ``/workspace``. Git hardlinks objects when possible and copies them
+across filesystems. The clone mounts at any container path; the agent works there
+the whole task and the slug later just branches it (`Provisioner`).
 
 Idempotent: skips the clone (and the cache fetch) when the per-task checkout already exists — e.g.
 a re-created container re-mounts the same dir. LLM-free.
@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -57,17 +58,17 @@ def prepare_workspace(
 ) -> str:
     """Ensure the task's per-task clone exists and return its path (mount this at ``/workspace``).
 
-    Makes the repo's cache clone current, then ``git clone --local``s it to
+    Makes the repo's cache clone current, then clones it to
     ``<tasks_root>/<task_id>`` if that checkout isn't already there. ``git``/``exists`` are
     injectable so the emitted commands are unit-testable without a real repo.
 
-    Then points ``origin`` at the repo's operational forge URL (a ``--local`` clone's origin is the
+    Then points ``origin`` at the repo's operational forge URL (a local clone's origin is the
     cache *path*, which the container can neither push to nor let ``gh`` resolve). A repository
     ``GH_TOKEN`` converts a supported GitHub SSH source to an equivalent credential-free HTTPS
     origin and configures the container's existing ``gh`` credential helper. The stored source
     identity remains unchanged. Done at spawn, not deferred to slug-time provisioning, so the agent
-    has a correct ``origin`` from its first action; ``set-url`` is idempotent, so it also repoints an
-    existing clone.
+    has a correct ``origin`` from its first action. Existing checkouts must still match the repo
+    source; only equivalent transport changes are allowed, preserving old tasks after source edits.
 
     Finally sets a deterministic repository-local author identity for the agent. This is reasserted
     for an existing checkout so an operator or harness identity cannot leak into task commits.
@@ -96,6 +97,29 @@ def prepare_workspace(
         makedirs(str(Path(clone).parent))
         cache_path = cache.ensure(repo["id"], repo["git_url"], transport=transport)
         git.clone_local(cache_path=cache_path, dest=clone)
+    else:
+        origin = git.origin(repo_path=clone)
+        # A completed clone can survive an interruption before its origin is assigned below.
+        # Recover only through this source's expected cache, never an arbitrary local origin.
+        preparing_same_source = origin == cache.path(repo["id"], repo["git_url"]) and (
+            transport.matches_source(git.origin(repo_path=origin))
+        )
+        if not transport.matches_source(origin) and not preparing_same_source:
+            raise RuntimeError(
+                "This task checkout does not match the repository source. Existing work was "
+                "preserved. Press g, then e to restore the original source, or create a new task "
+                "for the edited repository. An existing checkout without an origin needs its "
+                "original origin restored."
+            )
+        if preparing_same_source:
+            try:
+                git.check_clone(repo_path=clone)
+            except subprocess.CalledProcessError:
+                raise RuntimeError(
+                    "This task checkout has incomplete Git objects or an unfinished or modified "
+                    "index after an interrupted clone. Existing files were preserved. Restore "
+                    "the checkout from a backup, or create a new task to get a fresh checkout."
+                ) from None
     git.set_origin(repo_path=clone, url=transport.operation_url)
     configure_task_git_credentials(clone, transport, run=git_credential_run)
     git.set_identity(

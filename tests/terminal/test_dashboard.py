@@ -1968,6 +1968,7 @@ async def test_pressing_t_with_no_running_session_does_not_signal() -> None:
     [
         "Connect claude in foreground setup; no task credentials are configured.",
         "Command ['docker', 'run'] failed: [missing image]",
+        "Repository clone/fetch failed. Check that the source exists and is readable on the runner.",
     ],
 )
 @pytest.mark.parametrize("runner_host", [None, "runner.example.invalid"])
@@ -1992,10 +1993,13 @@ async def test_failed_attach_displays_reason_and_recovery_without_switching(
         rendered = str(app.query_one(Toast).render())
         assert detail in rendered
         if runner_host:
-            assert f"setup on {runner_host}" in rendered
-            assert "open its dashboard and press g, then s" in rendered
+            assert f"repairs on {runner_host}" in rendered
+            assert (
+                "open its dashboard and press g, then e to edit the repo or s for credential setup"
+                in rendered
+            )
         else:
-            assert "Press g to open repos, then s for setup" in rendered
+            assert "Press g to open repos, then e to edit or s for credential setup" in rendered
         assert "press R to retry this task" in rendered
         assert picked == []
         assert client.released == []

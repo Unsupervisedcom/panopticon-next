@@ -7,6 +7,7 @@ import shutil
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -78,7 +79,12 @@ def test_remove_force_tier_and_idempotent() -> None:
 def test_clone_local_emits_self_contained_clone() -> None:
     rec = _Recorder()
     GitClones(run=rec).clone_local(cache_path="/clones/r1", dest="/tasks/t1")
-    assert rec.calls[0][0] == ["git", "clone", "--local", "/clones/r1", "/tasks/t1"]
+    assert rec.calls[0][0] == [
+        "git",
+        "clone",
+        "/clones/r1",
+        "/tasks/t1",
+    ]
 
 
 def test_create_branch_and_set_origin() -> None:
@@ -99,6 +105,65 @@ def test_create_branch_and_set_origin() -> None:
 
 
 # -- integration: a real git repo ---------------------------------------------------
+
+
+@pytest.mark.skipif(not shutil.which("git"), reason="needs git")
+@pytest.mark.parametrize("packed", [False, True], ids=["loose", "packed"])
+@pytest.mark.parametrize(
+    "cross_filesystem", [False, True], ids=["same-filesystem", "cross-filesystem"]
+)
+def test_local_clone_is_self_contained_and_preserves_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, packed: bool, cross_filesystem: bool
+) -> None:
+    destination_root = Path("/dev/shm") if cross_filesystem else tmp_path
+    if cross_filesystem and (
+        not destination_root.is_dir() or destination_root.stat().st_dev == tmp_path.stat().st_dev
+    ):
+        pytest.skip("needs a separate temporary filesystem at /dev/shm")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "no-global-config"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    source = tmp_path / "cache"
+    source.mkdir()
+
+    def git(repo: Path, *args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git(source, "init", "--initial-branch", "main", "--template=")
+    git(source, "config", "user.name", "Clone Test")
+    git(source, "config", "user.email", "clone@example.test")
+    (source / "README").write_text("committed content\n")
+    git(source, "add", "README")
+    git(source, "commit", "--message", "Initial content")
+    if packed:
+        git(source, "repack", "-a", "-d")
+    (source / "README").write_text("source-only uncommitted work\n")
+    original = {
+        path.relative_to(source): path.read_bytes() for path in source.rglob("*") if path.is_file()
+    }
+    head = git(source, "rev-parse", "HEAD")
+    with TemporaryDirectory(prefix="panopticon-clone-", dir=destination_root) as directory:
+        destination = Path(directory) / "task"
+        GitClones().clone_local(cache_path=str(source), dest=str(destination))
+        assert git(destination, "rev-parse", "HEAD") == head
+        assert (destination / "README").read_text() == "committed content\n"
+        assert not (destination / ".git/objects/info/alternates").exists()
+        objects = [path for path in (source / ".git/objects").rglob("*") if path.is_file()]
+        assert objects
+        for path in objects:
+            copy = destination / path.relative_to(source)
+            assert copy.read_bytes() == path.read_bytes()
+            if cross_filesystem:
+                assert not copy.samefile(path)
+        assert original == {
+            path.relative_to(source): path.read_bytes()
+            for path in source.rglob("*")
+            if path.is_file()
+        }
+        source.rename(tmp_path / "unavailable-cache")
+        git(destination, "fsck", "--full")
+        assert git(destination, "show", "HEAD:README") == "committed content"
 
 
 @pytest.mark.skipif(not shutil.which("git"), reason="needs git")

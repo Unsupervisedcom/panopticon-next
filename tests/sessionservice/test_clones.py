@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import threading
+import traceback
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -29,28 +30,48 @@ class _Recorder:
 
 
 def test_path_is_repo_scoped_under_root() -> None:
-    assert CloneCache("/clones/").path("r1") == "/clones/r1"  # trailing slash normalized
+    cache = CloneCache("/clones/")
+    path = cache.path("r1", "https://x/r1.git")
+    assert path.startswith("/clones/")
+    assert len(Path(path).name) == 64
+    assert path == CloneCache("/clones").path("r1", "https://x/r1.git")
+    assert path != cache.path("r1", "https://x/other.git")
+
+
+def test_cache_keys_bound_long_repo_ids_without_collapsing_distinct_sources(tmp_path: Path) -> None:
+    cache = CloneCache(str(tmp_path))
+    repo_id = "repository-" + "a" * 300
+    paths = [
+        Path(cache.path(repo_id, "https://example.invalid/a.git")),
+        Path(cache.path(repo_id, "https://example.invalid/b.git")),
+        Path(cache.path(repo_id + "b", "https://example.invalid/a.git")),
+    ]
+    assert len(set(paths)) == 3
+    for path in paths:
+        assert len(path.name) == 64
+        path.mkdir()  # The real filesystem accepts the full key despite a long registered ID.
+        assert path.is_dir()
 
 
 def test_clones_on_first_use() -> None:
     rec = _Recorder()
     cache = CloneCache("/clones", run=rec, exists=lambda _p: False, makedirs=lambda _p: None)
     path = cache.ensure("r1", "https://x/r1.git")
-    assert path == "/clones/r1"
-    assert rec.calls == [["git", "clone", "https://x/r1.git", "/clones/r1"]]
+    assert path == cache.path("r1", "https://x/r1.git")
+    assert rec.calls == [["git", "clone", "https://x/r1.git", cache.path("r1", "https://x/r1.git")]]
 
 
 def test_fetches_when_the_clone_exists() -> None:
     rec = _Recorder()
     cache = CloneCache("/clones", run=rec, exists=lambda _p: True, makedirs=lambda _p: None)
     path = cache.ensure("r1", "https://x/r1.git")
-    assert path == "/clones/r1"
+    assert path == cache.path("r1", "https://x/r1.git")
     assert rec.calls == [
-        ["git", "-C", "/clones/r1", "fetch", "--all", "--prune"],
+        ["git", "-C", cache.path("r1", "https://x/r1.git"), "fetch", "--all", "--prune"],
         [
             "git",
             "-C",
-            "/clones/r1",
+            cache.path("r1", "https://x/r1.git"),
             "merge",
             "--ff-only",
         ],  # advance local base to upstream (else stale)
@@ -77,11 +98,15 @@ def test_repo_credential_wraps_initial_clone_and_reused_cache_fetch_only() -> No
     assert clone[5] == "-c"
     assert clone[6] == "credential.https://github.com.useHttpPath=true"
     assert clone[7:9] == ["-c", "http.extraHeader="]
-    assert clone[-3:] == ["clone", "https://github.com/acme/private.git", "/clones/r1"]
+    assert clone[-3:] == [
+        "clone",
+        "https://github.com/acme/private.git",
+        cache.path("r1", transport.source_url),
+    ]
     assert set_source_origin == [
         "git",
         "-C",
-        "/clones/r1",
+        cache.path("r1", transport.source_url),
         "remote",
         "set-url",
         "origin",
@@ -90,11 +115,11 @@ def test_repo_credential_wraps_initial_clone_and_reused_cache_fetch_only() -> No
     assert fetch[:4] == clone[:4]
     assert fetch[4].startswith("credential.helper=!")
     assert fetch[5:9] == clone[5:9]
-    assert fetch[-5:] == ["-C", "/clones/r1", "fetch", "--all", "--prune"]
+    assert fetch[-5:] == ["-C", cache.path("r1", transport.source_url), "fetch", "--all", "--prune"]
     assert (
         "url.https://github.com/acme/private.git.insteadOf=git@github.com:acme/private.git" in fetch
     )
-    assert merge == ["git", "-C", "/clones/r1", "merge", "--ff-only"]
+    assert merge == ["git", "-C", cache.path("r1", transport.source_url), "merge", "--ff-only"]
     assert all("repo-token-test" not in "\n".join(command) for command in rec.calls)
     assert all(
         not Path(setting.removeprefix("credential.helper=!")).exists()
@@ -110,6 +135,28 @@ def test_ensure_creates_root_dir_before_cloning(tmp_path: Path) -> None:
     cache = CloneCache(str(root), run=lambda *_a, **_kw: "", exists=lambda _p: False)
     cache.ensure("r1", "https://x/r1.git")
     assert root.is_dir()
+
+
+@pytest.mark.parametrize("exists", [False, True], ids=["clone", "fetch"])
+def test_source_failure_guidance_does_not_expose_command_url_or_stderr(exists: bool) -> None:
+    secret = "synthetic-url-credential"
+    url = f"https://user:{secret}@example.invalid/private.git?token={secret}"
+
+    def fail(command: Sequence[str], *, check: bool = True) -> str:
+        raise subprocess.CalledProcessError(128, list(command), output=secret, stderr=secret)
+
+    cache = CloneCache("/cache", run=fail, exists=lambda _path: exists, makedirs=lambda _path: None)
+    with pytest.raises(RuntimeError) as raised:
+        cache.ensure("repo", url)
+    message = str(raised.value)
+    assert "source exists and is readable on the runner" in message
+    assert "cache directory is writable" in message
+    assert "URL, network access, and repository credentials" in message
+    assert "Press g, then e to edit the source" in message
+    formatted = "".join(traceback.format_exception(raised.value))
+    assert secret not in formatted
+    assert url not in formatted
+    assert "CalledProcessError" not in formatted
 
 
 # -- integration: a real git repo ---------------------------------------------------
@@ -128,6 +175,10 @@ def test_ensure_clones_then_fetches_a_real_repo(tmp_path: Path) -> None:
     run("git", "commit", "--message", "init")
 
     cache = CloneCache(str(tmp_path / "clones"))
+    with pytest.raises(RuntimeError, match="source exists and is readable on the runner"):
+        cache.ensure("r1", str(tmp_path / "missing-source"))
+    assert not Path(cache.path("r1", str(tmp_path / "missing-source"))).exists()
+    # Retry the same repo after correcting its configured source path.
     path = cache.ensure("r1", str(origin))  # first use: clones
     assert (Path(path) / "README").read_text() == "hi"
 

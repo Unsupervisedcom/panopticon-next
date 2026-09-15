@@ -66,8 +66,8 @@ reporting each as a status above.
    given task, even with several runners watching the same task service.
 
 2. **Prepare** (`preparing`). The runner makes the task's **workspace**: a
-   `git clone --local` of a per-repo cache clone into a task-private directory, mounted
-   read-write at `/workspace`. The clone is self-contained (hard-linked objects, so it's cheap),
+   local `git clone` of a per-repo cache into a task-private directory, mounted read-write at
+   `/workspace`. It hardlinks objects when possible and copies them across filesystems,
    and its `origin` is pointed at the real forge rather than the local cache.
 
 3. **Build** (`building`). The runner composes and `docker build`s the task's image. It's tagged
@@ -149,6 +149,12 @@ The system distinguishes a few cases:
   another runner can take over.
 - **`failed`** — a spawn step raised. The status carries a detail string (e.g. a broken image
   layer or a missing secret). Fix the underlying cause, then respawn.
+
+Repository caches are keyed by repository ID and source. Editing a source creates a fresh cache;
+existing caches and task checkouts are preserved. Upgrading creates one fresh cache per source,
+so retained caches use additional disk space. Existing tasks refuse to resume against a different
+source: restore the original source with `g` → `e`, or create a new task for the edited repository.
+Equivalent GitHub SSH/HTTPS credential repairs remain supported.
 
 ## Teardown
 
