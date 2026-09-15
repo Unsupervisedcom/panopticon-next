@@ -314,6 +314,7 @@ class TaskService:
     # -- repos --------------------------------------------------------------------
 
     async def create_repo(self, repo: Repo) -> Repo:
+        self._validate_repo_required_fields({"name": repo.name, "git_url": repo.git_url})
         repo = replace(
             repo,
             honesty_reviewer=self._normalize_reviewer_override(
@@ -328,6 +329,14 @@ class TaskService:
         await self._validate_credential_dir(repo.credential_dir)
         await self._store.create_repo(repo)
         return repo
+
+    @staticmethod
+    def _validate_repo_required_fields(values: Mapping[str, Any]) -> None:
+        for field in ("name", "git_url"):
+            if field in values and (
+                not isinstance(values[field], str) or not values[field].strip()
+            ):
+                raise ValueError(f"{field} is required.")
 
     @staticmethod
     def _normalize_reviewer_override(field: str, value: str | None) -> str | None:
@@ -420,6 +429,7 @@ class TaskService:
         existing = await self.get_repo(repo_id)  # raises NotFound
         if "id" in changes and changes["id"] != repo_id:
             raise ValueError("a repo's id cannot be changed")
+        self._validate_repo_required_fields(changes)
         normalized = {k: v for k, v in changes.items() if k != "id"}
         for field in ("honesty_reviewer", "reviewer_1", "reviewer_2"):
             if field in normalized:
