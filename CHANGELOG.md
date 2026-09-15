@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.14](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.13...v0.2.14) (2026-09-15)
+
+
+### Bug Fixes
+
+* preserve task work across clone and source recovery ([#21](https://github.com/Unsupervisedcom/panopticon-next/issues/21)) ([ad3f9a6](https://github.com/Unsupervisedcom/panopticon-next/commit/ad3f9a6b8454158411ffcc3a8b32df19e7d91b4e))
+
 ## [0.2.13](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.12...v0.2.13) (2026-09-14)
 
 
