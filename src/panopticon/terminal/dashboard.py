@@ -2507,6 +2507,8 @@ class ReposScreen(_TableScreen):
 
         # Returns an error to show inline (the form stays open) or None on success.
         def save(values: dict[str, Any]) -> str | None:
+            if not (values["name"] and values["git_url"]):
+                return "name and git_url are required."
             # PATCH the core fields. The privileged toggle is merged onto the repo's existing
             # capabilities so other keys (if any) survive.
             capabilities = {
