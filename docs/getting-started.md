@@ -30,7 +30,7 @@ build is supplied as a wheel beside this walkthrough. Open the extracted evaluat
 directory in the new terminal and install that wheel in an isolated environment:
 
 ```sh
-PANOPTICON_RELEASE_VERSION=0.2.14 # x-release-please-version
+PANOPTICON_RELEASE_VERSION=0.2.15 # x-release-please-version
 pipx install "./panopticon_next-${PANOPTICON_RELEASE_VERSION}-py3-none-any.whl"
 panopticon --version
 panopticon doctor
@@ -40,7 +40,7 @@ For the published release, run `pipx install panopticon-next`, then `panopticon 
 The local wheel path above also supports an independently checksummed evaluation.
 
 [//]: # (x-release-please-start-version)
-Expected result: `panopticon --version` prints `panopticon 0.2.14` without requiring a source
+Expected result: `panopticon --version` prints `panopticon 0.2.15` without requiring a source
 checkout, and `doctor` ends with `All prerequisites satisfied.` Do not continue until both checks
 pass. `doctor` checks Python 3.11+, Git, the Docker CLI and daemon, and tmux. Agent CLIs are
 reported for native browser login; pasting a token or API key does not require a host agent CLI.
