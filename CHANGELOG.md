@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.15](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.14...v0.2.15) (2026-09-16)
+
+
+### Bug Fixes
+
+* reject blank repository names and sources ([#23](https://github.com/Unsupervisedcom/panopticon-next/issues/23)) ([2ca298e](https://github.com/Unsupervisedcom/panopticon-next/commit/2ca298e636beef72c8cf58581a9c2fbd0311d0a7))
+
 ## [0.2.14](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.13...v0.2.14) (2026-09-15)
 
 
