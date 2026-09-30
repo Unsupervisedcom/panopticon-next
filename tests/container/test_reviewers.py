@@ -66,6 +66,7 @@ def _claude_payload(model: str, *, result: str | None = None) -> dict[str, Any]:
 
 def test_workflows_define_two_opaque_reviewer_pairs_and_sol_variant_uses_same_resolver() -> None:
     # 2119: REQ-036.1.1
+    # 2119: REQ-028.8.3
     workflows = _workflows()
     expected = {
         "2119-human-spec": (
@@ -77,7 +78,7 @@ def test_workflows_define_two_opaque_reviewer_pairs_and_sol_variant_uses_same_re
             ReviewerConfig("codex", "gpt-5.6-sol"),
         ),
         "2119-auto-sol": (
-            ReviewerConfig("codex", "gpt-5.6-sol"),
+            ReviewerConfig("codex", "gpt-6.1-sol"),
             ReviewerConfig("codex", "gpt-5.6-sol"),
         ),
     }

@@ -19,7 +19,7 @@ def test_every_shipped_workflow_layer_matches_audited_content(tmp_path: Path) ->
       *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
     curl --fail --silent --show-error --location \
-      "https://github.com/openai/codex/releases/download/rust-v0.144.4/codex-$triple.tar.gz" \
+      "https://github.com/openai/codex/releases/download/rust-v0.159.1/codex-$triple.tar.gz" \
       | tar --extract --gzip --directory /usr/local/bin; \
     if [ -e "/usr/local/bin/codex-$triple" ]; then mv "/usr/local/bin/codex-$triple" /usr/local/bin/codex; fi; \
     chmod 0755 /usr/local/bin/codex"""

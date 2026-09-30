@@ -18,6 +18,7 @@ from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
 from panopticon.taskservice.service import TaskService
 from panopticon.taskservice.store_sqlalchemy import SqlAlchemyStore
 from panopticon.workflows import Spike
+from panopticon.workflows.spec_2119 import Spec2119AutoSol
 
 
 class _GatedWorkflow(Workflow):
@@ -648,9 +649,23 @@ def test_repo_launch_pair_beats_app_defaults(client: TestClient) -> None:
 
 
 # 2119: REQ-012.2.1
-def test_workflow_launch_pair_beats_repo_pair(tmp_path: Path) -> None:
+# 2119: REQ-028.8.2
+@pytest.mark.parametrize(
+    ("workflow", "repo_harness", "repo_model", "expected"),
+    [
+        (_TunedWorkflow(), "claude", "opus:low", ("codex", "gpt-5.6-sol:high")),
+        (Spec2119AutoSol(), "codex", "gpt-5.6-sol", ("claude", "claude-opus-5-5")),
+    ],
+)
+def test_workflow_launch_pair_beats_repo_pair(
+    tmp_path: Path,
+    workflow: Workflow,
+    repo_harness: str,
+    repo_model: str,
+    expected: tuple[str, str],
+) -> None:
     service = TaskService(
-        SqlAlchemyStore(), {"tuned": _TunedWorkflow()}, FilesystemArtifactStore(tmp_path)
+        SqlAlchemyStore(), {workflow.name: workflow}, FilesystemArtifactStore(tmp_path)
     )
     asyncio.run(service.init())
     asyncio.run(
@@ -659,14 +674,17 @@ def test_workflow_launch_pair_beats_repo_pair(tmp_path: Path) -> None:
                 id="r1",
                 name="acme/widgets",
                 git_url="https://x/r1.git",
-                default_harness="claude",
-                default_model="opus:low",
+                default_harness=repo_harness,
+                default_model=repo_model,
+                enabled_workflows=[workflow.name],
             )
         )
     )
     with TestClient(create_app(service)) as tuned_client:
-        task = tuned_client.post("/tasks", json={"repo_id": "r1", "workflow": "tuned"}).json()
-    assert (task["harness"], task["starting_model"]) == ("codex", "gpt-5.6-sol:high")
+        response = tuned_client.post("/tasks", json={"repo_id": "r1", "workflow": workflow.name})
+        assert response.status_code == 201
+        task = response.json()
+    assert (task["harness"], task["starting_model"]) == expected
 
 
 # 2119: REQ-012.3.3

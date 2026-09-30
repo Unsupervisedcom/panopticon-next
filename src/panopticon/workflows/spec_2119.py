@@ -456,9 +456,11 @@ class Spec2119AutoSol(_Spec2119Workflow):
 
     name: ClassVar[str] = "2119-auto-sol"
     opt_in: ClassVar[bool] = True
+    default_harness: ClassVar[str] = "claude"
+    default_model: ClassVar[str] = "claude-opus-5-5"
     fable_reviews: ClassVar[bool] = False
     reviewers: ClassVar[tuple[ReviewerConfig, ReviewerConfig]] = (
-        ReviewerConfig("codex", "gpt-5.6-sol"),
+        ReviewerConfig("codex", "gpt-6.1-sol"),
         ReviewerConfig("codex", "gpt-5.6-sol"),
     )
     when_to_use: ClassVar[str] = (

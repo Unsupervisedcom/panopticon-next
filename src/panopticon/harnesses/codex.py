@@ -43,9 +43,9 @@ from panopticon.harnesses.base import (
     task_id_note,
 )
 
-#: The codex release the harness image layer installs — the version the config rendering and
-#: auth behavior (symlink write-through, reload-before-refresh) were verified against.
-CODEX_VERSION = "0.144.4"
+#: The codex release the harness image layer installs. Config parsing and reviewer model
+#: identity are verified on this version; auth-refresh observations above are from 0.144.4.
+CODEX_VERSION = "0.159.1"
 
 #: The credential file codex expects under ``$CODEX_HOME``.
 AUTH_FILE = "auth.json"
