@@ -333,7 +333,10 @@ def test_task_responses_keep_dropped_dependencies_gated(client: TestClient) -> N
 
 # 2119: REQ-026.2.1
 # 2119: REQ-026.2.3
-def test_task_responses_use_workflow_terminality_for_dependency_readiness(tmp_path: Path) -> None:
+@pytest.mark.parametrize("completed_index", [0, 1])
+def test_task_responses_use_workflow_terminality_for_dependency_readiness(
+    tmp_path: Path, completed_index: int
+) -> None:
     service = TaskService(
         SqlAlchemyStore(),
         {"archived": _ArchivedWorkflow()},
@@ -342,22 +345,37 @@ def test_task_responses_use_workflow_terminality_for_dependency_readiness(tmp_pa
     asyncio.run(service.init())
     asyncio.run(service.create_repo(Repo(id="r1", name="acme/widgets", git_url="https://x/r1.git")))
     with TestClient(create_app(service)) as custom_client:
-        dependency = custom_client.post(
-            "/tasks", json={"repo_id": "r1", "workflow": "archived"}
-        ).json()
+        dependencies = [
+            custom_client.post("/tasks", json={"repo_id": "r1", "workflow": "archived"}).json()
+            for _ in range(2)
+        ]
         dependent = custom_client.post(
             "/tasks",
             json={
                 "repo_id": "r1",
                 "workflow": "archived",
-                "depends_on_task_ids": [dependency["id"]],
+                "depends_on_task_ids": [dependency["id"] for dependency in dependencies],
             },
         ).json()
         assert dependent["container_status"] == "gated"
 
-        archived = custom_client.post(f"/tasks/{dependency['id']}/operations/advance")
+        archived = custom_client.post(
+            f"/tasks/{dependencies[completed_index]['id']}/operations/advance"
+        )
         assert archived.status_code == 200, archived.text
         assert archived.json()["state"] == "ARCHIVED"
+        assert custom_client.get(f"/tasks/{dependent['id']}").json()["container_status"] == "gated"
+        mixed = custom_client.get("/tasks", params={"terminal": "false"}).json()
+        assert (
+            next(task for task in mixed if task["id"] == dependent["id"])["container_status"]
+            == "gated"
+        )
+
+        remaining = custom_client.post(
+            f"/tasks/{dependencies[1 - completed_index]['id']}/operations/advance"
+        )
+        assert remaining.status_code == 200, remaining.text
+        assert remaining.json()["state"] == "ARCHIVED"
         assert custom_client.get(f"/tasks/{dependent['id']}").json()["container_status"] == "queued"
         active = custom_client.get("/tasks", params={"terminal": "false"}).json()
         projected = next(task for task in active if task["id"] == dependent["id"])
