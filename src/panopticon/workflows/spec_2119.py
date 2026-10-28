@@ -464,7 +464,8 @@ class Spec2119AutoSol(_Spec2119Workflow):
         ReviewerConfig("codex", "gpt-5.6-sol"),
     )
     when_to_use: ClassVar[str] = (
-        "Spec-driven 2119 lifecycle with automatic specification and Sol-only reviews."
+        "Spec-driven 2119 lifecycle with Claude Opus 5.5 development and Codex Sol reviews; "
+        "requires Claude and Codex credentials."
     )
 
     class Specifying(_Specifying):
