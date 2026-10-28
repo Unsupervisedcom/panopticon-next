@@ -1,0 +1,8 @@
+{
+  "reviewId": "file-scoped-requirement-ids.3.4--4e686207f691",
+  "requirementId": "file-scoped-requirement-ids.3.4",
+  "hash": "4e686207f691",
+  "verdict": "pass",
+  "summary": "test_070_resolves_both_grammars_and_distinct_file_namespaces builds alpha-feature.md and beta-feature.md with identical local headings (### 1 item 1, ### 2 item 1) and runs the real pinned rfc2119@0.7.0 CLI (no mocks); the nearest violation — the resolver dropping the filename namespace so alpha-feature.1.1 and beta-feature.1.1 collapse to one ID — is rejected three independent ways: `cover` must print exactly '5 requirement(s) covered, 0 uncovered' (a collapse yields 3), `review --dispatch` must list both '- alpha-feature.1.1 (test-quality):' and '- beta-feature.1.1 (test-quality):' as separate pending reviews, and the final check must report requirementCount == 6 (a collapse yields 4); the revised 6/5/[] assertion also preserves mandatory coverage since uncoveredRequirements == [] rejects any dropped MUST annotation while the exact total rejects the CLI silently discarding the advisory MAY, and the legacy REQ-900 spec in the same run with ok=True and resolved verdicts for all five IDs exercises the coexistence contract (4.1–4.4) rather than just file-scoped parsing in isolation.",
+  "timestamp": "2026-10-28T06:30:45.459Z"
+}
