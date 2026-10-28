@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-008.5.1--6f645191cdc5",
+  "requirementId": "REQ-008.5.1",
+  "hash": "6f645191cdc5",
+  "verdict": "pass",
+  "summary": "test_user_prompt_submit_waits_for_the_turn_write gates the injected client's set_turn and asserts the hook thread is still alive while the write is pending and only returns 0 after release with the ('t1','agent') call recorded, so a fire-and-forget/background write would fail thread.is_alive(); the codex config test pins UserPromptSubmit to `hook agent prompt`, and hook.main runs the same _run_callback path with the injected client (only the SIGALRM deadline is bypassed off the main thread).",
+  "timestamp": "2026-10-28T06:05:29.818Z"
+}

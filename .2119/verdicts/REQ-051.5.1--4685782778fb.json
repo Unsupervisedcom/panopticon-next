@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.5.1--4685782778fb",
+  "requirementId": "REQ-051.5.1",
+  "hash": "4685782778fb",
+  "verdict": "pass",
+  "summary": "Pinned native resource loading consumes generated first-run and resume arguments, checks skill instructions in loaded resources and prompt, and explicitly rejects missing or malformed rendered skill files.",
+  "timestamp": "2026-09-14T08:55:57.282Z"
+}

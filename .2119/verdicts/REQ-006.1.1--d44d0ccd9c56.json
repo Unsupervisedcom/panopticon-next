@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.1.1--d44d0ccd9c56",
+  "requirementId": "REQ-006.1.1",
+  "hash": "d44d0ccd9c56",
+  "verdict": "pass",
+  "summary": "An actual Ctrl+R keypress opens BulkRespawnScreen with down-task candidates; an unbound key or single-task action fails.",
+  "timestamp": "2026-09-14T07:52:45.699Z"
+}

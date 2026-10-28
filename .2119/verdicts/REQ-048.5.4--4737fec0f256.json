@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.5.4--4737fec0f256",
+  "requirementId": "REQ-048.5.4",
+  "hash": "4737fec0f256",
+  "verdict": "pass",
+  "summary": "Real enforced service: own claimed task -> 200 changing only lifecycle phase/detail (task record equal, registration retained); unclaimed, other-runner, COMPLETE, DROPPED, ARCHIVED -> 409 with version and lifecycle untouched; extra control fields, blank/None/int runner_id or detail and 4097 chars -> 422 while exactly 4096 -> 200; mutants dropping the terminal check, the claim check, extra=forbid or widening max_length all fail",
+  "timestamp": "2026-09-14T07:58:36.122Z"
+}

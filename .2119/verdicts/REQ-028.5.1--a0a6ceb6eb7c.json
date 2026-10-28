@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.5.1--a0a6ceb6eb7c",
+  "requirementId": "REQ-028.5.1",
+  "hash": "a0a6ceb6eb7c",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the spec skill must equal a literal ending in the publish-specification sentence, and every review skill must end with the literal publish-review-outputs-and-triage sentence.",
+  "timestamp": "2026-09-30T06:02:04.718Z"
+}

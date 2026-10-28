@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-033.10.1--5646eda74129",
+  "requirementId": "REQ-033.10.1",
+  "hash": "5646eda74129",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the deferred-issues-filed description must equal a literal ending 'Filing zero issues is a legal outcome.'",
+  "timestamp": "2026-09-30T06:02:25.123Z"
+}

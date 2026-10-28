@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-053.2.1--90fb89bcabaf",
+  "requirementId": "REQ-053.2.1",
+  "hash": "90fb89bcabaf",
+  "verdict": "pass",
+  "summary": "Compositor output checks the top indicator below the header after scrolling, full label, one-cell arrow and omission where row content fills the width.",
+  "timestamp": "2026-09-14T07:54:32.597Z"
+}

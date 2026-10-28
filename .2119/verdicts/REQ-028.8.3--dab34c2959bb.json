@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.8.3--dab34c2959bb",
+  "requirementId": "REQ-028.8.3",
+  "hash": "dab34c2959bb",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the discovered workflow's reviewers tuple and the rendered defaults line must put codex:gpt-6.1-sol first. Mutations reverting slot one to gpt-5.6-sol and swapping slot order were both killed; slot-one override is covered by the generic REQ-036 resolver test.",
+  "timestamp": "2026-09-30T06:02:10.088Z"
+}

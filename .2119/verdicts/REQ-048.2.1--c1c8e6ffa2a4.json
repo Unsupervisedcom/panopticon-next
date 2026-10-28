@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.2.1--c1c8e6ffa2a4",
+  "requirementId": "REQ-048.2.1",
+  "hash": "c1c8e6ffa2a4",
+  "verdict": "pass",
+  "summary": "Token is split into four dot segments and checked against ptc1/self, unpadded base64url (edge subjects '???'→'Pz8_' and '~~~'→'fn5-' reject standard base64 or padding), and an independently computed HMAC-SHA256 keyed by the write token over the exact domain string; a different key, domain, or encoding fails the equality.",
+  "timestamp": "2026-10-28T06:06:25.532Z"
+}

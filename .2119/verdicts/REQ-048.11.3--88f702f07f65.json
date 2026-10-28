@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.11.3--88f702f07f65",
+  "requirementId": "REQ-048.11.3",
+  "hash": "88f702f07f65",
+  "verdict": "pass",
+  "summary": "Allow-Methods is asserted exactly {GET,HEAD,OPTIONS} and Allow-Headers exactly {authorization,content-type}, with POST/PUT/PATCH/DELETE/CONNECT/TRACE/PROPFIND preflights and Accept/X-Extra/X-API-Key/Cookie/Proxy-Authorization header requests all ≥400 across two origins and three paths; permitting POST or Accept fails.",
+  "timestamp": "2026-10-28T06:07:04.763Z"
+}

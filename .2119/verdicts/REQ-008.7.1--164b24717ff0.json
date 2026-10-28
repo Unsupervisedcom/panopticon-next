@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-008.7.1--164b24717ff0",
+  "requirementId": "REQ-008.7.1",
+  "hash": "164b24717ff0",
+  "verdict": "pass",
+  "summary": "A client forbids unversioned reads and changes the seed snapshot; rendered turn and first long-poll cursor must both use that versioned response.",
+  "timestamp": "2026-09-14T07:53:03.962Z"
+}

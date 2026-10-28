@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-033.8.1--63fa02856b1d",
+  "requirementId": "REQ-033.8.1",
+  "hash": "63fa02856b1d",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the exact prefix literal includes the skip-explicitly-rejected step; removing it breaks equality.",
+  "timestamp": "2026-09-30T06:02:22.970Z"
+}

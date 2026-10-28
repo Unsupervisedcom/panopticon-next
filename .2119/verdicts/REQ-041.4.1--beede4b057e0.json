@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-041.4.1--beede4b057e0",
+  "requirementId": "REQ-041.4.1",
+  "hash": "beede4b057e0",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the same literal preserves the a hotkey, the complement-not-replace sentence and the GitHub-URL-to-p-hotkey exception.",
+  "timestamp": "2026-09-30T06:02:28.355Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-033.9.1--1487d2b8cd0d",
+  "requirementId": "REQ-033.9.1",
+  "hash": "1487d2b8cd0d",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the exact prefix literal requires a self-contained issue with title, PR link, review comment reference, deferral reason and implementation scope.",
+  "timestamp": "2026-09-30T06:02:24.029Z"
+}

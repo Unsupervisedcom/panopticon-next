@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.11.4--7715d1063b7f",
+  "requirementId": "REQ-048.11.4",
+  "hash": "7715d1063b7f",
+  "verdict": "pass",
+  "summary": "Allowed origin yields Allow-Origin equal to the exact origin with Vary containing Origin (also on 401 and 404), while trailing-slash, http scheme, different port, evil, and null origins get no Allow-Origin; echoing '*' or a near-match origin fails.",
+  "timestamp": "2026-10-28T06:07:06.009Z"
+}

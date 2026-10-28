@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.18.1--6848ec33e3eb",
+  "requirementId": "REQ-018.18.1",
+  "hash": "6848ec33e3eb",
+  "verdict": "pass",
+  "summary": "Changing harness clears untouched model and effort; mixed touched-model case clears only effort and exact create payloads prove harness defaults survive.",
+  "timestamp": "2026-09-14T07:53:30.539Z"
+}

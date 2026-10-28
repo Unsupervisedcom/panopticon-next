@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.3.3--5ae6529ee48b",
+  "requirementId": "REQ-012.3.3",
+  "hash": "5ae6529ee48b",
+  "verdict": "pass",
+  "summary": "Fable 5.1: explicit claude against a codex workflow pair must give (claude, None); leaking the losing pair's model fails the tuple assertion.",
+  "timestamp": "2026-09-30T06:01:37.013Z"
+}

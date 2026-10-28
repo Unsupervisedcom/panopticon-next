@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-034.2.1--0aefc39ecf18",
+  "requirementId": "REQ-034.2.1",
+  "hash": "0aefc39ecf18",
+  "verdict": "pass",
+  "summary": "Filtering to bravo then completing creation asserts the exact bravo repo ID in the create payload.",
+  "timestamp": "2026-09-14T07:54:15.301Z"
+}

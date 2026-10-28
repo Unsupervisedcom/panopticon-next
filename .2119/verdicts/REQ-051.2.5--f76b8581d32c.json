@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.2.5--f76b8581d32c",
+  "requirementId": "REQ-051.2.5",
+  "hash": "f76b8581d32c",
+  "verdict": "pass",
+  "summary": "Setup-token-only preflight is rejected, bootstrap produces no auth file or copied token, diagnostics exclude OAuth remediation, and Pi documentation assertions reject the forbidden setup-token credential path.",
+  "timestamp": "2026-09-14T08:55:52.043Z"
+}

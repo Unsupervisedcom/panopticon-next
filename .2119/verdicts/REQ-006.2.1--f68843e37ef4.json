@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.2.1--f68843e37ef4",
+  "requirementId": "REQ-006.2.1",
+  "hash": "f68843e37ef4",
+  "verdict": "pass",
+  "summary": "Modal rows equal every down candidate and exclude live/failed tasks; replacing the service snapshot tests the exactly-one-down boundary.",
+  "timestamp": "2026-09-14T07:52:48.172Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.2.3--1e40002406e0",
+  "requirementId": "REQ-051.2.3",
+  "hash": "1e40002406e0",
+  "verdict": "pass",
+  "summary": "Selected custom providers accept dummy/literal and fully resolved environment keys; missing, empty, partially unresolved, and other-provider-only keys fail despite a valid alternate provider fixture.",
+  "timestamp": "2026-09-14T08:55:50.095Z"
+}

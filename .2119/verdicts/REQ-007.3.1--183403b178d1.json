@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-007.3.1--183403b178d1",
+  "requirementId": "REQ-007.3.1",
+  "hash": "183403b178d1",
+  "verdict": "pass",
+  "summary": "render_detail is called independently and its full text and split lines exclude the UI-only copy-key hint.",
+  "timestamp": "2026-09-14T07:53:02.759Z"
+}

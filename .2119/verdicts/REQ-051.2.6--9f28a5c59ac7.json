@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.2.6--9f28a5c59ac7",
+  "requirementId": "REQ-051.2.6",
+  "hash": "9f28a5c59ac7",
+  "verdict": "pass",
+  "summary": "Explicit OAuth environment and native-file inputs pass preflight and reach the child unchanged; documentation requires the complete unsupported/account-risk warning, rejecting omission or silent credential stripping.",
+  "timestamp": "2026-09-14T08:55:53.176Z"
+}

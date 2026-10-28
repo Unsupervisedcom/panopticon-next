@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.9.1--bf1843471699",
+  "requirementId": "REQ-048.9.1",
+  "hash": "bf1843471699",
+  "verdict": "pass",
+  "summary": "Apps start with read absent and read=[] and serve the write token, while write=[], missing write, and string write each raise the invalid-credential ValueError; accepting an empty write array or rejecting an absent read would fail.",
+  "timestamp": "2026-10-28T06:06:55.880Z"
+}

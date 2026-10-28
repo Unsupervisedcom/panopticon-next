@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-001.2.1--2971178e5e35",
+  "requirementId": "REQ-001.2.1",
+  "hash": "2971178e5e35",
+  "verdict": "pass",
+  "summary": "Mounted confirmation asserts visible enabled Yes and No buttons; clicking each exercises both paths, rejecting a missing or inert choice.",
+  "timestamp": "2026-09-14T07:52:37.314Z"
+}

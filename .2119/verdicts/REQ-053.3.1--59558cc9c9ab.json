@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-053.3.1--59558cc9c9ab",
+  "requirementId": "REQ-053.3.1",
+  "hash": "59558cc9c9ab",
+  "verdict": "pass",
+  "summary": "Top, bottom and all-fitting viewports assert absence of indicators whenever that direction has no hidden content.",
+  "timestamp": "2026-09-14T07:54:33.845Z"
+}

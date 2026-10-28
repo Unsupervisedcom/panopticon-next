@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.1.2--7d809f596b36",
+  "requirementId": "REQ-031.1.2",
+  "hash": "7d809f596b36",
+  "verdict": "pass",
+  "summary": "Failed Docker probe through the host command prevents migration and background session startup.",
+  "timestamp": "2026-09-14T06:52:15.665Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.3.1--9796d0085699",
+  "requirementId": "REQ-051.3.1",
+  "hash": "9796d0085699",
+  "verdict": "pass",
+  "summary": "Full model-object equality checks HTTP/HTTPS localhost, IPv4, and IPv6 adaptation with ports and portless URLs; nested URLs, metadata, scheme/path/query/fragment, and original source bytes remain preserved.",
+  "timestamp": "2026-09-14T08:55:54.183Z"
+}

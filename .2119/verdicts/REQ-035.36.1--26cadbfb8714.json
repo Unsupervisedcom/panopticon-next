@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.36.1--26cadbfb8714",
+  "requirementId": "REQ-035.36.1",
+  "hash": "26cadbfb8714",
+  "verdict": "pass",
+  "summary": "Both 401 and 403 cause immediate termination without retry through the real HTTP client; entrypoint propagation is exercised.",
+  "timestamp": "2026-09-14T06:52:23.842Z"
+}

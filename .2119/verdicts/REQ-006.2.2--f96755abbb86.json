@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.2.2--f96755abbb86",
+  "requirementId": "REQ-006.2.2",
+  "hash": "f96755abbb86",
+  "verdict": "pass",
+  "summary": "Exact modal lines check eight-character IDs, unset slug, absent/padded/multiline memos, normalization before truncation, and 60 versus 61 character ellipsis boundaries.",
+  "timestamp": "2026-09-14T07:52:49.405Z"
+}

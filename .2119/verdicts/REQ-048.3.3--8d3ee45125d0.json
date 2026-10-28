@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.3.3--8d3ee45125d0",
+  "requirementId": "REQ-048.3.3",
+  "hash": "8d3ee45125d0",
+  "verdict": "pass",
+  "summary": "After rewriting the credential file without the old token and rebuilding the app, the old-generation capability is asserted 401 on every registered route while middle/new capabilities stay non-401 and still PUT slug; a second removal repeats the check, so either lingering acceptance or over-broad revocation fails.",
+  "timestamp": "2026-10-28T06:06:33.200Z"
+}

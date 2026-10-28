@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.3.3--28e8e14e95cb",
+  "requirementId": "REQ-026.3.3",
+  "hash": "28e8e14e95cb",
+  "verdict": "pass",
+  "summary": "Opened detail asserts waiting on 2/3 and every active, complete and dropped dependency slug/state, rejecting missing counts or members.",
+  "timestamp": "2026-09-14T07:53:54.419Z"
+}

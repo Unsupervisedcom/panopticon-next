@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.8.1--8486b6a87004",
+  "requirementId": "REQ-048.8.1",
+  "hash": "8486b6a87004",
+  "verdict": "pass",
+  "summary": "For all 15 listed REST/MCP pairs across self, three descendant depths, unrelated, and missing targets, policy.authorize_rest_request is asserted equal to policy.authorize_mcp and the actual REST and /mcp responses are asserted 403 iff denied; an MCP tool allowing a sibling target that REST denies fails.",
+  "timestamp": "2026-10-28T06:06:52.140Z"
+}

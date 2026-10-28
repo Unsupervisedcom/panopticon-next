@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.4.1--de5a493494bc",
+  "requirementId": "REQ-006.4.1",
+  "hash": "de5a493494bc",
+  "verdict": "pass",
+  "summary": "Confirmation logs exactly one current-status check and release for each still-down task; recovered statuses are checked but never released.",
+  "timestamp": "2026-09-14T07:52:51.812Z"
+}

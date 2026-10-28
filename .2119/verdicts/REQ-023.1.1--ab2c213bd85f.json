@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-023.1.1--ab2c213bd85f",
+  "requirementId": "REQ-023.1.1",
+  "hash": "ab2c213bd85f",
+  "verdict": "pass",
+  "summary": "Collapsed rows hide children and grandchildren, count direct children only, render exact dim summary text/connectors, and update after snapshot changes.",
+  "timestamp": "2026-09-14T07:53:44.336Z"
+}

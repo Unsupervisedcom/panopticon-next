@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-007.2.1--69086fc1c11d",
+  "requirementId": "REQ-007.2.1",
+  "hash": "69086fc1c11d",
+  "verdict": "pass",
+  "summary": "The open detail widget ends with the exact copy-key hint and a dim span covering that complete trailing line.",
+  "timestamp": "2026-09-14T07:53:01.642Z"
+}

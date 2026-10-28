@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.4.1--671e6841d69d",
+  "requirementId": "REQ-032.4.1",
+  "hash": "671e6841d69d",
+  "verdict": "pass",
+  "summary": "test_argv_resume_reads_only_the_first_line_of_each_rollout wraps Path.open with a byte-accounting proxy that raises once reads exceed the first line's length and appends 5000 garbage lines; the production scan uses path.open()+readline(), so read_text()/read()/readlines()/full iteration are all intercepted and rejected (builtin open() would evade the wrapper, but is not the code path).",
+  "timestamp": "2026-10-28T06:05:45.281Z"
+}

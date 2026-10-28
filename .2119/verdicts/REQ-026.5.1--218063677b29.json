@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.5.1--218063677b29",
+  "requirementId": "REQ-026.5.1",
+  "hash": "218063677b29",
+  "verdict": "pass",
+  "summary": "A user-turn governor with two active and one completed children renders exactly held 2 in dim style; escalated and blocked controls reject inappropriate demotion.",
+  "timestamp": "2026-09-14T07:53:58.095Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.1.1--9b097314b437",
+  "requirementId": "REQ-027.1.1",
+  "hash": "9b097314b437",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the model default and both the single and list REST representations must start null, and non-timestamp or date-only values are rejected with 422 leaving null.",
+  "timestamp": "2026-09-30T06:01:57.248Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.2.1--242da9f898a9",
+  "requirementId": "REQ-027.2.1",
+  "hash": "242da9f898a9",
+  "verdict": "pass",
+  "summary": "Actual e writes exactly injected now plus twelve hours despite conflicting env; constructor parameters and snooze-env access are guarded, including expired deadlines.",
+  "timestamp": "2026-09-14T07:54:04.316Z"
+}

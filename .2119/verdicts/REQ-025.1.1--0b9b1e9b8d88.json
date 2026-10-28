@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-025.1.1--0b9b1e9b8d88",
+  "requirementId": "REQ-025.1.1",
+  "hash": "0b9b1e9b8d88",
+  "verdict": "pass",
+  "summary": "Fable 5.1: task records flow through resolve_join and attach_target to the exact tmux status-left argument for local and ssh attaches; slug-only, memo-only and swapped formats are distinguished by sibling cases.",
+  "timestamp": "2026-09-30T06:01:44.552Z"
+}

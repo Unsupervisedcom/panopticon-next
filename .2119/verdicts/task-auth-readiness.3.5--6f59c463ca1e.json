@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.5--6f59c463ca1e",
+  "requirementId": "task-auth-readiness.3.5",
+  "hash": "6f59c463ca1e",
+  "verdict": "pass",
+  "summary": "The actual spawn dispatcher reaches the shell backend with no container credentials and fails the test if it invokes the injected credential check.",
+  "timestamp": "2026-09-14T08:00:36.278Z"
+}

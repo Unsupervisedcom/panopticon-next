@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.7.4--86cc5d72cbe2",
+  "requirementId": "REQ-048.7.4",
+  "hash": "86cc5d72cbe2",
+  "verdict": "pass",
+  "summary": "A non-orchestrating task with a governed child and grandchild is denied child creation and every read/preplan surface via REST, /live, MCP tools, and the artifact resource with (403, scope body); any permitted delegation action fails.",
+  "timestamp": "2026-10-28T06:06:50.869Z"
+}

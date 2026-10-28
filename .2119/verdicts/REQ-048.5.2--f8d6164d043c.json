@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.5.2--f8d6164d043c",
+  "requirementId": "REQ-048.5.2",
+  "hash": "f8d6164d043c",
+  "verdict": "pass",
+  "summary": "PUT creates (204), GET returns the bytes, list equals ['design.md'], a second PUT replaces and the re-read returns the new bytes; a denied replace or missing list entry fails.",
+  "timestamp": "2026-10-28T06:06:39.568Z"
+}

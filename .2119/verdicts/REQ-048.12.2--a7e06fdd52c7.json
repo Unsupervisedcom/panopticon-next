@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.12.2--a7e06fdd52c7",
+  "requirementId": "REQ-048.12.2",
+  "hash": "a7e06fdd52c7",
+  "verdict": "pass",
+  "summary": "A fresh subprocess imports auth and auth_scope, exercises derivation and the full authorize matrix, and asserts no name in import attempts or sys.modules equals panopticon.container or starts with anthropic/openai, backed by an AST scan for literal and dynamic imports; a transitive container import would fail.",
+  "timestamp": "2026-10-28T06:07:08.563Z"
+}

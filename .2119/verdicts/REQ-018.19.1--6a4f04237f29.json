@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.19.1--6a4f04237f29",
+  "requirementId": "REQ-018.19.1",
+  "hash": "6a4f04237f29",
+  "verdict": "pass",
+  "summary": "Selector names and traversed values equal registered harnesses and wrap exactly once, rejecting arbitrary or omitted selectable names.",
+  "timestamp": "2026-09-14T07:53:31.806Z"
+}

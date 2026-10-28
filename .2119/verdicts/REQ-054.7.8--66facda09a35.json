@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.8--66facda09a35",
+  "requirementId": "REQ-054.7.8",
+  "hash": "66facda09a35",
+  "verdict": "pass",
+  "summary": "quickstart is forked onto a real pty; 't' and the doc-parsed Ctrl-b d chord are sent only while list-clients shows the expected sole session with a monitor failing on any premature switch (including after a NUL probe), and the dashboard pane id and pane pid are asserted unchanged after return; opt-in only.",
+  "timestamp": "2026-09-14T06:56:35.803Z"
+}

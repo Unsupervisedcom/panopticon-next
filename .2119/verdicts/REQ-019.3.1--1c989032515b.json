@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-019.3.1--1c989032515b",
+  "requirementId": "REQ-019.3.1",
+  "hash": "1c989032515b",
+  "verdict": "pass",
+  "summary": "Reopening requires generation-2 model and effort suggestions, rejecting cached values from the preceding modal.",
+  "timestamp": "2026-09-14T07:53:36.835Z"
+}

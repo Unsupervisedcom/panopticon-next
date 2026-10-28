@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-015.1.1--eda22abe66fe",
+  "requirementId": "REQ-015.1.1",
+  "hash": "eda22abe66fe",
+  "verdict": "pass",
+  "summary": "test_argv_preserves_scrollback_for_new_and_resumed_sessions asserts `--no-alt-screen` in argv for both first-run and resumed sessions, and the exact-argv tests (first run, resume by id, agent-turn resume) pin the flag positionally; dropping the flag on either path is rejected.",
+  "timestamp": "2026-10-28T06:05:31.112Z"
+}

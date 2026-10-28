@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.3.1--60f6189f86fb",
+  "requirementId": "REQ-031.3.1",
+  "hash": "60f6189f86fb",
+  "verdict": "pass",
+  "summary": "Unreachable Docker leaves container tasks unclaimed and unspawned through direct and host-wired spawner paths; recovery permits retry.",
+  "timestamp": "2026-09-14T06:52:21.742Z"
+}

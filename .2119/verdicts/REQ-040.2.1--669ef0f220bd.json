@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-040.2.1--669ef0f220bd",
+  "requirementId": "REQ-040.2.1",
+  "hash": "669ef0f220bd",
+  "verdict": "pass",
+  "summary": "Both no current task and a stale highlighted ID notify the exact no-task warning and make no opener call.",
+  "timestamp": "2026-09-14T07:54:19.023Z"
+}

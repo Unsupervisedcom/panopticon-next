@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.2.5--99f116196e6d",
+  "requirementId": "REQ-030.2.5",
+  "hash": "99f116196e6d",
+  "verdict": "pass",
+  "summary": "With clipboard_tool resolving None, all four mode/gesture combinations assert `save-buffer -` == b\"bravo\" over a pre-seeded sentinel buffer, and config text asserts copy-selection-and-cancel on all three bindings with no copy-pipe-and-cancel anywhere; a binding still piping to a phantom tool fails the text assertion.",
+  "timestamp": "2026-10-28T06:04:17.666Z"
+}

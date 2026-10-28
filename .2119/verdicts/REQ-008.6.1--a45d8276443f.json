@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-008.6.1--a45d8276443f",
+  "requirementId": "REQ-008.6.1",
+  "hash": "a45d8276443f",
+  "verdict": "pass",
+  "summary": "Rendered-handler delayed-request tests enforce awaited settlement and bounded completion; native stored/custom/env-auth controls and idle/queued logout distinguish user from agent turns. Both always-agent and missing-active-guard mutants were rejected.",
+  "timestamp": "2026-09-14T08:55:40.829Z"
+}

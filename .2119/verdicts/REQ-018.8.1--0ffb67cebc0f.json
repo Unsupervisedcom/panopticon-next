@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.8.1--0ffb67cebc0f",
+  "requirementId": "REQ-018.8.1",
+  "hash": "0ffb67cebc0f",
+  "verdict": "pass",
+  "summary": "Escape is tested from memo and every launch control, with model/effort lists visible, and creates no task.",
+  "timestamp": "2026-09-14T07:53:18.280Z"
+}

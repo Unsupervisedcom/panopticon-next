@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.2.2--d735d095d2db",
+  "requirementId": "REQ-032.2.2",
+  "hash": "d735d095d2db",
+  "verdict": "pass",
+  "summary": "test_argv_resume_falls_back_to_fresh_when_every_rollout_is_exec (originators `codex_exec` and `exec`) and the all-malformed test assert exact first-run argv, so raising, or resuming 'reviewer-2' as the newest file, is rejected.",
+  "timestamp": "2026-10-28T06:05:42.629Z"
+}

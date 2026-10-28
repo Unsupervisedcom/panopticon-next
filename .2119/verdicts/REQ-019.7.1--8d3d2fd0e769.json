@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-019.7.1--8d3d2fd0e769",
+  "requirementId": "REQ-019.7.1",
+  "hash": "8d3d2fd0e769",
+  "verdict": "pass",
+  "summary": "An in-flight discovery is released after closure; presentation attempts are forbidden and all closed-widget values, candidates, suggesters and classes remain unchanged.",
+  "timestamp": "2026-09-14T07:53:41.889Z"
+}

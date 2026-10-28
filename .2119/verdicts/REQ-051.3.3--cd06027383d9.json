@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.3.3--cd06027383d9",
+  "requirementId": "REQ-051.3.3",
+  "hash": "cd06027383d9",
+  "verdict": "pass",
+  "summary": "First-launch bootstrap and captured child argv require the exact native provider/model argument and complete provider-object preservation except loopback adaptation; accidental resume, truncation, or field loss fails.",
+  "timestamp": "2026-09-14T08:55:56.253Z"
+}

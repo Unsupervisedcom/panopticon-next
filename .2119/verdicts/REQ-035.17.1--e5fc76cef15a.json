@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.17.1--e5fc76cef15a",
+  "requirementId": "REQ-035.17.1",
+  "hash": "e5fc76cef15a",
+  "verdict": "pass",
+  "summary": "Docker spawn without env_file is asserted to carry no --env-file, no raw token in argv, and a /run/secrets mount whose source is not the host credential path and whose content is the task capability; shell spawn's exported auth file is asserted distinct from the host file; shared client (_default_client/_make_client), live (client.live + shell /tasks/t2/live curl stdin), and _TASK_LIB panopticon_advance are each asserted to send the bearer from that file, so mounting the host file directly, passing the token by env, or an unauthenticated lib call is rejected.",
+  "timestamp": "2026-10-28T06:05:50.366Z"
+}

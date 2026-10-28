@@ -1,0 +1,8 @@
+{
+  "reviewId": "layered-settings-hints.1.1--3df14fffa455",
+  "requirementId": "layered-settings-hints.1.1",
+  "hash": "3df14fffa455",
+  "verdict": "pass",
+  "summary": "Every current relationship has exact surfaces and setting names; isolated relationship rendering names the opposite layer in each direction.",
+  "timestamp": "2026-09-14T07:54:42.602Z"
+}
