@@ -20,7 +20,9 @@ Everything is rendered into ``$CODEX_HOME`` (``<home>/.codex``, the per-task con
   env-file var (rendered into an api-key ``auth.json``), or a **``CODEX_ACCESS_TOKEN``**
   (ChatGPT Business/Enterprise workspace token, read by codex straight from the env).
 
-Facts pinned against codex-cli 0.144.4 (config schema + observed behavior); see docs/auth.md.
+Config, hooks, tools, and session resume are verified against codex-cli 0.159.1. Native
+credential refresh and shared-file reload are verified with synthetic credentials; actual
+provider refresh observations remain from 0.144.4. See docs/auth.md.
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ from panopticon.harnesses.base import (
 )
 
 #: The codex release the harness image layer installs. Config parsing and reviewer model
-#: identity are verified on this version; auth-refresh observations above are from 0.144.4.
+#: identity are verified on this version; see the module notes for auth-validation scope.
 CODEX_VERSION = "0.159.1"
 
 #: The credential file codex expects under ``$CODEX_HOME``.
@@ -189,9 +191,11 @@ class CodexHarness(Harness):
         return (("low", "Low"), ("medium", "Medium"), ("high", "High"), ("xhigh", "X-high"))
 
     def image_layer(self) -> str:
-        """Install the pinned codex release: the statically-linked musl binary from GitHub
-        releases (no runtime deps — the base image needs no node). Runs as root (the base image's
-        build user); the binary is world-executable."""
+        """Install the pinned Linux package with its companion tools and relative resources.
+
+        The main executable alone cannot run default shell tools in recent Codex releases.
+        Preserve the package layout so sibling executables and bundled resources resolve.
+        """
         return (
             "RUN set -eux; \\\n"
             '    arch="$(uname -m)"; \\\n'
@@ -200,11 +204,13 @@ class CodexHarness(Harness):
             '      aarch64) triple="aarch64-unknown-linux-musl" ;; \\\n'
             '      *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \\\n'
             "    esac; \\\n"
+            "    mkdir --parents /opt/codex; \\\n"
             "    curl --fail --silent --show-error --location \\\n"
-            f'      "https://github.com/openai/codex/releases/download/rust-v{CODEX_VERSION}/codex-$triple.tar.gz" \\\n'
-            "      | tar --extract --gzip --directory /usr/local/bin; \\\n"
-            '    if [ -e "/usr/local/bin/codex-$triple" ]; then mv "/usr/local/bin/codex-$triple" /usr/local/bin/codex; fi; \\\n'
-            "    chmod 0755 /usr/local/bin/codex"
+            f'      "https://github.com/openai/codex/releases/download/rust-v{CODEX_VERSION}/codex-package-$triple.tar.gz" \\\n'
+            "      | tar --extract --gzip --directory /opt/codex; \\\n"
+            "    test -x /opt/codex/bin/codex; \\\n"
+            "    test -x /opt/codex/bin/codex-code-mode-host; \\\n"
+            "    ln --symbolic --force /opt/codex/bin/codex /usr/local/bin/codex"
         )
 
     def missing_auth(self, environ: Mapping[str, str], *, home: Path) -> str | None:
