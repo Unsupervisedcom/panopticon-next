@@ -1,0 +1,8 @@
+{
+  "reviewId": "merge-recovery-state.2.1--5d0176bb1711",
+  "requirementId": "merge-recovery-state.2.1",
+  "hash": "5d0176bb1711",
+  "verdict": "pass",
+  "summary": "Independent review: The full-policy comparison rejects removed evidence fields, stale reads, missing queue lookup, or missing head read-back; the CLI current-head query and mismatch restart establish the intended snapshot.",
+  "timestamp": "2026-10-29T08:04:02.767Z"
+}

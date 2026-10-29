@@ -1,0 +1,8 @@
+{
+  "reviewId": "merge-recovery-state.2.4--ef8d81ec8034",
+  "requirementId": "merge-recovery-state.2.4",
+  "hash": "ef8d81ec8034",
+  "verdict": "pass",
+  "summary": "Independent review: The pinned empty-required-check clause rejects treating the recognized response as failed, unavailable, or pending and leaves other evidence to decide the action.",
+  "timestamp": "2026-10-29T08:04:06.532Z"
+}

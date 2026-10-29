@@ -1,0 +1,8 @@
+{
+  "reviewId": "merge-recovery-state.3.1--699f500f11c5",
+  "requirementId": "merge-recovery-state.3.1",
+  "hash": "699f500f11c5",
+  "verdict": "pass",
+  "summary": "Independent review: The full policy pins MERGING and artifact retention across all non-repair branches; inserting optimistic advancement or implementation recovery fails the comparison.",
+  "timestamp": "2026-10-29T08:04:07.771Z"
+}
