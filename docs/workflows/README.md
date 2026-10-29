@@ -17,6 +17,9 @@ lifecycle — see [Tasks](../tasks.md).
 |---|---|---|
 | [`github-peer-reviewed`](github-peer-reviewed.md) | Ships a GitHub PR that a **peer** reviews before it merges. Use for GitHub changes that need a second person's sign-off. | A GitHub PR (peer-approved) |
 | [`github-self-reviewed`](github-self-reviewed.md) | Ships a GitHub PR that **you** review yourself, with no peer-review gate. | A GitHub PR (self-approved) |
+| [`2119-human-spec`](2119-human-spec.md) | Defines requirements and reviewed tests first. **You approve the spec and the final reviewed PR.** Default final reviewers: Fable and Sol. | A GitHub PR |
+| [`2119-auto-spec`](2119-auto-spec.md) | Proceeds from specification into implementation automatically. **You still approve the final reviewed PR.** Default final reviewers: Fable and Sol. | A GitHub PR |
+| [`2119-auto-sol`](2119-auto-sol.md) | Uses the same automatic specification flow with **two independent Sol review contexts** by default; you still approve the final reviewed PR. | A GitHub PR |
 | [`local-git-self-reviewed`](local-git-self-reviewed.md) | Keeps the work **local**: commits to a branch and merges it, with no GitHub, PR, or CI. Use when the change never leaves the machine. | A local branch merged into the base |
 | [`spike`](spike.md) | **Open-ended** agent work with no gates. Use for exploration, debugging, and research, until you call it done. | Nothing lands on its own |
 | [`orchestrator`](orchestrator.md) | An agent that **decomposes a goal into child tasks**, each pre-planned and handed to you ready to approve. Use to fan work out across agents. | New pre-planned child tasks |
@@ -43,6 +46,13 @@ You approve the plan by advancing the task out of PLANNING. Attach with `t`, the
 operation using your harness's explicit syntax: `/advance` in Claude, `$advance` in Codex, or
 `/skill:advance` in Pi and Outfitter. `spike` and `setup-repo` have no planning step.
 
+The three `2119-*` workflows instead begin in **SPECIFYING**: requirements, annotated tests,
+test-honesty verdicts, and a published specification artifact. `2119-human-spec` waits for
+your specification approval; `2119-auto-spec` and `2119-auto-sol` advance automatically
+when that stage's responsibilities are satisfied. All three still wait for your approval
+in **REVIEWING**, after final review and triage, before proceeding to merge. See their
+pages for the separate suite, 2119, repository, and CI gates.
+
 ## Who advances a state
 
 Each state is advanced by either **you** or the **agent**:
@@ -56,9 +66,9 @@ Each state is advanced by either **you** or the **agent**:
 ## How workflows are offered
 
 - **Default-on vs. opt-in.** `spike` and `orchestrator` are shown for every repo by
-  default. `github-peer-reviewed`, `github-self-reviewed`, and `local-git-self-reviewed`
-  are **opt-in**: enable them per repo (in the repo's workflow settings) before they show
-  up in the task-creation picker.
+  default. `github-peer-reviewed`, `github-self-reviewed`, `local-git-self-reviewed`,
+  `2119-human-spec`, `2119-auto-spec`, and `2119-auto-sol` are **opt-in**: enable them per
+  repo (in the repo's workflow settings) before they show up in the task-creation picker.
 - **Hidden utilities.** `setup-repo` is hidden from the pickers entirely; you launch it
   from the repos screen's setup hotkey, not by creating an ordinary task.
 
