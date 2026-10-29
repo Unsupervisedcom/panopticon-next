@@ -22,6 +22,7 @@ from pathlib import Path
 import httpx
 
 from panopticon.client import JsonObj, TaskServiceClient
+from panopticon.core.dirs import hook_file_path
 from panopticon.core.models import ContainerStatus, LifecyclePhase
 from panopticon.core.state import TERMINAL_LABELS
 from panopticon.harnesses import Harness, get_harness
@@ -344,7 +345,7 @@ class Spawner:
         workspace = self._prepare_task_dir(
             task, repo, clone=True
         )  # a container always mounts a checkout
-        if hook_file := repo.get("hook_file"):
+        if hook_file := hook_file_path(repo.get("hook_file")):
             self._run_hook(hook_file, task_id, repo["name"], workspace)
         _log.info(
             "task %s: building image (workflow=%s, repo=%s)",

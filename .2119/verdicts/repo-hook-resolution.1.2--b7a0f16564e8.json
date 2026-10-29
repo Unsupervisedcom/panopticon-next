@@ -1,0 +1,8 @@
+{
+  "reviewId": "repo-hook-resolution.1.2--b7a0f16564e8",
+  "requirementId": "repo-hook-resolution.1.2",
+  "hash": "b7a0f16564e8",
+  "verdict": "pass",
+  "summary": "Independent review: The real hook writes `$PWD` as its first output line; expected value is the per-task workspace path. A violation (any other cwd) changes `$PWD` *and* strands the relatively-written `hook-output` file — double discrimination.",
+  "timestamp": "2026-10-29T07:12:52.820Z"
+}

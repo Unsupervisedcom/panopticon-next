@@ -1,0 +1,8 @@
+{
+  "reviewId": "repo-hook-resolution.1.6--2bda6ca17047",
+  "requirementId": "repo-hook-resolution.1.6",
+  "hash": "2bda6ca17047",
+  "verdict": "pass",
+  "summary": "Independent review: Same rejection test asserts `phases[-1] == (\"t1\", \"failed\", \"hook_file name '<name>' escapes the hooks dir\")` — the rejected name verifiably appears in the detail — plus `client.cleared == []`, ruling out the lifecycle being cleared into the recoverable/`down` path. The exact-string match is wording-coupled but strictly stronger than the requirement, not weaker.",
+  "timestamp": "2026-10-29T07:12:57.631Z"
+}
