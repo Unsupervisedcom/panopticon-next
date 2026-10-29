@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-033.9.1--4ea88470081f",
+  "requirementId": "REQ-033.9.1",
+  "hash": "4ea88470081f",
+  "verdict": "pass",
+  "summary": "Independent review: the test pins the deferred-issue prefix against a separate literal covering title, PR and comment references, deferral reason, and implementation needs. The suffix permits only the workflow recovery-state substitution; weakening any required issue instruction fails.",
+  "timestamp": "2026-10-29T07:10:07.612Z"
+}

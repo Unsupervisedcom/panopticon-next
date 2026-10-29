@@ -479,15 +479,17 @@ def test_babysit_merge_files_deferred_issues_before_the_merge_queue_steps() -> N
     assert {workflow.name for workflow in builtins} == set(WORKFLOW_NAMES)
 
     base_instructions = _skill(_workflow("github-peer-reviewed"), "babysit-merge").instructions
+    expected_queue_instructions = base_instructions.replace(
+        "`set_state ITERATING`", "`set_state BUILDING`"
+    )
 
     for workflow in builtins:
         instructions = _skill(workflow, "babysit-merge").instructions
 
-        # The deferred-issue-filing instructions precede the untouched base merge-queue
-        # instructions (proving nothing about the queue mechanics itself was disturbed) and are
-        # exactly the required text — not merely a superset containing the right words.
-        assert instructions.endswith(base_instructions)
-        prefix = instructions[: -len(base_instructions)]
+        # The recovery state is the only family-specific change to the base merge-queue
+        # instructions. The deferred-issue prefix stays exact and precedes the queue steps.
+        assert instructions.endswith(expected_queue_instructions)
+        prefix = instructions[: -len(expected_queue_instructions)]
         assert prefix == EXPECTED_DEFERRED_ISSUES_MERGE_INSTRUCTIONS + "\n\n"
 
 

@@ -294,6 +294,8 @@ the merge-queue steps below:
 class _Spec2119Workflow(GithubForgeWorkflow):
     """Shared forge skills for the 2119 workflow family."""
 
+    merge_recovery_state: ClassVar[str] = "BUILDING"
+
     #: Whether stage-4 adversarial review uses Fable plus Sol; test honesty always uses Sol.
     fable_reviews: ClassVar[bool] = True
     reviewers: ClassVar[tuple[ReviewerConfig, ReviewerConfig]] = (

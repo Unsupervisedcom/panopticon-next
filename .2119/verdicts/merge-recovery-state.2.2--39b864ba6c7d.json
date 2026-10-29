@@ -1,0 +1,8 @@
+{
+  "reviewId": "merge-recovery-state.2.2--39b864ba6c7d",
+  "requirementId": "merge-recovery-state.2.2",
+  "hash": "39b864ba6c7d",
+  "verdict": "pass",
+  "summary": "Independent review: The independently reviewed policy explicitly separates JSON buckets from process exits and forbids pending, optional failures, missing results, and query errors from proving failed required checks; mutations fail the full comparison.",
+  "timestamp": "2026-10-29T08:04:04.042Z"
+}
