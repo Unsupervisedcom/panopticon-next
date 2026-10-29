@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.16](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.15...v0.2.16) (2026-10-29)
+
+
+### Bug Fixes
+
+* **spawner:** resolve repository hooks from the configured directory ([#31](https://github.com/Unsupervisedcom/panopticon-next/issues/31)) ([1e205cd](https://github.com/Unsupervisedcom/panopticon-next/commit/1e205cd2bc43adc6af69c510e2a9b6a7f5134b8f))
+
+
+### Documentation
+
+* align runtime architecture and document 2119 workflows ([#32](https://github.com/Unsupervisedcom/panopticon-next/issues/32)) ([4f5b13d](https://github.com/Unsupervisedcom/panopticon-next/commit/4f5b13d34e03da76905b64bf4674b21a73e23c37))
+
 ## [0.2.15](https://github.com/Unsupervisedcom/panopticon-next/compare/v0.2.14...v0.2.15) (2026-09-16)
 
 
