@@ -51,6 +51,10 @@ built-in workflows when no external workflow directory is present.
 1. Every built-in 2119 workflow MUST direct test-honesty review to Sol, while
 `2119-human-spec` and `2119-auto-spec` use Fable plus Sol for final change review and
 `2119-auto-sol` uses Sol only for final change review.
+2. `2119-auto-sol` MUST default its development launch pair to `claude` with
+`claude-opus-5-5`, subject to the task override precedence in REQ-012.
+3. `2119-auto-sol` MUST default its first final reviewer to `codex` with `gpt-6.1-sol`,
+subject to the reviewer overrides in REQ-036.
 
 ### REQ-028.9: Actionable duplicate migration failure
 

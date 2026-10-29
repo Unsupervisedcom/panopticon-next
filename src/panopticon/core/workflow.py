@@ -113,7 +113,7 @@ class Workflow(ABC):
     #: ``credential_dir`` field, and ordinary task workflows retain no repo-write authority.
     configures_repo_credentials: ClassVar[bool] = False
     #: Optional tuned launch pair. Workflows must declare both values or neither; discovery also
-    #: checks that the harness exists. Built-ins deliberately leave the pair unset.
+    #: checks that the harness exists. A built-in may set a pair to tune its default agent.
     default_harness: ClassVar[str | None] = None
     default_model: ClassVar[str | None] = None
     #: Optional tuned launch pair for a governed review task (ADR 0014). Like the default launch

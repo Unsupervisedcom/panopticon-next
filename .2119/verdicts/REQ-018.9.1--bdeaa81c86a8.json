@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.9.1--bdeaa81c86a8",
+  "requirementId": "REQ-018.9.1",
+  "hash": "bdeaa81c86a8",
+  "verdict": "pass",
+  "summary": "Mounted memo width equals 64 before control focus and while each candidate list is visible.",
+  "timestamp": "2026-09-14T07:53:19.491Z"
+}

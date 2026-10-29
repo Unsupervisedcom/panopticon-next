@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.5.2--4f29fc3ed6bc",
+  "requirementId": "REQ-026.5.2",
+  "hash": "4f29fc3ed6bc",
+  "verdict": "pass",
+  "summary": "Governors with only complete or custom-terminal children retain ordinary orange user or green agent presentation.",
+  "timestamp": "2026-09-14T07:53:59.326Z"
+}

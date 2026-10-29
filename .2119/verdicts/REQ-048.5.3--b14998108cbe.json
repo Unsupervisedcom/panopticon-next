@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.5.3--b14998108cbe",
+  "requirementId": "REQ-048.5.3",
+  "hash": "b14998108cbe",
+  "verdict": "pass",
+  "summary": "Capability opens a registration (201), lists it, holds /live (200 start plus keepalive bytes), and closes it (204) while sibling registration/live are 403; a denied DELETE /registrations/{id} or live 403 fails.",
+  "timestamp": "2026-10-28T06:06:40.819Z"
+}

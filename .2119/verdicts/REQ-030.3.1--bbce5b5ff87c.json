@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.3.1--bbce5b5ff87c",
+  "requirementId": "REQ-030.3.1",
+  "hash": "bbce5b5ff87c",
+  "verdict": "pass",
+  "summary": "All four named creators (LocalRunner.spawn, ShellRunner.spawn, _start_sessions service+runner, ensure_dashboard_session) are each pinned by a recorder test asserting `tmux -L <sock> -f <cfg>` with `source-file` indexed before `new-session` and the cfg file byte-equal to server_default_config_text (whose lines are individually pinned for mouse/history-limit 50000/set-clipboard/drag/vi-drag/double-click/fallback), so a call site that omits -f, loads a partial config, or orders -f/source-file after new-session is rejected; real-tmux tests on the same constructor reject the 'applied after session' counterexample (pane #{history_limit} must read 50000 on a fresh socket, and an existing server with mouse off/history-limit 123/DoubleClick unbound must be repaired by the production new-session), while shell-runner and container real-tmux spawns confirm `mouse on` lands through the production path; an AST guard forbids any other production `new-session` literal. Minor non-material gap: unit tests don't assert the source-file operand equals the -f path and the live-runner integration checks only `mouse`.",
+  "timestamp": "2026-10-28T06:11:24.731Z"
+}

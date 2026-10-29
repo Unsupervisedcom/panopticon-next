@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.4.2--6db331c294bb",
+  "requirementId": "REQ-012.4.2",
+  "hash": "6db331c294bb",
+  "verdict": "pass",
+  "summary": "Fable 5.1: repo-derived, workflow-derived and explicit tasks are re-read after the repo defaults are patched and the workflow class defaults are changed; read-time resolution would return the replacement values.",
+  "timestamp": "2026-09-30T06:01:40.264Z"
+}

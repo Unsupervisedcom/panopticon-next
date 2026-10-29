@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.4--0c9955ebd1d0",
+  "requirementId": "task-auth-readiness.3.4",
+  "hash": "0c9955ebd1d0",
+  "verdict": "pass",
+  "summary": "Repairing repository credential files does not release the failed task or enable spawning and healing; persisted holds survive service restart and only explicit retry reopens execution.",
+  "timestamp": "2026-09-14T08:00:34.919Z"
+}

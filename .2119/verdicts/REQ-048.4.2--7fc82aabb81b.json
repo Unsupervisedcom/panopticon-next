@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.4.2--7fc82aabb81b",
+  "requirementId": "REQ-048.4.2",
+  "hash": "7fc82aabb81b",
+  "verdict": "pass",
+  "summary": "GET /tasks with a plain capability must equal exactly [own]; an orchestrator must see exactly {self, child, grandchild} excluding sibling, peer, and ancestor; a non-orchestrator with a governed child must still see only itself, so any leak of unrelated or ungoverned tasks fails the set equality.",
+  "timestamp": "2026-10-28T06:06:35.722Z"
+}

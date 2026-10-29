@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.20.1--4aeae9606abd",
+  "requirementId": "REQ-018.20.1",
+  "hash": "4aeae9606abd",
+  "verdict": "pass",
+  "summary": "No-match inputs leave a zero-option candidate list with nonzero visible width for both model and effort.",
+  "timestamp": "2026-09-14T07:53:33.044Z"
+}

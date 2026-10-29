@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-040.7.1--4183cea2d07e",
+  "requirementId": "REQ-040.7.1",
+  "hash": "4183cea2d07e",
+  "verdict": "pass",
+  "summary": "A FileNotFoundError from the opener is caught and becomes exactly the missing-file-manager warning.",
+  "timestamp": "2026-09-14T07:54:25.366Z"
+}

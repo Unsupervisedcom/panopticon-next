@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.6.5--a5cb9b38e497",
+  "requirementId": "REQ-026.6.5",
+  "hash": "a5cb9b38e497",
+  "verdict": "pass",
+  "summary": "Fable 5.1: turn=agent with attention set must return attention false, and the task change-feed version must advance by exactly one, rejecting a separate follow-up write.",
+  "timestamp": "2026-09-30T06:01:56.195Z"
+}

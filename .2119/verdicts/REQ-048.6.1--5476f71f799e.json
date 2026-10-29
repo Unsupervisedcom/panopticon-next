@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.6.1--5476f71f799e",
+  "requirementId": "REQ-048.6.1",
+  "hash": "5476f71f799e",
+  "verdict": "pass",
+  "summary": "Every route derived from the app containing {task_id} (minus runner-session/retry) plus DELETE /registrations is exercised against a sibling with asserted (403, scope body), including operations/drop, and the sibling's record is asserted unchanged; a successful cross-task drop or any non-403 fails.",
+  "timestamp": "2026-10-28T06:06:42.084Z"
+}

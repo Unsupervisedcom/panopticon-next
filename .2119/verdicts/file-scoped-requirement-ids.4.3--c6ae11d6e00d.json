@@ -1,0 +1,8 @@
+{
+  "reviewId": "file-scoped-requirement-ids.4.3--c6ae11d6e00d",
+  "requirementId": "file-scoped-requirement-ids.4.3",
+  "hash": "c6ae11d6e00d",
+  "verdict": "pass",
+  "summary": "test_070_resolves_both_grammars_and_distinct_file_namespaces runs one `check --json` against the repo under `.2119.yml reviews: true` after asserting both REQ-*.json and file-scoped-requirement-ids.*.json verdict files exist, requiring ok=True and staleReviews=[]; a run that failed to resolve legacy (or file-scoped) verdicts would leave covered MUST items pending and fail there, and the fixture separately records `pass` for REQ-900.1.1 plus four file-scoped IDs and expects a single check with requirementCount 6 / coveredCount 5 / uncoveredRequirements [] — the corrected counts keep mandatory coverage strict since the only uncovered item is an unannotated MAY; minor non-material caveat that the tmp fixture lacks a reviews:true config so the real-repo run carries the verdict-resolution evidence.",
+  "timestamp": "2026-10-28T06:30:49.195Z"
+}

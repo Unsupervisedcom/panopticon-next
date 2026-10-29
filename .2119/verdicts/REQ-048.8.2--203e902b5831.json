@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.8.2--203e902b5831",
+  "requirementId": "REQ-048.8.2",
+  "hash": "203e902b5831",
+  "verdict": "pass",
+  "summary": "A conflicting actor_task_id argument leaves subject_task_id equal to the capability's task, sibling task_id in arguments or URI is denied with target recorded as sibling, and %2e%2e-normalized and percent-encoded URIs are asserted to resolve to the expected target; deriving the subject from arguments would fail.",
+  "timestamp": "2026-10-28T06:06:53.350Z"
+}

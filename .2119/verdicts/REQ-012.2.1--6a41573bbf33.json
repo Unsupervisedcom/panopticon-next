@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.2.1--6a41573bbf33",
+  "requirementId": "REQ-012.2.1",
+  "hash": "6a41573bbf33",
+  "verdict": "pass",
+  "summary": "Fable 5.1: REST creation with a declared workflow pair and a conflicting repo pair must return the workflow pair for a synthetic workflow and the real 2119-auto-sol; a repo-wins implementation fails both parameter cases.",
+  "timestamp": "2026-09-30T06:01:31.731Z"
+}

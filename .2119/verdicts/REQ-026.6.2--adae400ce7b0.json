@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.6.2--adae400ce7b0",
+  "requirementId": "REQ-026.6.2",
+  "hash": "adae400ce7b0",
+  "verdict": "pass",
+  "summary": "Fable 5.1: attention true then false is persisted and reloaded while turn=agent and blocked=true must be unchanged. Only that one starting combination is exercised.",
+  "timestamp": "2026-09-30T06:01:52.985Z"
+}

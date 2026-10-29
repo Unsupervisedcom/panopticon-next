@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.4.6--3608b2771ce4",
+  "requirementId": "REQ-051.4.6",
+  "hash": "3608b2771ce4",
+  "verdict": "pass",
+  "summary": "LocalRunner.spawn with a recording tmux runner yields events starting, awaiting, launch, failed with the agent failing inside respawn-pane, and the task still reads failed after spawn returns; moving the AWAITING report after respawn-pane fails the workflow case",
+  "timestamp": "2026-09-14T07:58:53.537Z"
+}

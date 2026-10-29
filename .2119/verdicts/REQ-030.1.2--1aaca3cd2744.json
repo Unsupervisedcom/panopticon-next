@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.1.2--1aaca3cd2744",
+  "requirementId": "REQ-030.1.2",
+  "hash": "1aaca3cd2744",
+  "verdict": "pass",
+  "summary": "Pane-level `#{history_limit}` is asserted equal to 50000 (constant pinned by `HISTORY_LIMIT == \"50000\"`) after production creation on a fresh socket and on an existing server pre-set to 123; applying the option after the pane exists (or any other value) yields 123/2000 and fails.",
+  "timestamp": "2026-10-28T06:04:10.090Z"
+}

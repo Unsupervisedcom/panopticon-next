@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.2--6754e34f7505",
+  "requirementId": "runtime-readiness.2.2",
+  "hash": "6754e34f7505",
+  "verdict": "pass",
+  "summary": "test_runtime_identity_is_authenticated_fleet_read asserts policy.classification_for_rest('GET','/identity') is AuthorizationClass.FLEET_READ alongside behavioral 401 without a token and 200 with a read-only token, so classifying the route as public (unauthenticated 200) or fleet-write (read token 401) is rejected.",
+  "timestamp": "2026-10-28T06:05:55.462Z"
+}

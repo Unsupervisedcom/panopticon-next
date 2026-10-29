@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.2.1--bf2a81eb5e26",
+  "requirementId": "REQ-031.2.1",
+  "hash": "bf2a81eb5e26",
+  "verdict": "pass",
+  "summary": "Host process entry rejects a failed real probe path before migration or spawn/heal loop entry; reachable startup enters the loop.",
+  "timestamp": "2026-09-14T06:52:19.722Z"
+}

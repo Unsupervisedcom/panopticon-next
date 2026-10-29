@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.3--2b80d13b4596",
+  "requirementId": "REQ-030.4.3",
+  "hash": "2b80d13b4596",
+  "verdict": "pass",
+  "summary": "On linux and freebsd14, wl-copy alone and wl-copy alongside xclip/xsel must return exactly \"wl-copy\"; preferring xclip or returning a different string fails.",
+  "timestamp": "2026-10-28T06:04:22.750Z"
+}

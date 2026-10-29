@@ -103,7 +103,7 @@ EXPECTED_FABLE_SOL_REVIEW_INSTRUCTIONS = (
     + _VERIFIED_REVIEW_INSTRUCTIONS
 )
 EXPECTED_SOL_ONLY_REVIEW_INSTRUCTIONS = (
-    "Workflow reviewer defaults: `codex:gpt-5.6-sol, codex:gpt-5.6-sol`.\n\n"
+    "Workflow reviewer defaults: `codex:gpt-6.1-sol, codex:gpt-5.6-sol`.\n\n"
     + _VERIFIED_REVIEW_INSTRUCTIONS
 )
 EXPECTED_DEFERRED_ISSUES_MERGE_INSTRUCTIONS = """## Before merging: file deferred-work issues

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.2.4--191b47ca2bc8",
+  "requirementId": "REQ-030.2.4",
+  "hash": "191b47ca2bc8",
+  "verdict": "pass",
+  "summary": "Double-click with the resolved tool replaced by a capture command asserts the capture file contains exactly b\"bravo\"; tmux's stock double-click binding (no external pipe) or a wrong tool leaves no capture and fails, and the exact `copy-pipe-and-cancel \"pbcopy\"` tail is asserted in the config line.",
+  "timestamp": "2026-10-28T06:04:16.416Z"
+}

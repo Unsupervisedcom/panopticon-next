@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-024.7.1--de6bf76ae254",
+  "requirementId": "REQ-024.7.1",
+  "hash": "de6bf76ae254",
+  "verdict": "pass",
+  "summary": "Exact mounted details and help text match lowercase y for slug and Shift+Y for ID; the associated case-sensitive keymap entries are also checked.",
+  "timestamp": "2026-09-14T07:53:50.753Z"
+}

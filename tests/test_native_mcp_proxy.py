@@ -20,10 +20,18 @@ from panopticon.sessionservice.local_runner import LocalRunner
 class _CaptureHandler(http.server.BaseHTTPRequestHandler):
     hits: list[tuple[str, str | None]] = []
 
+    def parse_request(self) -> bool:
+        parsed = super().parse_request()
+        if parsed:
+            type(self).hits.append((self.path, self.headers.get("Authorization")))
+        return parsed
+
     def do_POST(self) -> None:
-        type(self).hits.append((self.path, self.headers.get("Authorization")))
         self.send_response(404)
         self.end_headers()
+
+    do_GET = do_POST
+    do_CONNECT = do_POST
 
     def log_message(self, format: str, *args: object) -> None:
         pass
@@ -76,8 +84,15 @@ def test_real_claude_mcp_transport_bypasses_ambient_proxy(
         "HOME": str(home),
         "PATH": os.environ.get("PATH", os.defpath),
         "PANOPTICON_SERVICE_AUTH_TOKEN": token,
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "HTTP_PROXY": f"http://127.0.0.1:{proxy.server_address[1]}",
         "http_proxy": f"http://127.0.0.1:{proxy.server_address[1]}",
+        "HTTPS_PROXY": f"http://127.0.0.1:{proxy.server_address[1]}",
+        "https_proxy": f"http://127.0.0.1:{proxy.server_address[1]}",
+        "ALL_PROXY": f"http://127.0.0.1:{proxy.server_address[1]}",
+        "all_proxy": f"http://127.0.0.1:{proxy.server_address[1]}",
+        "NO_PROXY": "",
+        "no_proxy": "",
     }
     workdir = tmp_path / "work"
     workdir.mkdir()
@@ -157,4 +172,6 @@ def test_real_claude_mcp_transport_bypasses_ambient_proxy(
             server.server_close()
 
     assert _ProxyHandler.hits == []
-    assert _TargetHandler.hits == [("/mcp", f"Bearer {token}")]
+    # Native MCP health checks may retry or negotiate multiple protocol versions.
+    # Every request must still bypass the proxy and preserve the target credential.
+    assert set(_TargetHandler.hits) == {("/mcp", f"Bearer {token}")}

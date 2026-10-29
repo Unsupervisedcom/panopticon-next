@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-019.8.1--3fed30642ac4",
+  "requirementId": "REQ-019.8.1",
+  "hash": "3fed30642ac4",
+  "verdict": "pass",
+  "summary": "A harness returning multiple model and effort entries must present those exact lists with labels and the expected model passed into effort discovery.",
+  "timestamp": "2026-09-14T07:53:43.113Z"
+}

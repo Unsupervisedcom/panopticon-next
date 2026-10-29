@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-023.2.1--c97806e04b9c",
+  "requirementId": "REQ-023.2.1",
+  "hash": "c97806e04b9c",
+  "verdict": "pass",
+  "summary": "Root, nested and terminal governors render exact right/down disclosures as actual Enter toggles collapsed and expanded states.",
+  "timestamp": "2026-09-14T07:53:45.529Z"
+}

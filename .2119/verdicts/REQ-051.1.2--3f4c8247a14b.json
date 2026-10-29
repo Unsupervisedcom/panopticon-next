@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.1.2--3f4c8247a14b",
+  "requirementId": "REQ-051.1.2",
+  "hash": "3f4c8247a14b",
+  "verdict": "pass",
+  "summary": "Native bootstrap, preflight, session detection, and captured child environment agree on PI_CODING_AGENT_DIR; wrong root, ignored native auth, or omitted child override fail independent assertions.",
+  "timestamp": "2026-09-14T08:55:45.950Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.1.1--a9f59b47de16",
+  "requirementId": "REQ-032.1.1",
+  "hash": "a9f59b47de16",
+  "verdict": "pass",
+  "summary": "test_argv_resumes_the_recorded_interactive_session_by_id asserts exact argv ['codex','resume','interactive-1',*flags], so emitting `--last` or omitting the recorded id is rejected; the exec-newer test confirms the id is the interactive one, not merely the newest file.",
+  "timestamp": "2026-10-28T06:05:36.198Z"
+}

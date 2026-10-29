@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.1.2--5978a59c4973",
+  "requirementId": "REQ-054.1.2",
+  "hash": "5978a59c4973",
+  "verdict": "pass",
+  "summary": "Opt-in live journey asserts no panopticon on PATH, installs the doc-parsed wheel into a fresh pipx home with isolated HOME and no PYTHONPATH passthrough, resolves the executable from a fresh login shell, and runs --version and doctor from a non-checkout cwd; evidence exists only under the disposable-host opt-in.",
+  "timestamp": "2026-09-14T06:56:29.696Z"
+}

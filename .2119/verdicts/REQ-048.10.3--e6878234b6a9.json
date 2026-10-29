@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.10.3--e6878234b6a9",
+  "requirementId": "REQ-048.10.3",
+  "hash": "e6878234b6a9",
+  "verdict": "pass",
+  "summary": "Preflights on task/repo/artifact paths must have body in {b'', b'OK'}, headers a subset of the fixed CORS/transport set, max-age in {None,'600'}, identical responses across paths, and no seeded task id/repo name/artifact bytes anywhere in the wire; a leaked header or max-age 3600 fails.",
+  "timestamp": "2026-10-28T06:07:00.927Z"
+}

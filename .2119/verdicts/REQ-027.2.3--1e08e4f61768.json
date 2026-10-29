@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.2.3--1e08e4f61768",
+  "requirementId": "REQ-027.2.3",
+  "hash": "1e08e4f61768",
+  "verdict": "pass",
+  "summary": "Uppercase E writes the exact reserved timestamp only to the selected task, and keymap uniqueness plus separate e/E actions are asserted.",
+  "timestamp": "2026-09-14T07:54:06.760Z"
+}

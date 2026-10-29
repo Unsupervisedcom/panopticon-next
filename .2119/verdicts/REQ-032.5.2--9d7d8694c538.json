@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.5.2--9d7d8694c538",
+  "requirementId": "REQ-032.5.2",
+  "hash": "9d7d8694c538",
+  "verdict": "pass",
+  "summary": "Parametrized test asserts exact argv with 'You were interrupted. Continue.' appended only for turn='agent' and nothing appended for turn='user', so a changed prompt string, omission on agent turn, or leakage onto user turn is rejected.",
+  "timestamp": "2026-10-28T06:05:47.833Z"
+}

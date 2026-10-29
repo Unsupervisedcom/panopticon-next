@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-033.6.1--dd9484d48bc0",
+  "requirementId": "REQ-033.6.1",
+  "hash": "dd9484d48bc0",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the babysit-merge prefix must equal a test-owned literal that tells the agent to re-read the section and user PR comments before the unchanged base merge steps.",
+  "timestamp": "2026-09-30T06:02:20.870Z"
+}

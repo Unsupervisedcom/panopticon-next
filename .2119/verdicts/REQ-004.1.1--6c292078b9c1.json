@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-004.1.1--6c292078b9c1",
+  "requirementId": "REQ-004.1.1",
+  "hash": "6c292078b9c1",
+  "verdict": "pass",
+  "summary": "Real-git acceptance reads repository-local user.name == 'Panopticon Agent' after a fresh prepare and again after a leaked local identity is re-prepared; spawn unit tests pin the exact 'git config --local user.name' argv on both the fresh and existing-checkout paths, so a wrong name, a non-local scope, or a skipped reassert on an existing workspace all fail.",
+  "timestamp": "2026-09-14T21:29:19.017Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.3.2--6f32f8a5b92d",
+  "requirementId": "REQ-030.3.2",
+  "hash": "6f32f8a5b92d",
+  "verdict": "pass",
+  "summary": "Each first-touch path (LocalRunner/ShellRunner kill-session, console and _start_sessions has-session probes, every new-session) is asserted to carry `-f <cfg>` as argv[3] with `-f` indexed before `new-session`, so the nearest violations are rejected: dropping defaults_argv from the leading call fails `first_tmux[:4]`, placing `-f` after `new-session` (where tmux reads it as new-session's own `-f flags`, leaving the pane at stock 2000) fails the index check, and setting history-limit via a separate set-option between new-session and respawn-pane fails because `index(\"-f\")` raises; test_local_runner additionally asserts the literal `set-option -g history-limit 50000` line in the loaded file, and the argv-ordering proxy is grounded by the real-tmux fresh-socket test in test_tmux_defaults.py that uses production new_session_argv and reads the created pane's `#{history_limit}` == 50000; minor weakness is that shell_runner/console/terminal compare config content only to the production helper's own output (self-referential) and the ensure_dashboard_session .3.2 test is ordering-only, but content is cross-covered by the REQ-030.1.2 literal and real-tmux assertions.",
+  "timestamp": "2026-10-28T06:11:26.051Z"
+}

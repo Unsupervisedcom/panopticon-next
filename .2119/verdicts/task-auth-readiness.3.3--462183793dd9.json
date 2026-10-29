@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.3--462183793dd9",
+  "requirementId": "task-auth-readiness.3.3",
+  "hash": "462183793dd9",
+  "verdict": "pass",
+  "summary": "Real REST and store assertions preserve the claiming runner and durable task pause and require the selected harness plus foreground setup and retry in the failure reason.",
+  "timestamp": "2026-09-14T08:00:33.525Z"
+}

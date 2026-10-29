@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-039.4.1--29181ba2025f",
+  "requirementId": "REQ-039.4.1",
+  "hash": "29181ba2025f",
+  "verdict": "pass",
+  "summary": "Shared event traces enforce close then backoff then reopen; identity and registration checks remain intact, and a late-backoff negative control is rejected.",
+  "timestamp": "2026-09-14T06:55:55.141Z"
+}

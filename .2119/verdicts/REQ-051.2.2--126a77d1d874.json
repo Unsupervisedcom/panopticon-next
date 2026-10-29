@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.2.2--126a77d1d874",
+  "requirementId": "REQ-051.2.2",
+  "hash": "126a77d1d874",
+  "verdict": "pass",
+  "summary": "Malformed and Codex-shaped files at native and mounted locations are rejected with exact actionable credential-free diagnostics; valid Pi entries alongside Codex markers remain accepted and stale persisted auth cannot be bypassed.",
+  "timestamp": "2026-09-14T08:55:49.051Z"
+}

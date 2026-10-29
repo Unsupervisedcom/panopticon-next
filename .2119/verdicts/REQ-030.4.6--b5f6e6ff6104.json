@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.6--b5f6e6ff6104",
+  "requirementId": "REQ-030.4.6",
+  "hash": "b5f6e6ff6104",
+  "verdict": "pass",
+  "summary": "Non-darwin with no candidates, and with only pbcopy present, must return None; leaking pbcopy into the non-darwin chain is the rejected counterexample.",
+  "timestamp": "2026-10-28T06:04:26.575Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-040.1.1--81c24293ebba",
+  "requirementId": "REQ-040.1.1",
+  "hash": "81c24293ebba",
+  "verdict": "pass",
+  "summary": "The global HOTKEYS table has one f action for open_checkout and explicitly marks it hidden.",
+  "timestamp": "2026-09-14T07:54:17.791Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.8.1--d6f04d9444f8",
+  "requirementId": "REQ-028.8.1",
+  "hash": "d6f04d9444f8",
+  "verdict": "pass",
+  "summary": "Fable 5.1: all three built-ins must run honesty review with gpt-5.6-sol, and the reviewer-defaults line must read Fable plus Sol for human/auto-spec and two codex Sol models for auto-sol. Note the requirement bundles three obligations and 'Sol' now spans two model versions.",
+  "timestamp": "2026-09-30T06:02:07.956Z"
+}

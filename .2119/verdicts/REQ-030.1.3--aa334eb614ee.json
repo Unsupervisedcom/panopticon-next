@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.1.3--aa334eb614ee",
+  "requirementId": "REQ-030.1.3",
+  "hash": "aa334eb614ee",
+  "verdict": "pass",
+  "summary": "Config text asserts the exact `set-option -g set-clipboard on` line and real-tmux tests read `set-clipboard on` from global and session scope after production creation, including on a server pre-set to `off`; stock tmux (`external`) or a missing/late `-f` fails.",
+  "timestamp": "2026-10-28T06:04:11.410Z"
+}

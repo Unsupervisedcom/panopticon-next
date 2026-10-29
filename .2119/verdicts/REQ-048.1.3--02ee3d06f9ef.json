@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.1.3--02ee3d06f9ef",
+  "requirementId": "REQ-048.1.3",
+  "hash": "02ee3d06f9ef",
+  "verdict": "pass",
+  "summary": "With an allowlisted Origin, GET /tasks is asserted 200 for the read token and 403 for both the fleet write token and a task capability; a service that let the write token through cross-origin would return 200 and fail.",
+  "timestamp": "2026-10-28T06:06:24.249Z"
+}

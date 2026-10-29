@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.6.1--1c4605b55497",
+  "requirementId": "REQ-026.6.1",
+  "hash": "1c4605b55497",
+  "verdict": "pass",
+  "summary": "Dependency/governor wait controls are dim, attention restores orange, and no-wait user tasks remain orange for absent, false and true attention markers.",
+  "timestamp": "2026-09-14T07:54:01.811Z"
+}

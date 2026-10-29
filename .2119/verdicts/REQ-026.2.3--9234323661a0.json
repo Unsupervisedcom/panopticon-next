@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.2.3--9234323661a0",
+  "requirementId": "REQ-026.2.3",
+  "hash": "9234323661a0",
+  "verdict": "pass",
+  "summary": "test_task_responses_use_workflow_terminality_for_dependency_readiness uses a custom workflow whose terminal state is ARCHIVED (not COMPLETE), asserts gated while one of two deps is archived and queued only after both, so hardcoding COMPLETE or caching stale state is rejected; the test_mcp annotation only asserts a `terminal` field and is incidental.",
+  "timestamp": "2026-10-28T06:05:34.916Z"
+}

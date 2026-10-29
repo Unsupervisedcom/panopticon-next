@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-042.3.1--9eddfab894ec",
+  "requirementId": "REQ-042.3.1",
+  "hash": "9eddfab894ec",
+  "verdict": "pass",
+  "summary": "Exact composed slug-cell output places artifact before PR with one separating space and a single complete-prefix separator.",
+  "timestamp": "2026-09-14T07:54:28.985Z"
+}

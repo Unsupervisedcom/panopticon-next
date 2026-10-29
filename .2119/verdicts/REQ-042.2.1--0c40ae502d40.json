@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-042.2.1--0c40ae502d40",
+  "requirementId": "REQ-042.2.1",
+  "hash": "0c40ae502d40",
+  "verdict": "pass",
+  "summary": "Real dashboard rows identify decimal GitHub PR numbers including URL suffixes while rejecting other hosts, lookalike hosts, schemes, malformed URLs and nonnumeric suffixes.",
+  "timestamp": "2026-09-14T07:54:27.815Z"
+}

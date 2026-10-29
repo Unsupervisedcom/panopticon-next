@@ -314,8 +314,10 @@ def test_spawn_resolves_env_file_against_the_runners_secrets_dir() -> None:
         assert f"{name}=" in docker_run
 
 
+@pytest.mark.parametrize("with_env_file", [False, True])
 def test_spawn_forces_native_mcp_off_ambient_proxy_and_preserves_bypasses(
     tmp_path: Path,
+    with_env_file: bool,
 ) -> None:
     # 2119: REQ-035.47
     env_file = tmp_path / "repo.env"
@@ -330,18 +332,17 @@ def test_spawn_forces_native_mcp_off_ambient_proxy_and_preserves_bypasses(
         secrets_dir=tmp_path,
         extra_env={"NO_PROXY": "extra.internal", "no_proxy": "lower-extra.internal"},
         run=rec,
-    ).spawn("t1", env_file=env_file.name)
+    ).spawn("t1", env_file=env_file.name if with_env_file else None)
 
     docker_run = rec.calls[2][0]
-    expected = (
-        "registry.internal,localhost,metadata.internal,extra.internal,"
-        "lower-extra.internal,host.docker.internal"
-    )
-    env_file_index = docker_run.index("--env-file")
-    upper_index = docker_run.index(f"NO_PROXY={expected}")
-    lower_index = docker_run.index(f"no_proxy={expected}")
-    assert env_file_index < upper_index
-    assert env_file_index < lower_index
+    expected = "extra.internal,lower-extra.internal,host.docker.internal"
+    if with_env_file:
+        expected = "registry.internal,localhost,metadata.internal," + expected
+        env_file_index = docker_run.index("--env-file")
+        assert env_file_index < docker_run.index(f"NO_PROXY={expected}")
+        assert env_file_index < docker_run.index(f"no_proxy={expected}")
+    else:
+        assert "--env-file" not in docker_run
     assert f"NO_PROXY={expected}" in docker_run
     assert f"no_proxy={expected}" in docker_run
 

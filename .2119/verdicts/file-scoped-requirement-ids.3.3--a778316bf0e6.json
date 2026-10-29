@@ -1,0 +1,8 @@
+{
+  "reviewId": "file-scoped-requirement-ids.3.3--a778316bf0e6",
+  "requirementId": "file-scoped-requirement-ids.3.3",
+  "hash": "a778316bf0e6",
+  "verdict": "pass",
+  "summary": "Unmocked rfc2119@0.7.0 run on a tmp fixture asserts the CLI emits the literal resolved IDs `- alpha-feature.1.1 (test-quality):` etc. and that check reports requirementCount 6 / coveredCount 5 / uncoveredRequirements [], so a resolver yielding `alpha-feature.md.1.1`, `alpha_feature.1.1`, bare `1.1`, or an off-by-one item/section number is rejected; a title-derived namespace is rejected by the repo-level check since specs like source-selection.md (H1 'Repository Source Selection') are annotated by stem; the MAY correction keeps the legacy MAY unannotated while still pinning every file-scoped MUST item as covered.",
+  "timestamp": "2026-10-28T06:30:44.207Z"
+}

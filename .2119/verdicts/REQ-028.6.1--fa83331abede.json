@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.6.1--fa83331abede",
+  "requirementId": "REQ-028.6.1",
+  "hash": "fa83331abede",
+  "verdict": "pass",
+  "summary": "Fable 5.1: BUILDING url-recorded must exist with the exact set_url description for all three built-ins; removal raises KeyError.",
+  "timestamp": "2026-09-30T06:02:05.816Z"
+}

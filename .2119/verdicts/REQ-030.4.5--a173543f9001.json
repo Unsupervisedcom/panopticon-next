@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.5--a173543f9001",
+  "requirementId": "REQ-030.4.5",
+  "hash": "a173543f9001",
+  "verdict": "pass",
+  "summary": "Non-darwin with only xsel present must return exactly \"xsel --clipboard --input\"; any other flag spelling or a None result fails.",
+  "timestamp": "2026-10-28T06:04:25.296Z"
+}

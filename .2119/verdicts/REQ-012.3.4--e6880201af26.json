@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.3.4--e6880201af26",
+  "requirementId": "REQ-012.3.4",
+  "hash": "e6880201af26",
+  "verdict": "pass",
+  "summary": "Fable 5.1: explicit codex equal to the workflow pair harness must keep gpt-5.6-sol:high; dropping the model on any explicit harness fails.",
+  "timestamp": "2026-09-30T06:01:38.130Z"
+}

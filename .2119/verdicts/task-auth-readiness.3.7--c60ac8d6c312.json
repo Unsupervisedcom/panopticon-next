@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.7--c60ac8d6c312",
+  "requirementId": "task-auth-readiness.3.7",
+  "hash": "c60ac8d6c312",
+  "verdict": "pass",
+  "summary": "A stale task candidate rejected by real repository admission retains the concrete service rejection reason in captured runner diagnostics.",
+  "timestamp": "2026-09-14T08:00:38.870Z"
+}

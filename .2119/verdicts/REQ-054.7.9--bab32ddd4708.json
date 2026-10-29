@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.9--bab32ddd4708",
+  "requirementId": "REQ-054.7.9",
+  "hash": "bab32ddd4708",
+  "verdict": "pass",
+  "summary": "open/xdg-open and BROWSER are recorder shims; a monitor fails if a log appears before the doc-parsed a or p key, the artifact log must contain exactly one line equal to data/artifacts/<task>/plan.md with bytes matching the REST artifact, and the browser log must equal the task's PR URL; opt-in only.",
+  "timestamp": "2026-09-14T06:56:36.859Z"
+}

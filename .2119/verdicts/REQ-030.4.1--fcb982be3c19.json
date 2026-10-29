@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.1--fcb982be3c19",
+  "requirementId": "REQ-030.4.1",
+  "hash": "fcb982be3c19",
+  "verdict": "pass",
+  "summary": "clipboard_tool(platform=\"darwin\") with an injected PATH predicate returns exactly \"pbcopy\" both alone and with all linux tools also present, and a monkeypatched shutil.which proves the default predicate is resolved at call time; returning None or a linux tool on darwin fails.",
+  "timestamp": "2026-10-28T06:04:20.196Z"
+}

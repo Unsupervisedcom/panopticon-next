@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.10.2--3455a0666537",
+  "requirementId": "REQ-048.10.2",
+  "hash": "3455a0666537",
+  "verdict": "pass",
+  "summary": "Every registered path × three origins × ten methods, their preflights, and invalid-token responses are asserted to lack any 'true' value in Access-Control-Allow-Credentials; enabling allow_credentials would fail.",
+  "timestamp": "2026-10-28T06:06:59.695Z"
+}

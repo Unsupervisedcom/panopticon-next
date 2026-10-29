@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.2.2--01e0e975dc09",
+  "requirementId": "REQ-030.2.2",
+  "hash": "01e0e975dc09",
+  "verdict": "pass",
+  "summary": "Same real drag exercised with `mode-keys vi` (inclusive endpoint) asserting capture == b\"bravo\" only after release, plus the exact copy-mode-vi MouseDragEnd1Pane copy-pipe-and-cancel line with the xclip command; a binding only in the emacs table or a missing pipe fails.",
+  "timestamp": "2026-10-28T06:04:13.860Z"
+}

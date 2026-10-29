@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.5.3--17db970a1779",
+  "requirementId": "REQ-026.5.3",
+  "hash": "17db970a1779",
+  "verdict": "pass",
+  "summary": "Governor detail includes both active child slug/state pairs and excludes completed children and unrelated governors children.",
+  "timestamp": "2026-09-14T07:54:00.557Z"
+}

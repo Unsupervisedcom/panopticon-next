@@ -151,7 +151,9 @@ def test_070_resolves_both_grammars_and_distinct_file_namespaces(tmp_path: Path)
     assert report["ok"] is True
     assert report["staleReviews"] == []
     assert report["requirementCount"] >= len(legacy_verdict_ids) + 35
-    assert report["coveredCount"] == report["requirementCount"]
+    assert report["uncoveredRequirements"] == []
+    # The total includes advisory MAY/SHOULD items, which need not have tests.
+    assert 0 < report["coveredCount"] <= report["requirementCount"]
 
     (tmp_path / "specs").mkdir()
     (tmp_path / "tests").mkdir()
@@ -163,7 +165,7 @@ def test_070_resolves_both_grammars_and_distinct_file_namespaces(tmp_path: Path)
         )
     (tmp_path / "specs" / "REQ-900-legacy.md").write_text(
         "# REQ-900: Legacy\n\n## Overview\n\nTest.\n\n## Requirements\n\n"
-        "### REQ-900.1: Behavior\n\n1. It MUST work.\n"
+        "### REQ-900.1: Behavior\n\n1. It MUST work.\n2. It MAY retry.\n"
     )
     (tmp_path / "tests" / "coverage.py").write_text(
         "# 2119: alpha-feature.1.1, alpha-feature.2.1, "
@@ -235,8 +237,9 @@ def test_070_resolves_both_grammars_and_distinct_file_namespaces(tmp_path: Path)
     assert mixed_check.returncode == 0, mixed_check.stdout + mixed_check.stderr
     mixed_report = json.loads(mixed_check.stdout)
     assert mixed_report["ok"] is True
-    assert mixed_report["requirementCount"] == 5
+    assert mixed_report["requirementCount"] == 6
     assert mixed_report["coveredCount"] == 5
+    assert mixed_report["uncoveredRequirements"] == []
 
 
 # 2119: 5.1

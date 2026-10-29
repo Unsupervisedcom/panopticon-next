@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-053.6.1--68901d04c6c4",
+  "requirementId": "REQ-053.6.1",
+  "hash": "68901d04c6c4",
+  "verdict": "pass",
+  "summary": "Every vertical offset is scanned for each intersecting real row ID, including layouts with ensemble summaries; narrow layouts compare content to an unmodified baseline.",
+  "timestamp": "2026-09-14T07:54:37.624Z"
+}

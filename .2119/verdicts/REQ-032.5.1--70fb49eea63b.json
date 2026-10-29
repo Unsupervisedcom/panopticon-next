@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.5.1--70fb49eea63b",
+  "requirementId": "REQ-032.5.1",
+  "hash": "70fb49eea63b",
+  "verdict": "pass",
+  "summary": "test_argv_resume_session_flags_unchanged asserts argv[3:] == the exact three-flag list on resume, and first-run tests pin the same list, so dropping/reordering/adding a flag on resume relative to first run is rejected.",
+  "timestamp": "2026-10-28T06:05:46.591Z"
+}

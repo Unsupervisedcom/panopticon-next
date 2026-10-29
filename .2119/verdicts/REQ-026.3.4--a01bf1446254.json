@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.3.4--a01bf1446254",
+  "requirementId": "REQ-026.3.4",
+  "hash": "a01bf1446254",
+  "verdict": "pass",
+  "summary": "A DROPPED dependency is rendered alongside the instruction to edit dependencies or drop the dependent task.",
+  "timestamp": "2026-09-14T07:53:55.614Z"
+}

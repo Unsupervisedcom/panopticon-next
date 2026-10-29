@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-033.2.1--7671d5851c4b",
+  "requirementId": "REQ-033.2.1",
+  "hash": "7671d5851c4b",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the one-paragraph entry sentence with its three required contents is asserted as a full literal; dropping any of the three fails.",
+  "timestamp": "2026-09-30T06:02:16.605Z"
+}

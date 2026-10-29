@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-042.4.1--e40a191ba72f",
+  "requirementId": "REQ-042.4.1",
+  "hash": "e40a191ba72f",
+  "verdict": "pass",
+  "summary": "Exact outputs preserve tree connector, disclosure, slug and first memo line for both, either and neither indicator; neither produces no separator.",
+  "timestamp": "2026-09-14T07:54:30.157Z"
+}

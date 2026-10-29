@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.1.2--7f0324a80f87",
+  "requirementId": "REQ-006.1.2",
+  "hash": "7f0324a80f87",
+  "verdict": "pass",
+  "summary": "The mounted help surface has exactly the Ctrl+R Respawn all down tasks line, rejecting a missing or mislabeled action.",
+  "timestamp": "2026-09-14T07:52:46.928Z"
+}

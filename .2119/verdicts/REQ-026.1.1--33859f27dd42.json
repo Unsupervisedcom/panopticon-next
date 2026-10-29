@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.1.1--33859f27dd42",
+  "requirementId": "REQ-026.1.1",
+  "hash": "33859f27dd42",
+  "verdict": "pass",
+  "summary": "Candidate filtering rejects single and mixed active dependencies; host wiring and claim rechecks retain the gate.",
+  "timestamp": "2026-09-14T06:52:11.535Z"
+}

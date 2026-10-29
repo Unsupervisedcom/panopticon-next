@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-001.6.1--fc6c297d4089",
+  "requirementId": "REQ-001.6.1",
+  "hash": "fc6c297d4089",
+  "verdict": "pass",
+  "summary": "Confirmation labels equal the complete file-removal and next-service-restart explanation, rejecting an immediate-unload claim.",
+  "timestamp": "2026-09-14T07:52:42.169Z"
+}

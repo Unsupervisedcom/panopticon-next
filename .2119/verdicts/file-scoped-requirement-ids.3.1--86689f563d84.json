@@ -1,0 +1,8 @@
+{
+  "reviewId": "file-scoped-requirement-ids.3.1--86689f563d84",
+  "requirementId": "file-scoped-requirement-ids.3.1",
+  "hash": "86689f563d84",
+  "verdict": "pass",
+  "summary": "The live `check --json` run against the real corpus (with `reviews: true` in .2119.yml) rejects the nearest violations: if 0.7.0 re-keyed or orphaned any pre-adoption `REQ-NNN.x.y` verdict, the still-annotated requirement would surface as pending review (exit 1 / `ok` false) or as an entry in `uncoveredRequirements`, and a hash-scheme break would populate `staleReviews` — all asserted empty/zero at lines 146-154; the fixture's REQ-900.1.1 verdict plus `total 6 / covered 5 / uncovered []` confirms coexistence without weakening mandatory coverage since the only unannotated item is a MAY; the byte-for-byte diff test is explicitly migration-window scoped and its skip is legitimate; minor non-material gap: `legacy_verdict_ids` is only used as a count floor rather than asserting each legacy verdict's requirementId is individually reported satisfied (snapshot lacks `.2119/`, so the corpus itself could not be inspected).",
+  "timestamp": "2026-10-28T06:30:41.639Z"
+}

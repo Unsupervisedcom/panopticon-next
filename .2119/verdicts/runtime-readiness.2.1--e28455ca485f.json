@@ -1,0 +1,8 @@
+{
+  "reviewId": "runtime-readiness.2.1--e28455ca485f",
+  "requirementId": "runtime-readiness.2.1",
+  "hash": "e28455ca485f",
+  "verdict": "pass",
+  "summary": "Tests assert /identity is 401 unauthenticated and 200 with a read token, body service=='panopticon-task-service', api_revision==1, version==version('panopticon-next') (nonempty), instance_id equal to the resolved launch runtime's id even when the parent process env carries a stale PANOPTICON_INSTANCE_ID, and the auth secret absent from the body; a public endpoint, inherited stale identity, or leaked secret is rejected.",
+  "timestamp": "2026-10-28T06:05:54.236Z"
+}

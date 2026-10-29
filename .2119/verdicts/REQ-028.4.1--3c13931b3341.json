@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.4.1--3c13931b3341",
+  "requirementId": "REQ-028.4.1",
+  "hash": "3c13931b3341",
+  "verdict": "pass",
+  "summary": "Fable 5.1: SPECIFYING responsibilities for all three built-ins must equal an exact four-item tuple containing a single spec-artifact entry; zero or two artifact responsibilities fail.",
+  "timestamp": "2026-09-30T06:02:03.627Z"
+}
