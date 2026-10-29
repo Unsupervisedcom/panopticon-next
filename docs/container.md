@@ -1,8 +1,9 @@
 # The lifecycle of a task container
 
-Every task in panopticon runs in its own **container** — a throwaway Docker container with a
-`claude` agent inside it, working on a private clone of the repo. This doc explains that
-container's life from the operator's chair: how one comes up, the statuses you watch on the
+Every container-backed task in panopticon runs in its own **container** — a throwaway Docker
+container running its selected agent harness (Claude Code, Codex, Pi, or Outfitter), working
+on a private clone of the repo. Shell workflows such as `setup-repo` run on the host instead.
+This doc explains the container's life from the operator's chair: how one comes up, the statuses you watch on the
 dashboard, what each means, and how a container recovers or is torn down. It's about *observable
 behaviour* from the operator's side.
 
@@ -11,9 +12,9 @@ For the token a container authenticates with, see [auth](auth.md); for the image
 
 ## One task, one container, one session
 
-A task's work happens in exactly one place: its container. Nothing else in panopticon runs an
+A container-backed task's agent work happens in its container. Nothing else in panopticon runs an
 LLM — the task service (control plane) and the session service (runner) are deterministic host
-processes that never call `claude`. That's the **determinism invariant**: the container is the
+processes that never call an LLM. That's the **determinism invariant**: the container is the
 *only* LLM-bearing component, so everything the agent does is scoped to it.
 
 Concretely, each running task has:
@@ -30,31 +31,43 @@ service** only ever *records* and *displays* what the runner reports; it spawns 
 
 ## The status you see on the dashboard
 
-The dashboard shows one **container status** per task — a single word the task service computes
-by folding three signals together: the spawn *phase* the runner is reporting, whether the
-container has an open **registration** (its live connection), and whether the **runner** itself
-is still connected. First match wins, so a status higher in this table always overrides a lower
-one.
+The dashboard shows one **container status** per task. The task service combines the task's
+terminal state, launch pause, dependencies, and runner claim with the reported lifecycle
+*phase*, the container's open **registration** (its live connection), and runner liveness.
+The table explains the statuses; the selection rules below determine which one appears.
 
 | Status | What it means | What you do |
 |---|---|---|
-| `queued` | Non-terminal but unclaimed — no runner has picked it up yet. | Wait; if it sticks, check a runner is actually running (`make start`). |
+| `–` | Terminal task (COMPLETE / DROPPED) — no container concept. | Nothing. |
+| `paused` | Launch is paused and no container registration is open; no failed phase takes precedence. | Resume launch when ready. |
+| `gated` | The task is unclaimed and dependencies block launch. | Wait for the dependencies to clear, or inspect the blocking tasks. |
+| `queued` | The task is unclaimed and eligible for a runner to pick up. | Wait; if it sticks, check a runner is actually running (`make start`). |
+| `live` | The claimed task has an open container registration and no reported failed phase. The registration alone does not prove the agent is healthy. | Attach with `t` to watch or steer. |
+| `disconnected` | The task is claimed, has no open registration, and its runner is no longer connected. | Bring that runner's host back, or the task stays stranded until its claim is released. |
 | `claiming` | A runner just claimed it; the spawn is about to start. | Nothing — transient. |
 | `preparing` | Readying the per-task clone / workspace. | Nothing — transient. |
-| `building` | Composing and `docker build`-ing the image. **The slow step on a first run** for a repo (later runs hit Docker's cache). | Wait; first build of a repo image can take minutes. |
+| `building` | Composing and building the image. Uncached steps can take time. | Wait; a first image build can take minutes. |
 | `starting` | `docker run` and the tmux session are coming up. | Nothing — transient. |
-| `awaiting` | Container and tmux are up; waiting for the agent to open its `/live` connection. | Nothing — transient; if it lingers, see *When it goes wrong*. |
-| `live` | A container registration is open — the agent is running and reachable. | Attach with `t` to watch or steer. |
-| `down` | Claimed, the runner is alive, but the container is gone and unregistered. It came up and vanished, or never reported. | Respawn from the dashboard with `R` (the runner also self-heals — see below). |
-| `failed` | A spawn step raised an error (hover / inspect for the detail). | Read the detail; fix the cause (bad image layer, missing secret) and respawn. |
-| `disconnected` | Claimed by a runner that's **no longer connected** to the task service. | Bring that runner's host back, or the task stays stranded until its claim is released. |
-| `–` | Terminal task (COMPLETE / DROPPED) — no container concept. | Nothing. |
+| `awaiting` | Container and tmux are up; waiting for the container's `/live` registration. | Nothing — transient; if it lingers, see *When it goes wrong*. |
+| `healing` | The runner is recovering the task's missing session. | Wait for recovery; inspect repeated failures. |
+| `failed` | A launcher or runner failure has been reported. It can remain visible even while the container's liveness process is registered. | Read the detail; fix the cause (bad image layer, missing secret) and respawn. |
+| `down` | The task is claimed, its runner is live, and neither a registration nor a lifecycle phase remains. | Respawn from the dashboard with `R` (the runner also self-heals — see below). |
 
-The dashboard only *displays* this status; it does no liveness guessing of its own. The five
-middle statuses (`claiming`→`awaiting`) are the **spawn phases** the runner pushes as it works;
-`queued`, `live`, `down`, and `disconnected` are *derived* by the task service from
-registration + runner liveness, so the runner never invents them. (See
-`compose_container_status` in `core/models.py` for the exact precedence.)
+The selection rules in `compose_container_status` (`core/models.py`) run in this order:
+
+1. A terminal task shows `–`.
+2. A launch-paused task without a registration shows `paused`, or `failed` if that phase
+   was reported.
+3. An unclaimed task shows `gated` when dependencies block it, otherwise `queued`.
+4. A claimed task with an open registration shows `live`, except that a reported `failed`
+   phase wins. Other stale phases and runner disconnection do not override that registration.
+5. Without a registration, a claimed task whose runner is disconnected shows `disconnected`,
+   even if a lifecycle phase remains.
+6. Otherwise the reported phase shows through; with no phase, the task shows `down`.
+
+The dashboard only displays this result. The runner reports `claiming`, `preparing`,
+`building`, `starting`, and `awaiting` during spawn, plus `healing` during recovery and
+`failed` on failure. Those phases are inputs to the rules, not a separate priority order.
 
 ## Coming up: the spawn sequence
 
@@ -71,9 +84,9 @@ reporting each as a status above.
    and its `origin` is pointed at the real forge rather than the local cache.
 
 3. **Build** (`building`). The runner composes and `docker build`s the task's image. It's tagged
-   per `(workflow, repo)`, so once built it's cached — only the **first** task for a repo pays the
-   full build cost, which is why `building` can be slow that first time. See [layers](layers.md)
-   for how the image is composed.
+   per `(harness, workflow, repo)`, with an optional runtime suffix. Docker reuses unchanged
+   layers, which is why the first build can be slow and later builds are usually faster.
+   See [layers](layers.md) for how the image is composed.
 
 4. **Start** (`starting`). The runner does `docker run --detach` (injecting the repo's secrets
    via `--env-file`, mounting `/workspace`, and a small config volume that persists the agent's
@@ -104,17 +117,21 @@ For what a slug, branch, clone, and `provisioned` mean as task concepts, see [ta
   connection to the task service. While it's open the task reads `live`; if it drops (crash,
   kill, network blip) the registration clears and the task stops being `live`. The container
   reconnects with backoff across transient blips.
-- **The agent.** In the tmux pane, the launcher wires everything the agent needs and then execs
-  `claude`: it renders the workflow's **skills** and **operations** as slash-commands, points the
-  agent's **MCP** client at the task service (so it can read/write artifacts and drive its own
-  state), and puts the workflow's state-machine overview in the system prompt.
+- **The agent.** In the tmux pane, the launcher bootstraps and starts the task's selected
+  harness. It renders workflow **skills** and **operations** in that harness's format and
+  supplies the workflow's state-machine overview. Claude Code and Codex connect their **MCP**
+  clients to the task service; Pi and Outfitter use rendered **REST** instructions for task
+  operations and artifacts because they have no MCP client.
 - **The task memo is pre-filled.** On a task's first spawn the runner pastes the task's
   description into the agent's input box (unsent), so you see the ask waiting when you attach.
 - **Turn and blocked.** As the agent and user hand the work back and forth, the task's **turn**
   flips (`agent` ↔ `user`) via in-container hooks; a separate **blocked** marker is a deliberate
   "waiting on something" flag the agent sets. Both are shown on the dashboard.
-- **Auth.** The agent authenticates from a `CLAUDE_CODE_OAUTH_TOKEN` injected from the repo's
-  env-file — see [auth](auth.md).
+- **Auth.** Credentials depend on the selected harness: Claude Code uses an OAuth token or
+  API key from the repo's env-file; Codex uses its API credentials or a mounted `auth.json`;
+  Pi and Outfitter use Pi-compatible provider credentials or a mounted credential directory.
+  These model-provider credentials are separate from the task-service capability token used
+  by MCP and REST calls. See [auth](auth.md) for setup and credential layouts.
 
 ## When it goes wrong
 
@@ -166,6 +183,6 @@ wedges the runner. After cleanup the task shows `–`: no container, nothing to 
 
 ## See also
 
-- [auth](auth.md) — giving a repo its `claude` token.
-- [layers](layers.md) — how a task's image is composed (base → workflow → repo).
+- [auth](auth.md) — setting up model-provider and task-service credentials.
+- [layers](layers.md) — how a task's image is composed (base → harness → workflow → repo).
 - [tasks](tasks.md) — slug, branch, clone, and provisioning as task concepts.

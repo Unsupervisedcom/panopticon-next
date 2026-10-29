@@ -115,11 +115,12 @@ The execution-backend ABC realized as a separate **host process** (ADR 0008). Pe
 - owns **one tmux session per task** — *not inside the agent container*; its panes exec into
   the task's container(s), so a task with separate planner + implementer containers (M2)
   shares one session;
-- **builds/selects the composed image** for a task (base → workflow → repo, ADR 0005);
+- **builds/selects the composed image** for a task (base → harness → workflow → repo, ADR 0005);
 - **injects per-repo secrets** at launch (env vars + creds mount, ADR 0007);
-- **provisions the worktree** once the slug is set — observing the task over its pull loop, it
-  builds the slug-named worktree on its host and repoints the container into it, then runs the
-  workflow's provisioning (ADR 0010);
+- **prepares a writable per-task clone before spawn**, mounted at `/workspace`, with `origin`
+  pointed at the forge; once the slug is set, its pull loop branches that existing clone as
+  `panopticon/<slug>` and records the branch and clone path with the task service (ADR 0011).
+  The container keeps the same mount and working directory;
 - **registers with the task service** and reports session status.
 
 Concrete adapters behind the same interface, over time: local Docker+tmux (now), remote
@@ -237,9 +238,9 @@ tool/REST. A container **hook** detects an unset slug and instructs the agent to
 decouples identity from naming and lets the agent (which has the most context) choose the
 slug. *(Refines PARITY §14's "YYYY-MM-DD-<slug>" id.)*
 
-The task's **worktree/branch are named from the slug**, so the slug must be set before the
-core can create the (always-required) worktree — and therefore before any workflow
-provisioning that needs the branch (e.g. the parity workflow's PR). See the §9 lifecycle.
+The task's **branch is named from the slug**. Its writable clone already exists at spawn,
+keyed by task id; setting the slug lets the runner branch that clone in place. Work needing
+the named branch, such as opening a PR, follows that provisioning step. See the §9 lifecycle.
 
 ### 8.4 Secrets (ADR 0007)
 
@@ -252,31 +253,30 @@ mounted creds. Values never enter the DB, artifacts, or image layers.
 1. **Idea → task.** A user captures an idea / promotes it via the dashboard (REST). The task
    service creates a Task row (internal id, chosen workflow, `repo_id`), in the workflow's
    initial state, with the turn assigned appropriately. No slug yet.
-2. **Assign & spawn.** The task service assigns the task to a session service (runner). The
-   runner builds/selects the composed image (ADR 0005), injects the repo's secrets (ADR 0007),
-   creates the task container (sibling, DooD) and its tmux session, and starts the agent. The
-   container begins on a **read-only checkout** of the repo (there's no slug, hence no worktree,
-   yet) for the agent to plan against; step 5 upgrades it to the writable worktree.
+2. **Claim & spawn.** A session service (runner) claims the task and creates its writable
+   per-task clone from the repository cache, pointing `origin` at the forge. It builds/selects
+   the composed image (base → harness → workflow → repo, ADR 0005), injects the repo's secrets
+   (ADR 0007), and starts the container on the host Docker daemon plus its host tmux session.
+   The clone is mounted read-write at `/workspace` from the start, before a slug exists.
 3. **Connect & register.** The container entrypoint **connects to the task service and stays
    connected** — registering that this container is working on this task (liveness). It loads
    the workflow's in-container skills (from the active workflow) on top of the core operations.
 4. **Slug.** A hook notices the slug is unset and instructs the agent to set one via a task
    tool; the task service records it.
-5. **Worktree & provisioning.** The **session service**, observing the task over its pull loop
-   (ADR 0010), sees the slug land and creates the task's **worktree/branch** on the host where
-   the container runs — always required, named from the slug, so it cannot precede step 4 — then
-   repoints the container's working path to it (the agent `cd`s in). The active workflow's
-   **provisioning** then runs (e.g. the parity workflow opens its PR); because it needs that
-   branch, PR creation is transitively gated on the slug too.
-6. **Work.** The agent plans/implements; artifacts (plan/notes) flow over MCP; the agent runs
-   workflow skills (e.g. `babysit-ci`) that may use `gh`/git and call back over REST/MCP to
+5. **Branch & provisioning.** The **session service**, observing the task over its pull loop
+   (ADR 0011), sees the slug land and creates `panopticon/<slug>` from the existing clone's
+   current HEAD. It records the branch and clone path with the task service. The container's
+   `/workspace` mount and working directory stay in place; `origin` was set during spawn.
+   The agent can then perform workflow work that needs the named branch, such as opening a PR.
+6. **Work.** The agent plans/implements; artifacts (plan/notes) flow over MCP or REST,
+   depending on the harness; the agent runs workflow skills (e.g. `babysit-ci`) that may use `gh`/git and call back over REST/MCP to
    request transitions. The task service deterministically enforces the workflow's state
    machine and responsibility gating, flips the turn per the fg/bg classification, and appends history.
 7. **Observe & steer.** The dashboard reflects state/turn/history live (REST); the user
    presses `t` to drop into a task's tmux and back.
-8. **Terminal states & cleanup.** On COMPLETE/DROPPED (or the workflow's terminals), cleanup
-   runs the core's agnostic teardown (tmux/worktree/branch) plus the workflow's specific
-   steps; the session service stops the container/session.
+8. **Terminal states & cleanup.** On COMPLETE/DROPPED (or the workflow's terminals), the
+   session service stops the container/session, releases its claim, and removes the per-task
+   clone. Durable task artifacts remain in the task service's artifact store.
 
 ## 10. Deployment topology (ADR 0008)
 
