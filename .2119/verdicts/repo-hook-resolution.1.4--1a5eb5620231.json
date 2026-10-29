@@ -1,0 +1,8 @@
+{
+  "reviewId": "repo-hook-resolution.1.4--1a5eb5620231",
+  "requirementId": "repo-hook-resolution.1.4",
+  "hash": "1a5eb5620231",
+  "verdict": "pass",
+  "summary": "Independent review: `test_spawn_rejects_escaping_hook_before_execution` covers `../relative`, absolute, **symlink-inside-pointing-outside**, and missing-escape. Asserts `ValueError`, `base_checks == 0`, `runner.spawned == []`, and that the outside script's side-effect file was never written — i.e., abort genuinely precedes execution and container start, verified by observable non-effects, not keyword matching.",
+  "timestamp": "2026-10-29T07:12:55.257Z"
+}

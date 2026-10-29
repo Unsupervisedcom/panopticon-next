@@ -1,0 +1,8 @@
+{
+  "reviewId": "repo-hook-resolution.1.5--db24dbf80cc5",
+  "requirementId": "repo-hook-resolution.1.5",
+  "hash": "db24dbf80cc5",
+  "verdict": "pass",
+  "summary": "Independent review: One spawner instance, two spawns, `PANOPTICON_CONFIG` swapped between them; each config's hook writes a distinct `config-{index}` marker that is asserted. Import-time or construction-time caching of the hooks dir would execute config-1's hook on spawn 2 and fail. Genuinely discriminates per-spawn resolution.",
+  "timestamp": "2026-10-29T07:12:56.424Z"
+}

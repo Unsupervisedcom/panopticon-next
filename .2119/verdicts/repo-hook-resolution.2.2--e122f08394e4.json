@@ -1,0 +1,8 @@
+{
+  "reviewId": "repo-hook-resolution.2.2--e122f08394e4",
+  "requirementId": "repo-hook-resolution.2.2",
+  "hash": "e122f08394e4",
+  "verdict": "pass",
+  "summary": "Independent review: `missing` and `non-executable` (real `0o644` file) cases assert continuation without execution (`hook-ran` absent). Critically, the **boundary against 1.4 is held honest**: `missing-escape` (`../missing.sh`) appears in the *rejection* test, so \"missing but inside → skip\" cannot be satisfied by blanket skip-on-missing.",
+  "timestamp": "2026-10-29T07:13:00.053Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "repo-hook-resolution.2.3--161db818e13d",
+  "requirementId": "repo-hook-resolution.2.3",
+  "hash": "161db818e13d",
+  "verdict": "pass",
+  "summary": "Independent review: Real process exits 23 after writing a marker (proving it actually ran — no over-mocking); asserts the raise, `base_checks == 0`, and `runner.spawned == []` — abort precedes both image building and container start.",
+  "timestamp": "2026-10-29T07:13:01.229Z"
+}

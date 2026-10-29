@@ -1,0 +1,8 @@
+{
+  "reviewId": "repo-hook-resolution.1.1--5bea812f8a01",
+  "requirementId": "repo-hook-resolution.1.1",
+  "hash": "5bea812f8a01",
+  "verdict": "pass",
+  "summary": "Independent review: `test_spawn_executes_configured_hook_with_real_process` runs a **real** hook process, parametrized over `prep.sh` and `nested/prep.sh` (nested conjunct covered). It `chdir`s to an unrelated dir containing a same-named decoy hook; cwd-relative resolution would either run the decoy (`wrong-hook-ran` asserted absent in both workspace and caller) or fail the build-time inspection. \"Before image building\" is discriminated by wrapping `build_base_if_missing` to assert `hook-output` already exists — a hook run after building fails the test. Not tautological, not over-mocked (only external services are faked).",
+  "timestamp": "2026-10-29T07:12:51.640Z"
+}

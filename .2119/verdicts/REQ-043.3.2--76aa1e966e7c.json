@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-043.3.2--76aa1e966e7c",
+  "requirementId": "REQ-043.3.2",
+  "hash": "76aa1e966e7c",
+  "verdict": "pass",
+  "summary": "Independent review: Two sites, both with `session=False` (pre-tmux, the requirement's hard case). `test_spawn_hook_failure_aborts_spawn` and `test_non_runtime_failures_latch_exact_reason_without_retry` (clone-prep and image-staging boundaries, injected as `OSError` — deliberately *not* `CalledProcessError`, so a classifier that treated any pre-session image-stage failure as recoverable would wrongly clear). Assertions: `phases[-1] == failed` with the exact diagnostic, `cleared == []`, `releases == []`, and `heal()` on the failed task is a no-op with no respawn — retention is verified end-to-end, not by keyword. Monkeypatching private `_prepare_task_dir` is mildly white-box but does not bypass the constrained behavior (the failure classifier in `_spawn`).",
+  "timestamp": "2026-10-29T07:13:04.768Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "repo-hook-resolution.2.4--5130a7db9e3c",
+  "requirementId": "repo-hook-resolution.2.4",
+  "hash": "5130a7db9e3c",
+  "verdict": "pass",
+  "summary": "Independent review: Same test asserts `(\"t1\", \"failed\", \"repo hook '<path>' exited 23\")` — the exit status 23 is in the detail — and `cleared == []`, discriminating against the hook failure being misrouted into the clear-lifecycle retry path.",
+  "timestamp": "2026-10-29T07:13:02.403Z"
+}

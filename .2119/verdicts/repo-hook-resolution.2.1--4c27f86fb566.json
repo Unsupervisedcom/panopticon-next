@@ -1,0 +1,8 @@
+{
+  "reviewId": "repo-hook-resolution.2.1--4c27f86fb566",
+  "requirementId": "repo-hook-resolution.2.1",
+  "hash": "4c27f86fb566",
+  "verdict": "pass",
+  "summary": "Independent review: `unset` and `empty` parametrizations assert the spawn fully continues (container id returned, `base_checks == 1`, final phase `awaiting`) with no hook side effects and the cwd decoy untouched. A violation in either direction (crash, or running something) fails.",
+  "timestamp": "2026-10-29T07:12:58.834Z"
+}

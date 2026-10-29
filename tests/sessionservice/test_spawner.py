@@ -1619,13 +1619,16 @@ def test_spawnable_tasks_filters_claims_terminals_and_dependency_gates() -> None
     assert [t["id"] for t in spawnable_tasks(_Lister())()] == ["a", "e", "f", "m"]  # type: ignore[arg-type]
 
 
-def test_spawn_runs_repo_hook_with_correct_args() -> None:
+def test_spawn_runs_repo_hook_with_correct_args(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(tmp_path))
     calls: list[tuple[str, str, str, str]] = []
 
     def _fake_hook(hook_file: str, task_id: str, repo_name: str, workspace: str) -> None:
         calls.append((hook_file, task_id, repo_name, workspace))
 
-    repo = {**_REPO, "name": "acme/widgets", "hook_file": "/hooks/acme.sh"}
+    repo = {**_REPO, "name": "acme/widgets", "hook_file": "acme.sh"}
     client, runner = _FakeClient(repo=repo), _FakeRunner()
     cache = CloneCache("/cache", run=_no_op_run, exists=lambda _p: True, makedirs=lambda _p: None)  # type: ignore[arg-type]
     spawner = Spawner(
@@ -1643,8 +1646,187 @@ def test_spawn_runs_repo_hook_with_correct_args() -> None:
     spawner.spawn_one(
         {"id": "t1", "repo_id": "r1", "workflow": "spike", "state": "PLANNING", "claimed_by": None}
     )
-    assert calls == [("/hooks/acme.sh", "t1", "acme/widgets", "/tasks/t1")]
+    assert calls == [(str(tmp_path / "hooks/acme.sh"), "t1", "acme/widgets", "/tasks/t1")]
     assert runner.spawned  # container still spawned after the hook
+
+
+def _hook_spawner(
+    tmp_path: Path, repo: JsonObj, images: _FakeImageBuilder
+) -> tuple[Spawner, _FakeClient, _FakeRunner]:
+    """Use real hook processes and workspace directories; fake only external services."""
+    (tmp_path / "tasks/t1").mkdir(parents=True)
+    client, runner = _FakeClient(repo=repo), _FakeRunner(session=False)
+    cache = CloneCache(str(tmp_path / "cache"), run=_no_op_run)
+    spawner = Spawner(
+        client,  # type: ignore[arg-type]
+        runner,  # type: ignore[arg-type]
+        runner_id="host-1",
+        cache=cache,
+        tasks_root=str(tmp_path / "tasks"),
+        # Existing temporary workspaces have the expected source; no real git or network.
+        git=GitClones(run=lambda _args, **_kwargs: str(repo["git_url"])),
+        images=images,  # type: ignore[arg-type]
+        credential_check=lambda _task, _repo: None,
+    )
+    return spawner, client, runner
+
+
+def _write_repo_hook(path: Path, body: str, *, executable: bool = True) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\nset -eu\n" + body)
+    path.chmod(0o755 if executable else 0o644)
+
+
+_HOOK_TASK: JsonObj = {
+    "id": "t1",
+    "repo_id": "r1",
+    "workflow": "spike",
+    "state": "PLANNING",
+    "claimed_by": None,
+}
+
+
+@pytest.mark.parametrize("hook_name", ["prep.sh", "nested/prep.sh"])
+def test_spawn_executes_configured_hook_with_real_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook_name: str
+) -> None:
+    # 2119: repo-hook-resolution.1.1
+    # 2119: repo-hook-resolution.1.2
+    # 2119: repo-hook-resolution.1.3
+    # 2119: repo-hook-resolution.1.5
+    caller = tmp_path / "unrelated"
+    caller.mkdir()
+    monkeypatch.chdir(caller)
+    _write_repo_hook(caller / hook_name, "echo wrong-hook > wrong-hook-ran\n")
+    monkeypatch.setenv("HOOK_TEST_INHERITED", "inherited-value")
+    for name in ("PANOPTICON_TASK_ID", "PANOPTICON_REPO_NAME", "PANOPTICON_WORKSPACE"):
+        monkeypatch.setenv(name, "stale-value")
+    repo = {**_REPO, "name": "acme/widgets", "hook_file": hook_name}
+    images = _FakeImageBuilder()
+    spawner, client, runner = _hook_spawner(tmp_path, repo, images)
+    build_base = images.build_base_if_missing
+
+    # Reuse one spawner after imports and a config change: resolution must happen per spawn.
+    for index in (1, 2):
+        task_id = f"t{index}"
+        workspace = tmp_path / "tasks" / task_id
+        workspace.mkdir(exist_ok=True)
+        config = tmp_path / f"config-{index}"
+        monkeypatch.setenv("PANOPTICON_CONFIG", str(config))
+        _write_repo_hook(
+            config / "hooks" / hook_name,
+            'printf \'%s\\n\' "$PWD" "$PANOPTICON_TASK_ID" "$PANOPTICON_REPO_NAME" '
+            '"$PANOPTICON_WORKSPACE" "$HOOK_TEST_INHERITED" '
+            f"'config-{index}' > hook-output\n",
+        )
+        expected = [
+            str(workspace),
+            task_id,
+            "acme/widgets",
+            str(workspace),
+            "inherited-value",
+            f"config-{index}",
+        ]
+
+        def inspect_before_build(
+            *,
+            verbose: bool = False,
+            workspace: Path = workspace,
+            expected: list[str] = expected,
+        ) -> bool:
+            assert (workspace / "hook-output").read_text().splitlines() == expected
+            return build_base(verbose=verbose)
+
+        monkeypatch.setattr(images, "build_base_if_missing", inspect_before_build)
+        assert spawner.spawn_one({**_HOOK_TASK, "id": task_id}) == f"panopticon-{task_id}"
+        assert runner.spawned[-1]["workspace"] == str(workspace)
+        assert client.phases[-1] == (task_id, "awaiting", None)
+        assert not (workspace / "wrong-hook-ran").exists()
+    assert images.base_checks == 2
+    assert not (caller / "wrong-hook-ran").exists()
+
+
+@pytest.mark.parametrize("case", ["unset", "empty", "missing", "non-executable"])
+def test_spawn_skips_unavailable_hooks_with_real_executor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    # 2119: repo-hook-resolution.2.1
+    # 2119: repo-hook-resolution.2.2
+    config, caller = tmp_path / "config", tmp_path / "unrelated"
+    caller.mkdir()
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(config))
+    monkeypatch.chdir(caller)
+    _write_repo_hook(caller / "prep.sh", "echo wrong-hook > wrong-hook-ran\n")
+    repo = {**_REPO, "name": "acme/widgets"}
+    if case != "unset":
+        repo["hook_file"] = "" if case == "empty" else "prep.sh"
+    if case == "non-executable":
+        _write_repo_hook(config / "hooks/prep.sh", "echo ran > hook-ran\n", executable=False)
+    images = _FakeImageBuilder()
+    spawner, client, runner = _hook_spawner(tmp_path, repo, images)
+    assert spawner.spawn_one(_HOOK_TASK) == "panopticon-t1"
+    assert images.base_checks == 1
+    assert len(runner.spawned) == 1
+    assert client.phases[-1] == ("t1", "awaiting", None)
+    assert not (tmp_path / "tasks/t1/hook-ran").exists()
+    assert not (tmp_path / "tasks/t1/wrong-hook-ran").exists()
+    assert not (caller / "wrong-hook-ran").exists()
+
+
+@pytest.mark.parametrize("case", ["relative", "absolute", "symlink", "missing-escape"])
+def test_spawn_rejects_escaping_hook_before_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    # 2119: repo-hook-resolution.1.4
+    # 2119: repo-hook-resolution.1.6
+    config = tmp_path / "config"
+    hooks = config / "hooks"
+    hooks.mkdir(parents=True)
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(config))
+    outside = config / "outside.sh"
+    _write_repo_hook(outside, "echo ran > outside-ran\n")
+    names = {
+        "relative": "../outside.sh",
+        "absolute": str(outside),
+        "symlink": "linked.sh",
+        "missing-escape": "../missing.sh",
+    }
+    (hooks / "linked.sh").symlink_to(outside)
+    repo = {**_REPO, "name": "acme/widgets", "hook_file": names[case]}
+    images = _FakeImageBuilder()
+    spawner, client, runner = _hook_spawner(tmp_path, repo, images)
+    with pytest.raises(ValueError, match="escapes the hooks dir"):
+        spawner.spawn_one(_HOOK_TASK)
+    assert images.base_checks == 0
+    assert runner.spawned == []
+    assert not (tmp_path / "tasks/t1/outside-ran").exists()
+    assert client.phases[-1] == (
+        "t1",
+        "failed",
+        f"hook_file name {names[case]!r} escapes the hooks dir",
+    )
+    assert client.cleared == []
+
+
+def test_spawn_nonzero_hook_preserves_failure_with_real_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 2119: repo-hook-resolution.2.3
+    # 2119: repo-hook-resolution.2.4
+    config = tmp_path / "config"
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(config))
+    hook = config / "hooks/fail.sh"
+    _write_repo_hook(hook, "echo started > hook-started\nexit 23\n")
+    repo = {**_REPO, "name": "acme/widgets", "hook_file": "fail.sh"}
+    images = _FakeImageBuilder()
+    spawner, client, runner = _hook_spawner(tmp_path, repo, images)
+    with pytest.raises(RuntimeError, match="exited 23"):
+        spawner.spawn_one(_HOOK_TASK)
+    assert (tmp_path / "tasks/t1/hook-started").read_text() == "started\n"
+    assert images.base_checks == 0
+    assert runner.spawned == []
+    assert client.phases[-1] == ("t1", "failed", f"repo hook {str(hook)!r} exited 23")
+    assert client.cleared == []
 
 
 def _cleanup_spawner(runner: _FakeRunner, *, workspace_exists: bool) -> Spawner:
@@ -1807,12 +1989,14 @@ def test_cleanup_unknown_workflow_releases_claim_and_cleans_workspace() -> None:
     assert removed == ["/tasks/t1"]  # workspace cleaned
 
 
-def test_spawn_hook_failure_aborts_spawn() -> None:
+def test_spawn_hook_failure_aborts_spawn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PANOPTICON_CONFIG", str(tmp_path))
+
     # 2119: REQ-043.3.2
     def _boom(hook_file: str, task_id: str, repo_name: str, workspace: str) -> None:
         raise RuntimeError("hook exited 1")
 
-    repo = {**_REPO, "name": "acme/widgets", "hook_file": "/hooks/acme.sh"}
+    repo = {**_REPO, "name": "acme/widgets", "hook_file": "acme.sh"}
     client, runner = _FakeClient(repo=repo), _FakeRunner(session=False)
     cache = CloneCache("/cache", run=_no_op_run, exists=lambda _p: True, makedirs=lambda _p: None)  # type: ignore[arg-type]
     spawner = Spawner(
