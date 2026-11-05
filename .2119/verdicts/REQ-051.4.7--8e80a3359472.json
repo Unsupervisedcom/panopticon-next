@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.4.7--8e80a3359472",
+  "requirementId": "REQ-051.4.7",
+  "hash": "8e80a3359472",
+  "verdict": "pass",
+  "summary": "Tests require report-before-stop despite rejected or unavailable reporting, including the separate transport branch; real service callbacks remove registration and operator retry clears failure and releases the claim.",
+  "timestamp": "2026-09-14T08:10:37.957Z"
+}

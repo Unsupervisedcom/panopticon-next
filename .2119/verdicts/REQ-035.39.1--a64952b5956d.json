@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.39.1--a64952b5956d",
+  "requirementId": "REQ-035.39.1",
+  "hash": "a64952b5956d",
+  "verdict": "pass",
+  "summary": "test_runner_injects_only_the_subject_task_capability rewrites the credential file to write=[WRITE_TOKEN, ROTATED] before spawn and asserts the mounted snapshot == {'task': capability derived from ROTATED} with no raw read/write tokens in any mounted file, so deriving from the stale/first token or including raw tokens is rejected; the hardening test's raw-token snapshot assertion is a different helper and not the Docker evidence.",
+  "timestamp": "2026-10-28T06:05:51.691Z"
+}

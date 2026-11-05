@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.2.2--017ed57b1bcc",
+  "requirementId": "REQ-048.2.2",
+  "hash": "017ed57b1bcc",
+  "verdict": "pass",
+  "summary": "With three write tokens configured, capabilities derived from the oldest, middle, and newest each get 200 on GET /tasks/{id} and PUT slug; a service honoring only the newest generation would return 401 for the others.",
+  "timestamp": "2026-10-28T06:06:26.845Z"
+}

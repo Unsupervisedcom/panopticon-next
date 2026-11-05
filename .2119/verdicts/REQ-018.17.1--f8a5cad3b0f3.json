@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.17.1--f8a5cad3b0f3",
+  "requirementId": "REQ-018.17.1",
+  "hash": "f8a5cad3b0f3",
+  "verdict": "pass",
+  "summary": "Both empty and nonempty candidate lists with no highlight leave MemoScreen open after Enter and issue no create call.",
+  "timestamp": "2026-09-14T07:53:29.297Z"
+}

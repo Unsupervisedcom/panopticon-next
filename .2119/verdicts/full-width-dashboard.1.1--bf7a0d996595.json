@@ -1,0 +1,8 @@
+{
+  "reviewId": "full-width-dashboard.1.1--bf7a0d996595",
+  "requirementId": "full-width-dashboard.1.1",
+  "hash": "bf7a0d996595",
+  "verdict": "pass",
+  "summary": "A genuinely vertically overflowing mounted table has zero-width vertical scrollbar and equal scrollable/content-region widths.",
+  "timestamp": "2026-09-14T07:54:40.129Z"
+}

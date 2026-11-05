@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.2.4--db900f1233f5",
+  "requirementId": "REQ-012.2.4",
+  "hash": "db900f1233f5",
+  "verdict": "pass",
+  "summary": "Fable 5.1: app default is switched to codex and the reloaded task must carry the concrete name codex with a null model; a null or stale claude harness fails.",
+  "timestamp": "2026-09-30T06:01:33.829Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.5.2--208c7f5b26fe",
+  "requirementId": "REQ-030.5.2",
+  "hash": "208c7f5b26fe",
+  "verdict": "pass",
+  "summary": "A marker `~/.tmux.conf` is proven loadable by a plain `-L control` server (negative control), then production creation on the dedicated socket asserts the marker is absent from `status-left`; dropping `-f` would load the operator file and fail.",
+  "timestamp": "2026-10-28T06:04:27.804Z"
+}

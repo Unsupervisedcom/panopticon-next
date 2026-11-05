@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.4.5--12089a98b38c",
+  "requirementId": "REQ-006.4.5",
+  "hash": "12089a98b38c",
+  "verdict": "pass",
+  "summary": "Recovered-candidate cases assert the entire notification list is only the aggregate respawn count, rejecting task-specific skip notices.",
+  "timestamp": "2026-09-14T07:52:56.725Z"
+}

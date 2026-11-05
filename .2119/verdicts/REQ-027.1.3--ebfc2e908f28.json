@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.1.3--ebfc2e908f28",
+  "requirementId": "REQ-027.1.3",
+  "hash": "ebfc2e908f28",
+  "verdict": "pass",
+  "summary": "Fable 5.1: a year-2000 deadline and a year-2099 deadline must both be stored and returned unchanged; server-side expiry or rejection of past deadlines fails.",
+  "timestamp": "2026-09-30T06:01:59.405Z"
+}

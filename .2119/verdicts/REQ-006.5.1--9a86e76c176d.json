@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.5.1--9a86e76c176d",
+  "requirementId": "REQ-006.5.1",
+  "hash": "9a86e76c176d",
+  "verdict": "pass",
+  "summary": "Empty, non-down, case-mismatched and whitespace-suffixed latest statuses produce exactly no down tasks, replacing an older down snapshot.",
+  "timestamp": "2026-09-14T07:52:57.931Z"
+}

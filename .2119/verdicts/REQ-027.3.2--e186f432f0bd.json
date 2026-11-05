@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.3.2--e186f432f0bd",
+  "requirementId": "REQ-027.3.2",
+  "hash": "e186f432f0bd",
+  "verdict": "pass",
+  "summary": "Injected times exactly at and after expiry restore ordinary user/agent/blocked/attention styles without writes or changing the saved deadline, including offline refresh.",
+  "timestamp": "2026-09-14T07:54:09.122Z"
+}

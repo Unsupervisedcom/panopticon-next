@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-017.1.1--7bf3c56df43f",
+  "requirementId": "REQ-017.1.1",
+  "hash": "7bf3c56df43f",
+  "verdict": "pass",
+  "summary": "v has no effect with details closed, opens the selected second task when open, and fetches a current slug rather than a stale table value.",
+  "timestamp": "2026-09-14T07:53:05.129Z"
+}

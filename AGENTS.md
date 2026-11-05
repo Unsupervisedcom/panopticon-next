@@ -303,7 +303,8 @@ on every PR (the same commands the Makefile wraps).
   skills/operations/hooks/MCP/system-prompt), and the launch `argv` (first-run vs resume).
   Selection resolves atomic harness/model pairs: task-explicit → an optional workflow pair →
   the repo's `default_harness` + opaque `default_model` (`model[:effort]`) → the app default.
-  A workflow declares both halves or neither, and all built-ins declare neither. An explicit
+  A workflow declares both halves or neither; `2119-auto-sol` defaults to
+  `claude` + `claude-opus-5-5`. An explicit
   task harness that differs from the winning pair drops that pair's model. The resolved opaque
   strings are recorded on the task, so later default changes never re-route it; model vocabulary
   belongs to the harness. Codex auth: `CODEX_API_KEY`/`CODEX_ACCESS_TOKEN` in the env-file

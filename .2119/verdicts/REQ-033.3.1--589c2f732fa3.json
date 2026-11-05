@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-033.3.1--589c2f732fa3",
+  "requirementId": "REQ-033.3.1",
+  "hash": "589c2f732fa3",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the omit-simply-wrong instruction must be present and its negations absent.",
+  "timestamp": "2026-09-30T06:02:17.673Z"
+}

@@ -12,7 +12,7 @@ WORKFLOW_NAMES = ("2119-human-spec", "2119-auto-spec", "2119-auto-sol")
 EXPECTED_REVIEW_DEFAULTS = {
     "2119-human-spec": "Workflow reviewer defaults: `claude:claude-fable-5, codex:gpt-5.6-sol`.",
     "2119-auto-spec": "Workflow reviewer defaults: `claude:claude-fable-5, codex:gpt-5.6-sol`.",
-    "2119-auto-sol": "Workflow reviewer defaults: `codex:gpt-5.6-sol, codex:gpt-5.6-sol`.",
+    "2119-auto-sol": "Workflow reviewer defaults: `codex:gpt-6.1-sol, codex:gpt-5.6-sol`.",
 }
 EXPECTED_TRIAGE_END = """End the triage summary PR comment with a
 "Suggested placeholder issues" section. For each finding you rejected or deferred that is
@@ -31,6 +31,7 @@ def _review_skill(workflow: Workflow) -> Skill:
 
 def test_review_models_are_pinned_independently_for_each_workflow() -> None:
     # 2119: REQ-028.8.1
+    # 2119: REQ-028.8.3
     registry = discover_workflows(_home_workflows=Path("/nonexistent"))
 
     assert set(EXPECTED_REVIEW_DEFAULTS) == set(WORKFLOW_NAMES)

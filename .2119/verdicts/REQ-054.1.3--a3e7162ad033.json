@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.1.3--a3e7162ad033",
+  "requirementId": "REQ-054.1.3",
+  "hash": "a3e7162ad033",
+  "verdict": "pass",
+  "summary": "Unmocked cli.main(['--version']) must exit 0 and print exactly 'panopticon ' plus importlib.metadata's installed version; the live journey cross-checks the same output against pipx's reported package version.",
+  "timestamp": "2026-09-14T06:56:30.686Z"
+}

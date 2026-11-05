@@ -1,0 +1,8 @@
+{
+  "reviewId": "file-scoped-requirement-ids.4.4--239fe11577aa",
+  "requirementId": "file-scoped-requirement-ids.4.4",
+  "hash": "239fe11577aa",
+  "verdict": "pass",
+  "summary": "The tmp_path fixture in test_070_resolves_both_grammars_and_distinct_file_namespaces builds two differently named file-scoped specs (alpha-feature, beta-feature) that reuse identical local numbers (1.1 and 2.1) alongside a legacy REQ-900 spec with one MUST and one unannotated MAY, then drives the real pinned CLI (no mocks): a collapsed namespace (IDs derived from local numbers only, or cross-file duplicate detection) would be rejected because lint would not report '3 spec file(s) clean', `cover` would not report exactly '5 requirement(s) covered, 0 uncovered' (annotations alpha-feature.1.1/beta-feature.1.1 would be unresolvable or merged to 3 covered), `review --dispatch` would not list both '- alpha-feature.1.1 (test-quality):' and '- beta-feature.1.1 (test-quality):' as separate pending reviews, and the post-pass `check --json` would not yield requirementCount==6 / coveredCount==5 / uncoveredRequirements==[] / ok==True (a collision gives 4 total and either fewer distinct verdicts or pending reviews); the correction to total6/covered5 keeps mandatory coverage enforced via uncoveredRequirements==[] while counting the MAY only in the total, and the ROOT-level check still also exercises coexistence (legacy + file-scoped verdict globs, staleReviews==[]) against a live corpus where 15 file-scoped specs all reuse '### 1:'; note the supplied snapshot omits .2119/verdicts, .github/workflows, and AGENTS.md so those ROOT preconditions could not be re-verified here, but that does not weaken the self-contained 4.4 evidence.",
+  "timestamp": "2026-10-28T06:30:50.459Z"
+}

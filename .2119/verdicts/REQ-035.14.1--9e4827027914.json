@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.14.1--9e4827027914",
+  "requirementId": "REQ-035.14.1",
+  "hash": "9e4827027914",
+  "verdict": "pass",
+  "summary": "create_app in enforced mode is asserted to raise for: auth_file=None and missing.json; ../, absolute, and symlink escapes; chmod 0 unreadable; 'not-json' and '[]'; write missing/empty/string/[1]; read string/[1]; and overlap via shared-token and write=[READ_TOKEN]; read omitted entirely is accepted (200), so each conjunct's nearest violation is rejected.",
+  "timestamp": "2026-10-28T06:05:49.098Z"
+}

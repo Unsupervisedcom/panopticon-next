@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-019.1.1--94ff88e0b7d7",
+  "requirementId": "REQ-019.1.1",
+  "hash": "94ff88e0b7d7",
+  "verdict": "pass",
+  "summary": "A blocked discovery worker remains unreleased while the mounted memo accepts x, rejecting synchronous mount or input blocking.",
+  "timestamp": "2026-09-14T07:53:34.306Z"
+}

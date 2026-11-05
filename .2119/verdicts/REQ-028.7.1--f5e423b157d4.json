@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.7.1--f5e423b157d4",
+  "requirementId": "REQ-028.7.1",
+  "hash": "f5e423b157d4",
+  "verdict": "pass",
+  "summary": "Fable 5.1: discovery with a nonexistent home directory must map the three names to their built-in classes; a missing or externally supplied registration fails.",
+  "timestamp": "2026-09-30T06:02:06.886Z"
+}

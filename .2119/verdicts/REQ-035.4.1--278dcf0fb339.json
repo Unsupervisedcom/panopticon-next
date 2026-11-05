@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.4.1--278dcf0fb339",
+  "requirementId": "REQ-035.4.1",
+  "hash": "278dcf0fb339",
+  "verdict": "pass",
+  "summary": "Routes are enumerated from app.routes (a superset of the OpenAPI surface) and include the new POST /tasks/{id}/launcher-failure; every mutating route plus both /live GETs returns 401 with the generic body for read tokens; exempting launcher-failure from the mutating set is caught by the read-token launcher-failure case",
+  "timestamp": "2026-09-14T07:58:33.539Z"
+}

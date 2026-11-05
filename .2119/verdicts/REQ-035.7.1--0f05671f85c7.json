@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.7.1--0f05671f85c7",
+  "requirementId": "REQ-035.7.1",
+  "hash": "0f05671f85c7",
+  "verdict": "pass",
+  "summary": "Missing, Basic, empty Bearer, two-part, lowercase-scheme, unknown, truncated, extended and read-token headers each yield 401, WWW-Authenticate: Bearer and the identical generic JSON across every registered route and /mcp; non-ASCII token covered at ASGI level; the launcher-failure route is included explicitly",
+  "timestamp": "2026-09-14T07:58:34.842Z"
+}

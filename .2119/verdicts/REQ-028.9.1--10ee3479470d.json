@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.9.1--10ee3479470d",
+  "requirementId": "REQ-028.9.1",
+  "hash": "10ee3479470d",
+  "verdict": "pass",
+  "summary": "Fable 5.1: for every built-in name a real external duplicate file must raise the exact message naming that file and the removal remedy, including with duplicate-skipping enabled.",
+  "timestamp": "2026-09-30T06:02:11.172Z"
+}

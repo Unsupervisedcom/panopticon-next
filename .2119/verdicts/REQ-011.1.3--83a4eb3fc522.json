@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-011.1.3--83a4eb3fc522",
+  "requirementId": "REQ-011.1.3",
+  "hash": "83a4eb3fc522",
+  "verdict": "pass",
+  "summary": "Pure composer test enumerates registered=True over runner_live x {None, every phase}: failed only for FAILED, live otherwise regardless of runner liveness; real-service test shows failed with the registration still open, then live after re-registration; reverting the registered branch to always-LIVE fails both",
+  "timestamp": "2026-09-14T07:58:32.215Z"
+}

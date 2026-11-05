@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-019.6.1--a369bcab5837",
+  "requirementId": "REQ-019.6.1",
+  "hash": "a369bcab5837",
+  "verdict": "pass",
+  "summary": "Closing during a failing discovery preserves a running dashboard and produces no notification after the worker is released.",
+  "timestamp": "2026-09-14T07:53:40.626Z"
+}

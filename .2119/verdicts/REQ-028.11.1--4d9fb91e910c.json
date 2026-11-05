@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.11.1--4d9fb91e910c",
+  "requirementId": "REQ-028.11.1",
+  "hash": "4d9fb91e910c",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the literal defines an artifact as a durable user-reviewable document, says the examples are not exhaustive, and routes GitHub URLs to the external URL field and p hotkey; each clause is required by exact equality.",
+  "timestamp": "2026-09-30T06:02:13.341Z"
+}

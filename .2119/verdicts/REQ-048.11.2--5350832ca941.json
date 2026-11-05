@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.11.2--5350832ca941",
+  "requirementId": "REQ-048.11.2",
+  "hash": "5350832ca941",
+  "verdict": "pass",
+  "summary": "Twenty invalid entries (wildcards, trailing slash, path, query, fragment, userinfo, null, data:, bad port, malformed IPv6) raise at create_app alone and mixed with a valid origin, while port, localhost, and IPv6 exact origins are accepted; tolerating 'https://phone.example/' fails.",
+  "timestamp": "2026-10-28T06:07:03.476Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-041.3.1--ec848982c3eb",
+  "requirementId": "REQ-041.3.1",
+  "hash": "ec848982c3eb",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the served artifacts skill must equal a literal opening with the system-prompt standing expectation and explaining put_artifact and the REST endpoint.",
+  "timestamp": "2026-09-30T06:02:27.264Z"
+}

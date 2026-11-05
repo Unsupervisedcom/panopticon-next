@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.1.2--9e22beb20779",
+  "requirementId": "REQ-048.1.2",
+  "hash": "9e22beb20779",
+  "verdict": "pass",
+  "summary": "Fleet write token claims two tasks, reports lifecycle on both, mutates both slugs, lists runners, creates and patches a repo, and reclaims a runner with asserted 200/201; any regression to 401/403 on those surfaces (e.g. claim reclassified as task-only) fails.",
+  "timestamp": "2026-10-28T06:06:22.886Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.3.1--de68f877febb",
+  "requirementId": "REQ-028.3.1",
+  "hash": "de68f877febb",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the test-owned literal carries the a hotkey and the specification, review output, triage summary and stage or gate report examples; exact equality rejects any omission.",
+  "timestamp": "2026-09-30T06:02:02.582Z"
+}

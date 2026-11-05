@@ -1,0 +1,8 @@
+{
+  "reviewId": "layered-settings-hints.4.1--d918efa5cdac",
+  "requirementId": "layered-settings-hints.4.1",
+  "hash": "d918efa5cdac",
+  "verdict": "pass",
+  "summary": "Exact workflow-screen text identifies repo reviewer overrides, repo availability filtering and per-task harness/model overrides, rejecting inheritance wording.",
+  "timestamp": "2026-09-14T07:54:46.338Z"
+}

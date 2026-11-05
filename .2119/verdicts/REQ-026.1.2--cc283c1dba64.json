@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.1.2--cc283c1dba64",
+  "requirementId": "REQ-026.1.2",
+  "hash": "cc283c1dba64",
+  "verdict": "pass",
+  "summary": "Candidate filtering rejects single and mixed dropped dependencies; host dispatch and stale-claim checks preserve exclusion.",
+  "timestamp": "2026-09-14T06:52:12.535Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.10.1--02f7cdac1115",
+  "requirementId": "REQ-018.10.1",
+  "hash": "02f7cdac1115",
+  "verdict": "pass",
+  "summary": "Enter after filtered candidate navigation changes only the corresponding input and leaves MemoScreen open with no task creation.",
+  "timestamp": "2026-09-14T07:53:20.671Z"
+}

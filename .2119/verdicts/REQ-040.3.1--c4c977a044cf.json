@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-040.3.1--c4c977a044cf",
+  "requirementId": "REQ-040.3.1",
+  "hash": "c4c977a044cf",
+  "verdict": "pass",
+  "summary": "An unprovisioned clone=None task produces the exact warning and no open attempt.",
+  "timestamp": "2026-09-14T07:54:20.305Z"
+}

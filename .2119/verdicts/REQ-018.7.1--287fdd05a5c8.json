@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.7.1--287fdd05a5c8",
+  "requirementId": "REQ-018.7.1",
+  "hash": "287fdd05a5c8",
+  "verdict": "pass",
+  "summary": "Focus-only reopen tracks changed repo/workflow/app defaults, touched-field controls preserve overrides, and real API default fields reach resolution unchanged.",
+  "timestamp": "2026-09-14T07:53:17.071Z"
+}

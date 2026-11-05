@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.4.3--cf130bfb16b1",
+  "requirementId": "REQ-026.4.3",
+  "hash": "cf130bfb16b1",
+  "verdict": "pass",
+  "summary": "Fable 5.1: after cycle and missing-dependency rejections the task must still list its prior dependency; a partial write or cleared list fails.",
+  "timestamp": "2026-09-30T06:01:51.938Z"
+}

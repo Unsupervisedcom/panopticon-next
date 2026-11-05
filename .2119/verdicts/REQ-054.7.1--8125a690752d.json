@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-054.7.1--8125a690752d",
+  "requirementId": "REQ-054.7.1",
+  "hash": "8125a690752d",
+  "verdict": "pass",
+  "summary": "Live fixture asserts isolated config/data/cache absent, the panopticon tmux server has no session and no socket, docker ps --all is empty, and the GitHub repo is https github.com with the acceptance prefix, disposable topic, push permission, reviewed base SHA at the default branch head, and no marker file; opt-in only.",
+  "timestamp": "2026-09-14T06:56:31.693Z"
+}

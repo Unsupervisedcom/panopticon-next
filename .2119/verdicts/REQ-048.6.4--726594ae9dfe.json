@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.6.4--726594ae9dfe",
+  "requirementId": "REQ-048.6.4",
+  "hash": "726594ae9dfe",
+  "verdict": "pass",
+  "summary": "Active setup-repo task patches own credential_dir to 200 while sibling repo, every other RepoPatchIn field (set-checked against the model), non-string values, '', '.', '..', '/', absolute, '../x', 'nested/dir', trailing-slash, a non-opted-in task, and COMPLETE/DROPPED setup tasks are all (403, scope body) with repos asserted unchanged; an alternate flagged workflow succeeds so name-matching would fail.",
+  "timestamp": "2026-10-28T06:06:45.908Z"
+}

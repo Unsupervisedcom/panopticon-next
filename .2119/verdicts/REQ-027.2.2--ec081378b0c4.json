@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.2.2--ec081378b0c4",
+  "requirementId": "REQ-027.2.2",
+  "hash": "ec081378b0c4",
+  "verdict": "pass",
+  "summary": "Actual e clears both active finite and reserved indefinite snoozes and records None rather than extending the deadline.",
+  "timestamp": "2026-09-14T07:54:05.586Z"
+}

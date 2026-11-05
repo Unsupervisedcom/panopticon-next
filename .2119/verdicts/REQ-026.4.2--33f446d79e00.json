@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.4.2--33f446d79e00",
+  "requirementId": "REQ-026.4.2",
+  "hash": "33f446d79e00",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the 400 detail must name every task id on the a-b-c cycle and carry the edit-dependencies advice; a generic error or one naming only the submitted task fails.",
+  "timestamp": "2026-09-30T06:01:50.884Z"
+}

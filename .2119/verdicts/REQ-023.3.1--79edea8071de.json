@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-023.3.1--79edea8071de",
+  "requirementId": "REQ-023.3.1",
+  "hash": "79edea8071de",
+  "verdict": "pass",
+  "summary": "Repeated Enter toggles rows without service mutations; a fresh app resets display state and search keeps matching governed tasks expanded.",
+  "timestamp": "2026-09-14T07:53:46.736Z"
+}

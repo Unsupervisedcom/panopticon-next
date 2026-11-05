@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.3.1--7149538d9e8d",
+  "requirementId": "REQ-026.3.1",
+  "hash": "7149538d9e8d",
+  "verdict": "pass",
+  "summary": "Dependency-wait rows exercise live, gated and agent-turn cases, with exact held/held 1 text and dim-only styling; attention and dropped-only controls remain orange.",
+  "timestamp": "2026-09-14T07:53:51.984Z"
+}

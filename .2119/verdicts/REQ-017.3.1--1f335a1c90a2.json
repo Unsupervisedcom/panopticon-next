@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-017.3.1--1f335a1c90a2",
+  "requirementId": "REQ-017.3.1",
+  "hash": "1f335a1c90a2",
+  "verdict": "pass",
+  "summary": "Escape after editing records no set_slug call and leaves the existing slug in the detail pane.",
+  "timestamp": "2026-09-14T07:53:07.445Z"
+}

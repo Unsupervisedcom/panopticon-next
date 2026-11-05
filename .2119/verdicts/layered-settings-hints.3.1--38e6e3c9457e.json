@@ -1,0 +1,8 @@
+{
+  "reviewId": "layered-settings-hints.3.1--38e6e3c9457e",
+  "requirementId": "layered-settings-hints.3.1",
+  "hash": "38e6e3c9457e",
+  "verdict": "pass",
+  "summary": "Exact text/style/widget-count checks combine with SVG-painted full-hint checks on all three surfaces at 80/120 columns; forcing one-cell clipped hints fails all ten layout cases.",
+  "timestamp": "2026-09-14T07:54:45.091Z"
+}

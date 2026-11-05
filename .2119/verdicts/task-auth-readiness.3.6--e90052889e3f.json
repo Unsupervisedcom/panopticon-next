@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.6--e90052889e3f",
+  "requirementId": "task-auth-readiness.3.6",
+  "hash": "e90052889e3f",
+  "verdict": "pass",
+  "summary": "Claude gateway and Codex transports are exercised with Pi environment, native file, OAuth, and custom-model matrices; missing or malformed transport controls reject false readiness.",
+  "timestamp": "2026-09-14T08:00:37.608Z"
+}

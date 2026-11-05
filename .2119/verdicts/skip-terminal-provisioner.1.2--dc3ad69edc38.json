@@ -1,0 +1,8 @@
+{
+  "reviewId": "skip-terminal-provisioner.1.2--dc3ad69edc38",
+  "requirementId": "skip-terminal-provisioner.1.2",
+  "hash": "dc3ad69edc38",
+  "verdict": "pass",
+  "summary": "cleaned == ['terminal'] is asserted for COMPLETE, DROPPED and a projected-terminal custom state on a task claimed by this runner; gating cleanup on non-terminal fails all three.",
+  "timestamp": "2026-09-14T07:09:34.129Z"
+}

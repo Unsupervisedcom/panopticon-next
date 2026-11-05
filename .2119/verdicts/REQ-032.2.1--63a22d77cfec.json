@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.2.1--63a22d77cfec",
+  "requirementId": "REQ-032.2.1",
+  "hash": "63a22d77cfec",
+  "verdict": "pass",
+  "summary": "test_argv_resume_stays_fresh_when_no_rollouts_recorded asserts argv equals exactly ['codex',*_SESSION_FLAGS] (same literal the first-run tests pin), so a `resume` subcommand or altered flags are rejected; the empty-candidate code path is also exercised by the all-malformed→fresh test.",
+  "timestamp": "2026-10-28T06:05:41.338Z"
+}

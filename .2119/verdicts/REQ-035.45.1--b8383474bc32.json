@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.45.1--b8383474bc32",
+  "requirementId": "REQ-035.45.1",
+  "hash": "b8383474bc32",
+  "verdict": "pass",
+  "summary": "Both 401 and 403 abort the liveness loop without retry, and background rejection terminates the host main loop.",
+  "timestamp": "2026-09-14T06:52:24.888Z"
+}

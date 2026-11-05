@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.1.1--0d57ba4502bb",
+  "requirementId": "REQ-048.1.1",
+  "hash": "0d57ba4502bb",
+  "verdict": "pass",
+  "summary": "Real LocalRunner.spawn builds the docker argv with only the process launcher stubbed; the test requires exactly one read-only mount at the designated path whose JSON equals {\"task\": <independently-computed HMAC for the spawned id>} and asserts every configured read/write token is absent from argv and all mounted files, so a snapshot carrying {\"write\":[token]} or a capability bound to the sibling task fails the exact-equality check.",
+  "timestamp": "2026-10-28T06:06:21.626Z"
+}

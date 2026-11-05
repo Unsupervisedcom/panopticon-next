@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-004.2.1--485807dc2fdb",
+  "requirementId": "REQ-004.2.1",
+  "hash": "485807dc2fdb",
+  "verdict": "pass",
+  "summary": "Real-git acceptance reads repository-local user.email == 'panopticon-agent@users.noreply.github.com' after a fresh prepare and again after a leaked local email is re-prepared; spawn unit tests pin the exact 'git config --local user.email' argv on fresh and existing-checkout paths, rejecting a wrong address, a non-local scope, or a skipped reassert.",
+  "timestamp": "2026-09-14T21:29:20.207Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.11.1--0700ac1dd443",
+  "requirementId": "REQ-018.11.1",
+  "hash": "0700ac1dd443",
+  "verdict": "pass",
+  "summary": "Typed and candidate-selected values survive harness changes; separate mixed cases distinguish touched model/effort from untouched siblings.",
+  "timestamp": "2026-09-14T07:53:21.999Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.2.3--94cf3a001475",
+  "requirementId": "REQ-030.2.3",
+  "hash": "94cf3a001475",
+  "verdict": "pass",
+  "summary": "Real double-click at column 9 of `alpha bravo charlie` must yield exactly b\"bravo\" in the paste buffer (pre-seeded with a sentinel), rejecting line/partial selections; the existing-server test unbinds root DoubleClick1Pane and asserts production creation restores a select-word binding, and the chained config line is asserted verbatim.",
+  "timestamp": "2026-10-28T06:04:15.145Z"
+}

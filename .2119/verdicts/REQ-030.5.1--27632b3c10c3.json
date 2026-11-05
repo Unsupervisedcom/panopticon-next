@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.5.1--27632b3c10c3",
+  "requirementId": "REQ-030.5.1",
+  "hash": "27632b3c10c3",
+  "verdict": "pass",
+  "summary": "Both no-socket spawn tests assert full-list equality over every emitted tmux argv (and sha256-pin the shell pane command), so an implementation that adds `-f <cfg>`, a `source-file cfg ;` chain, or a separate `set-option`/`bind-key` call when tmux_socket=None is rejected; the real defaults_argv/new_session_argv helpers run unmocked and the only two no-socket session-creation paths (LocalRunner, ShellRunner) are both covered.",
+  "timestamp": "2026-10-28T06:11:27.331Z"
+}

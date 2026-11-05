@@ -1,0 +1,8 @@
+{
+  "reviewId": "file-scoped-requirement-ids.3.2--55b19cd3a9a3",
+  "requirementId": "file-scoped-requirement-ids.3.2",
+  "hash": "55b19cd3a9a3",
+  "verdict": "pass",
+  "summary": "Active test runs real rfc2119@0.7.0 check --json over the repository's pre-adoption REQ-*.json verdicts (asserted present) and requires exit 0, ok=true, staleReviews==[]; a gate that re-derived legacy IDs or re-hashed unchanged verdicts would orphan/stale those reviews and fail, while the fixture's review --dispatch (exit 1 listing unreviewed IDs) proves stale/pending detection is live so [] is not vacuous; the migration-scoped diff test honestly guarded that legacy verdicts were not regenerated during the window. Minor non-material gap: no review --dispatch run on the real repo, but staleReviews is the equivalent replacement-review observable.",
+  "timestamp": "2026-10-28T06:30:42.940Z"
+}

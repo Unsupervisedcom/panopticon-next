@@ -1,0 +1,8 @@
+{
+  "reviewId": "file-scoped-requirement-ids.4.1--7a14b7f2a87c",
+  "requirementId": "file-scoped-requirement-ids.4.1",
+  "hash": "7a14b7f2a87c",
+  "verdict": "pass",
+  "summary": "test_070_resolves_both_grammars_and_distinct_file_namespaces runs a single `npx --yes rfc2119@0.7.0 check --json` over a fixture of two file-scoped specs (2 items each) plus one legacy REQ-900 spec (1 MUST + 1 MAY) and asserts requirementCount == 6 exactly, which rejects legacy-only discovery (would be 2), file-scoped-only discovery (would be 4), and MAY-dropping parsers (would be 5); the real-repo run additionally requires requirementCount >= legacy-verdict count + 35 (the file-scoped spec's own item count) with ok/staleReviews/uncoveredRequirements clean, so a gate that silently ignored either grammar fails. The correction to total 6 / covered 5 / uncovered [] correctly models an unannotated MAY (counted, not covered, not uncovered) without weakening mandatory coverage, and the dispatch listing of alpha-feature.1.1, beta-feature.1.1 and REQ-900.1.1 from one run preserves the distinct-namespace/coexistence contract; the only soft assertion (0 < coveredCount <= requirementCount) is auxiliary, not the discovery discriminator.",
+  "timestamp": "2026-10-28T06:30:46.705Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-001.1.1--91a98485e5ee",
+  "requirementId": "REQ-001.1.1",
+  "hash": "91a98485e5ee",
+  "verdict": "pass",
+  "summary": "Real x keypresses on first and second operator rows assert a confirmation names the highlighted workflow; wrong-row or missing-dialog behavior fails.",
+  "timestamp": "2026-09-14T07:52:36.066Z"
+}

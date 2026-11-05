@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.3.4--a2198bb7d8fe",
+  "requirementId": "REQ-027.3.4",
+  "hash": "a2198bb7d8fe",
+  "verdict": "pass",
+  "summary": "Attention pierces a blocked gated snooze to orange user; unpierced gated and held candidates render snoozed dim state.",
+  "timestamp": "2026-09-14T07:54:11.454Z"
+}

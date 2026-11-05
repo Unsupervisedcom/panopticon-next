@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.10.1--e88c9711487f",
+  "requirementId": "REQ-028.10.1",
+  "hash": "e88c9711487f",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the test-owned literal states artifacts complement the pull request and its task URL and do not replace either; exact equality rejects replacement wording.",
+  "timestamp": "2026-09-30T06:02:12.253Z"
+}

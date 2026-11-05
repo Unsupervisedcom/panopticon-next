@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.6.1--8298de0c08f6",
+  "requirementId": "REQ-018.6.1",
+  "hash": "8298de0c08f6",
+  "verdict": "pass",
+  "summary": "Cycling Claude to Codex changes the complete visible model and effort vocabularies to the selected harness fixtures.",
+  "timestamp": "2026-09-14T07:53:15.855Z"
+}

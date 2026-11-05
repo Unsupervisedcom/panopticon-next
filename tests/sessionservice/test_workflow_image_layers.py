@@ -18,11 +18,13 @@ def test_every_shipped_workflow_layer_matches_audited_content(tmp_path: Path) ->
       aarch64) triple="aarch64-unknown-linux-musl" ;; \
       *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
+    mkdir --parents /opt/codex; \
     curl --fail --silent --show-error --location \
-      "https://github.com/openai/codex/releases/download/rust-v0.144.4/codex-$triple.tar.gz" \
-      | tar --extract --gzip --directory /usr/local/bin; \
-    if [ -e "/usr/local/bin/codex-$triple" ]; then mv "/usr/local/bin/codex-$triple" /usr/local/bin/codex; fi; \
-    chmod 0755 /usr/local/bin/codex"""
+      "https://github.com/openai/codex/releases/download/rust-v0.159.1/codex-package-$triple.tar.gz" \
+      | tar --extract --gzip --directory /opt/codex; \
+    test -x /opt/codex/bin/codex; \
+    test -x /opt/codex/bin/codex-code-mode-host; \
+    ln --symbolic --force /opt/codex/bin/codex /usr/local/bin/codex"""
     # Exact audited layer bytes: an altered or newly shipped layer cannot evade this gate by
     # spelling, downloading, or renaming the gh executable differently.
     expected = {

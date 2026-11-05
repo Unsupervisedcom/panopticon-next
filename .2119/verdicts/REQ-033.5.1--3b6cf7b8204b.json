@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-033.5.1--3b6cf7b8204b",
+  "requirementId": "REQ-033.5.1",
+  "hash": "3b6cf7b8204b",
+  "verdict": "pass",
+  "summary": "Fable 5.1: MERGING keys must equal [deferred-issues-filed, pr-merged] in that order for all three built-ins; omission or reversed order fails.",
+  "timestamp": "2026-09-30T06:02:19.809Z"
+}

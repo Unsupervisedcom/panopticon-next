@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.10.1--53d3f7c04a5e",
+  "requirementId": "REQ-048.10.1",
+  "hash": "53d3f7c04a5e",
+  "verdict": "pass",
+  "summary": "All 11 names × query/cookie/JSON and the 5 alternate headers are asserted 401 both alone and alongside the valid Bearer header, nine header-shape variants are 401, and the exact Bearer header is 200; accepting ?access_token= or tolerating a stray X-API-Key next to a valid header fails.",
+  "timestamp": "2026-10-28T06:06:58.377Z"
+}

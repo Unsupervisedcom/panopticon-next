@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.2.2--0e533789f260",
+  "requirementId": "REQ-031.2.2",
+  "hash": "0e533789f260",
+  "verdict": "pass",
+  "summary": "Shared diagnostic text is pinned to actionable macOS/Linux remedies and the host preflight verifies exact delivery.",
+  "timestamp": "2026-09-14T06:52:20.690Z"
+}

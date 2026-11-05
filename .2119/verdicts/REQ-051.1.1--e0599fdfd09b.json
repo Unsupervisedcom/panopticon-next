@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.1.1--e0599fdfd09b",
+  "requirementId": "REQ-051.1.1",
+  "hash": "e0599fdfd09b",
+  "verdict": "pass",
+  "summary": "Filesystem bootstrap and launch tests assert the .pi volume root, nested agent settings/auth/sessions, and reject legacy-root authentication or resume detection while accepting native paths.",
+  "timestamp": "2026-09-14T08:55:44.935Z"
+}

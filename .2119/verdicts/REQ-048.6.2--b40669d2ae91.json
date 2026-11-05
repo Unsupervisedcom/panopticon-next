@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.6.2--b40669d2ae91",
+  "requirementId": "REQ-048.6.2",
+  "hash": "b40669d2ae91",
+  "verdict": "pass",
+  "summary": "Admin surface set is independently derived from registered routes, asserted equal to the policy's inventory and to a hardcoded list, then each is called with a task capability expecting (403, scope body) including lifecycle PUT/DELETE on self and migration with an operator token present; a task-token claim or lifecycle report returning 200 fails.",
+  "timestamp": "2026-10-28T06:06:43.323Z"
+}

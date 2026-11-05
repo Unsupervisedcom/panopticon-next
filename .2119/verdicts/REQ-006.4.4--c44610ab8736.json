@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.4.4--c44610ab8736",
+  "requirementId": "REQ-006.4.4",
+  "hash": "c44610ab8736",
+  "verdict": "pass",
+  "summary": "After replacing the modal snapshot with each non-down service status, confirmation releases only the still-down sibling.",
+  "timestamp": "2026-09-14T07:52:55.463Z"
+}

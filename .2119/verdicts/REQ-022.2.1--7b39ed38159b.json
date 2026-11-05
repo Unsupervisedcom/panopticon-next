@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-022.2.1--7b39ed38159b",
+  "requirementId": "REQ-022.2.1",
+  "hash": "7b39ed38159b",
+  "verdict": "pass",
+  "summary": "Scope is honest: both tests enumerate only built-in workflows via discover_workflows with home/path dirs suppressed, and Workflow.image_layer() is the sole channel the task service serves and the spawner composes (only spec_2119 overrides it, delegating to CodexHarness.image_layer(), which the audit gate pins byte-for-byte at CODEX_VERSION 0.159.1 so it is non-vacuous). Counterexamples rejected: adding `RUN apt-get install --yes gh` to spike's layer is caught by the `\\bgh\\b` offender scan and by the exact-bytes gate; an obfuscated install (`curl .../gh_2.x.tar.gz | tar` + `install .../bin/gh`) still matches `/bin/gh` and in any case differs from pinned bytes; a newly shipped workflow with any gh layer breaks the exact dict equality. Weakness noted but not material: the regex is keyword-based (would false-positive on a comment mentioning gh) and the exact gate is a change detector that also trips on legitimate codex bumps, relying on human re-audit — yet no gh-reinstalling shipped layer can pass without editing a test. Annotation uses section ID REQ-022.2 (its only bullet), which is permitted; the requirement is a static, observable constraint on shipped fragment content and is testable as stated.",
+  "timestamp": "2026-10-28T06:16:01.683Z"
+}

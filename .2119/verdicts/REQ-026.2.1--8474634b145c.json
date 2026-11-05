@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.2.1--8474634b145c",
+  "requirementId": "REQ-026.2.1",
+  "hash": "8474634b145c",
+  "verdict": "pass",
+  "summary": "Composer test rejects unclaimed+blocking→anything but gated, claimed+blocking→down, terminal+blocking→'–'; API test asserts gated with a non-terminal dependency at creation and stays gated after the dependency is DROPPED (treating DROPPED as satisfying would fail persisted['container_status']=='gated').",
+  "timestamp": "2026-10-28T06:05:33.632Z"
+}

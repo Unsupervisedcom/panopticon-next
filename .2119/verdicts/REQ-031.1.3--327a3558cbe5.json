@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.1.3--327a3558cbe5",
+  "requirementId": "REQ-031.1.3",
+  "hash": "327a3558cbe5",
+  "verdict": "pass",
+  "summary": "Exact diagnostic content covers unreachable Docker and macOS/Linux remedies; both command paths verify delivery.",
+  "timestamp": "2026-09-14T06:52:16.663Z"
+}

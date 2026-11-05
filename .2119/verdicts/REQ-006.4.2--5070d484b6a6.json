@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.4.2--5070d484b6a6",
+  "requirementId": "REQ-006.4.2",
+  "hash": "5070d484b6a6",
+  "verdict": "pass",
+  "summary": "Reversed service order versus displayed order, exact check/release events, and overlapping-release detection reject reordered or parallel processing.",
+  "timestamp": "2026-09-14T07:52:53.021Z"
+}

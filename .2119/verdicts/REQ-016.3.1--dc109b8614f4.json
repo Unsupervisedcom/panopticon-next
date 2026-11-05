@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-016.3.1--dc109b8614f4",
+  "requirementId": "REQ-016.3.1",
+  "hash": "dc109b8614f4",
+  "verdict": "pass",
+  "summary": "Behavioral event matrix covers command hooks, background suppression, native Pi retries/tools/exhaustion/abort, active queued logout, and idle missing model/auth. Native mutations selecting agent after idle logout or user during queued work fail.",
+  "timestamp": "2026-09-14T08:55:43.825Z"
+}

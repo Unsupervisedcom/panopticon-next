@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-038.1.1--318b536ed51a",
+  "requirementId": "REQ-038.1.1",
+  "hash": "318b536ed51a",
+  "verdict": "pass",
+  "summary": "Both sort modes assert the entire order across active, finite/indefinite snoozed, exact/past-expired, attention-pierced, COMPLETE and DROPPED tasks.",
+  "timestamp": "2026-09-14T07:54:16.533Z"
+}

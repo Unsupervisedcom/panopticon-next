@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.1.2--d051cd38f4f8",
+  "requirementId": "REQ-032.1.2",
+  "hash": "d051cd38f4f8",
+  "verdict": "pass",
+  "summary": "Two tests reject wrong-recency selection: one where filename order and creation order both disagree with mtime (name/glob/creation-order picks 'older'), and one where st_mtime floats collide but st_mtime_ns differs (float comparison would tie or pick arbitrarily).",
+  "timestamp": "2026-10-28T06:05:37.478Z"
+}

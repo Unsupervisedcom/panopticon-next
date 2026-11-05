@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.12.1--9f0ad8d77784",
+  "requirementId": "REQ-018.12.1",
+  "hash": "9f0ad8d77784",
+  "verdict": "pass",
+  "summary": "Exact rendered summaries cover all default sources and each override type; even a same-value override becomes this task, with API provenance coverage.",
+  "timestamp": "2026-09-14T07:53:23.253Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.7.3--0f6269ae90ae",
+  "requirementId": "REQ-048.7.3",
+  "hash": "0f6269ae90ae",
+  "verdict": "pass",
+  "summary": "On the governed child, drop/advance/transition/state, claim, provisioning, migration, lifecycle PUT/DELETE, launcher-failure, and governor reassignment (None and unrelated) are each asserted (403, scope body); any of those returning 200 fails.",
+  "timestamp": "2026-10-28T06:06:49.650Z"
+}

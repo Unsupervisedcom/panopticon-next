@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.1--07095e3cf1e7",
+  "requirementId": "task-auth-readiness.3.1",
+  "hash": "07095e3cf1e7",
+  "verdict": "pass",
+  "summary": "Real credential checks precede the container spawn boundary; missing repository transport leaves no workspace or launch, while repaired transport starts only after explicit retry.",
+  "timestamp": "2026-09-14T08:00:30.804Z"
+}

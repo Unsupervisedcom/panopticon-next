@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.3.2--141dcdbd61e7",
+  "requirementId": "REQ-012.3.2",
+  "hash": "141dcdbd61e7",
+  "verdict": "pass",
+  "summary": "Fable 5.1: explicit model custom on a codex/gpt-5.6-sol:high workflow must give (codex, custom); keeping the pair model or changing the harness both fail.",
+  "timestamp": "2026-09-30T06:01:35.949Z"
+}

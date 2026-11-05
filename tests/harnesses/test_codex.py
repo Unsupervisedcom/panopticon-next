@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from panopticon.core.models import Skill
-from panopticon.harnesses import INTERRUPT_PROMPT, BootstrapContext, LaunchContext
+from panopticon.harnesses import BootstrapContext, LaunchContext
 from panopticon.harnesses.codex import (
     CODEX_VERSION,
     RECONCILE_AUTH_ENV,
@@ -302,10 +302,15 @@ def test_argv_resumes_the_recorded_interactive_session_by_id(tmp_path: Path) -> 
 
 
 # 2119: REQ-032.5.2
-def test_argv_resume_appends_interrupt_prompt_on_agent_turn(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("turn", "suffix"), [("agent", ["You were interrupted. Continue."]), ("user", [])]
+)
+def test_argv_resume_appends_interrupt_prompt_only_on_agent_turn(
+    tmp_path: Path, turn: str, suffix: list[str]
+) -> None:
     _seed_session(tmp_path)
-    argv = HARNESS.argv(_ctx(tmp_path, turn="agent"))
-    assert argv == ["codex", "resume", "interactive-1", *_SESSION_FLAGS, INTERRUPT_PROMPT]
+    argv = HARNESS.argv(_ctx(tmp_path, turn=turn))
+    assert argv == ["codex", "resume", "interactive-1", *_SESSION_FLAGS, *suffix]
 
 
 def test_argv_resume_omits_model_and_initial_prompt(tmp_path: Path) -> None:

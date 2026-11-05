@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.3.1--e58fd8cea0df",
+  "requirementId": "REQ-048.3.1",
+  "hash": "e58fd8cea0df",
+  "verdict": "pass",
+  "summary": "Snapshot contents must equal {\"task\": expected} exactly, the argv must carry exactly one --env PANOPTICON_SERVICE_AUTH_FILE=/run/secrets/panopticon-service-auth and one ro mount of that snapshot, and the in-container client built from that env emits Bearer <expected>; an extra key, a second credential mount, or a missing env pointer fails.",
+  "timestamp": "2026-10-28T06:06:30.635Z"
+}

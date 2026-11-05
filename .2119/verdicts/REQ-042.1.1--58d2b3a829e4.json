@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-042.1.1--58d2b3a829e4",
+  "requirementId": "REQ-042.1.1",
+  "hash": "58d2b3a829e4",
+  "verdict": "pass",
+  "summary": "A mounted artifact-bearing task with no PR URL displays exactly *a followed by one separator and its task label.",
+  "timestamp": "2026-09-14T07:54:26.588Z"
+}

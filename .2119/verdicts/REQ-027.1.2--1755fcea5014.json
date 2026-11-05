@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-027.1.2--1755fcea5014",
+  "requirementId": "REQ-027.1.2",
+  "hash": "1755fcea5014",
+  "verdict": "pass",
+  "summary": "Fable 5.1: offset-with-microseconds and naive timestamps must round-trip byte-exact, null must clear, the updated task is returned, and state, turn and blocked are asserted unchanged.",
+  "timestamp": "2026-09-30T06:01:58.345Z"
+}

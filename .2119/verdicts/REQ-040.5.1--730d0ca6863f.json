@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-040.5.1--730d0ca6863f",
+  "requirementId": "REQ-040.5.1",
+  "hash": "730d0ca6863f",
+  "verdict": "pass",
+  "summary": "A non-directory clone is checked at its exact path, never opened, and produces the correct host-specific or hostless warning.",
+  "timestamp": "2026-09-14T07:54:22.810Z"
+}

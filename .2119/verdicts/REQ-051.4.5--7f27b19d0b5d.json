@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.4.5--7f27b19d0b5d",
+  "requirementId": "REQ-051.4.5",
+  "hash": "7f27b19d0b5d",
+  "verdict": "pass",
+  "summary": "Enforced-auth integration exercises task-capability failure reporting; both real buffered-stderr paths reject independent disabled-flush mutants, rejected and timed-out reports preserve diagnosis and exit, and long reports retain the first 4096 characters with full stderr.",
+  "timestamp": "2026-09-14T08:10:36.812Z"
+}

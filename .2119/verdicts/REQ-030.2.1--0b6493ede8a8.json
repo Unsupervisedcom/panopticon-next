@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.2.1--0b6493ede8a8",
+  "requirementId": "REQ-030.2.1",
+  "hash": "0b6493ede8a8",
+  "verdict": "pass",
+  "summary": "Real PTY SGR drag in emacs copy-mode with the resolved tool replaced by a capture command asserts no capture exists before release (`copy must happen on release`), then exactly b\"bravo\" after release; stock tmux's copy-selection-and-cancel default (no pipe) never creates the file and fails, and the exact copy-mode MouseDragEnd1Pane line is asserted in config text.",
+  "timestamp": "2026-10-28T06:04:12.613Z"
+}

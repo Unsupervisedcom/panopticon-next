@@ -27,7 +27,7 @@ from mcp.client.streamable_http import streamable_http_client
 from panopticon.core.models import Repo, Responsibility, Skill
 from panopticon.core.state import Complete, InitialState, State
 from panopticon.core.workflow import Workflow
-from panopticon.taskservice.api import create_app
+from panopticon.taskservice.api import RepoPatchIn, create_app
 from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
 from panopticon.taskservice.auth import derive_task_capability, load_client_token
 from panopticon.taskservice.auth_scope import AuthorizationClass
@@ -2119,8 +2119,10 @@ def test_task_capability_rejects_non_object_json_without_crashing(tmp_path: Path
             assert (mcp.status_code, mcp.json()) == (403, SCOPE_FAILURE)
 
 
+@pytest.mark.parametrize("encoded_rest_target", [False, True])
 def test_rest_and_mcp_resolve_equivalent_actions_to_identical_scope_decisions(
     tmp_path: Path,
+    encoded_rest_target: bool,
 ) -> None:
     # 2119: REQ-048.8.1
     with _client(tmp_path) as client:
@@ -2148,6 +2150,24 @@ def test_rest_and_mcp_resolve_equivalent_actions_to_identical_scope_decisions(
             (("GET", "/tasks/{task_id}/artifacts"), ("tool", "list_artifacts")),
             (("GET", "/tasks/{task_id}/artifacts/{name}"), ("resource", "artifact")),
         ]
+        payloads = {
+            "get_task": {},
+            "set_slug": {"slug": "encoded"},
+            "set_url": {"url": "https://example.test/encoded"},
+            "set_tokens_used": {"tokens_used": 1},
+            "set_token_estimate": {"token_estimate": 2},
+            "apply_operation": {"operation": "advance"},
+            "set_state": {"state": "COMPLETE"},
+            "resolve_responsibility": {"key": "ready", "status": "met"},
+            "set_turn": {"turn": "agent"},
+            "set_blocked": {"blocked": True},
+            "set_attention": {"attention": True},
+            "set_dependencies": {"dep_ids": []},
+            "put_artifact": {"name": "plan.md", "content": "encoded"},
+            "list_artifacts": {},
+            "artifact": {},
+        }
+        assert set(payloads) == {surface[1] for _, surface in pairs}
         classified = policy.classified_surfaces()
         equivalent_mcp = {surface for _, surface in pairs}
         assert equivalent_mcp == classified.mcp_surfaces_with_rest_equivalents
@@ -2184,7 +2204,7 @@ def test_rest_and_mcp_resolve_equivalent_actions_to_identical_scope_decisions(
                         "method": "tools/call",
                         "params": {
                             "name": mcp_surface[1],
-                            "arguments": {"task_id": target},
+                            "arguments": {"task_id": target, **payloads[mcp_surface[1]]},
                         },
                     }
                 else:
@@ -2198,6 +2218,28 @@ def test_rest_and_mcp_resolve_equivalent_actions_to_identical_scope_decisions(
                 assert rest.subject_task_id == subject["id"]
                 assert rest.target_task_id == target
                 assert mcp == rest
+                if encoded_rest_target:
+                    encoded_target = "".join(f"%{byte:02X}" for byte in str(target).encode())
+                    encoded_path = concrete_path.replace(
+                        f"/tasks/{target}", f"/tasks/{encoded_target}"
+                    )
+                    response = client.request(
+                        rest_surface[0],
+                        encoded_path,
+                        headers=_bearer(_task_token(subject["id"])),
+                        json=payloads[mcp_surface[1]],
+                    )
+                    # Scope precedes workflow/argument validation. A permitted action may
+                    # still fail those later checks (for example a missing responsibility).
+                    assert (response.status_code == 403) is (not mcp.allowed), (
+                        rest_surface,
+                        target,
+                        response.text,
+                    )
+                    if not mcp.allowed:
+                        assert response.json() == SCOPE_FAILURE
+                    else:
+                        assert response.status_code in {200, 204, 400, 404, 409, 422}
 
 
 def test_every_task_targeted_mcp_surface_uses_capability_subject_and_decoded_target(
@@ -2250,6 +2292,141 @@ def test_every_task_targeted_mcp_surface_uses_capability_subject_and_decoded_tar
             }
             response = client.post("/mcp", headers=headers, json=read)
             assert (response.status_code == 403) is denied
+
+
+@pytest.mark.parametrize("relation", ["self", "child", "grandchild", "unrelated", "missing"])
+def test_encoded_rest_targets_and_mcp_resources_preserve_authenticated_subject(
+    tmp_path: Path, relation: str
+) -> None:
+    # 2119: REQ-048.8.1
+    # 2119: REQ-048.8.2
+    with _client(tmp_path) as client:
+        subject = _create_task(client, workflow="orchestrator")
+        child = _create_task(client, governor_task_id=str(subject["id"]))
+        grandchild = _create_task(client, governor_task_id=str(child["id"]))
+        unrelated = _create_task(client)
+        targets = {
+            "self": subject["id"],
+            "child": child["id"],
+            "grandchild": grandchild["id"],
+            "unrelated": unrelated["id"],
+            "missing": "missing-task",
+        }
+        target = str(targets[relation])
+        allowed = relation in {"self", "child", "grandchild"}
+        token = _task_token(subject["id"])
+        headers = _bearer(token)
+        fleet = _bearer(WRITE_TOKEN)
+        for task in (subject, child, grandchild, unrelated):
+            seeded = client.put(
+                f"/tasks/{task['id']}/artifacts/plan.md",
+                headers=fleet,
+                content=f"artifact-for-{task['id']}".encode(),
+            )
+            assert seeded.status_code == 204
+        before = client.get("/tasks", headers=fleet).json()
+        # REST path components are decoded by ASGI. MCP tool JSON is already decoded.
+        encoded_target = "".join(f"%{byte:02X}" for byte in target.encode())
+        rest_task = client.get(f"/tasks/{encoded_target}", headers=headers)
+        tool_request = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "get_task", "arguments": {"task_id": target}},
+        }
+        policy = client.app.state.credential_scope_policy
+        tool_decision = policy.authorize_mcp(token, tool_request)
+        assert tool_decision.subject_task_id == subject["id"]
+        assert tool_decision.target_task_id == target
+        assert tool_decision.allowed is allowed
+        if allowed:
+            assert rest_task.status_code == 200
+            assert rest_task.json()["id"] == target
+        else:
+            assert (rest_task.status_code, rest_task.json()) == (403, SCOPE_FAILURE)
+
+        # The SDK resolves encoded dot segments, but retains ordinary encoded task-id
+        # characters. Exercise both representations through the real mounted MCP app.
+        mcp_headers = {**headers, "Accept": "application/json, text/event-stream"}
+        initialized = client.post(
+            "/mcp",
+            headers=mcp_headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "scope-test", "version": "1"},
+                },
+            },
+        )
+        assert initialized.status_code == 200
+        if session_id := initialized.headers.get("mcp-session-id"):
+            mcp_headers["Mcp-Session-Id"] = session_id
+        notified = client.post(
+            "/mcp",
+            headers=mcp_headers,
+            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+        )
+        assert notified.status_code == 202
+
+        def rpc_body(response: httpx.Response) -> dict[str, object]:
+            if "text/event-stream" in response.headers.get("content-type", ""):
+                return json.loads(
+                    next(
+                        line[5:].strip()
+                        for line in response.text.splitlines()
+                        if line.startswith("data:")
+                    )
+                )
+            return response.json()
+
+        tool_response = client.post("/mcp", headers=mcp_headers, json=tool_request)
+        if allowed:
+            assert tool_response.status_code == 200
+            result = rpc_body(tool_response)["result"]
+            assert result["isError"] is False
+            assert json.loads(result["content"][0]["text"])["id"] == target
+        else:
+            assert (tool_response.status_code, tool_response.json()) == (403, SCOPE_FAILURE)
+
+        rest = client.get(f"/tasks/{encoded_target}/artifacts/%70lan.md", headers=headers)
+        normalized_uri = (
+            f"panopticon://tasks/{subject['id']}/artifacts/%2e%2e/%2E%2E/{target}/artifacts/plan.md"
+        )
+        for uri, expected_target, expected_allowed in (
+            (normalized_uri, target, allowed),
+            (f"panopticon://tasks/{encoded_target}/artifacts/plan.md", encoded_target, False),
+            (f"task://{encoded_target}/artifacts/plan.md", encoded_target, False),
+            (f"panopticon://tasks/{target}/artifacts/plan%2Fextra.md", "", False),
+        ):
+            request = {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "resources/read",
+                "params": {"uri": uri},
+            }
+            decision = policy.authorize_mcp(token, request)
+            assert decision.subject_task_id == subject["id"]
+            assert decision.target_task_id == expected_target
+            assert decision.allowed is expected_allowed
+            response = client.post("/mcp", headers=mcp_headers, json=request)
+            if expected_allowed:
+                assert rest.status_code == response.status_code == 200
+                assert rest.content == f"artifact-for-{target}".encode()
+                contents = rpc_body(response)["result"]["contents"]
+                assert len(contents) == 1
+                assert contents[0]["text"].encode() == rest.content
+            else:
+                assert (response.status_code, response.json()) == (403, SCOPE_FAILURE)
+                if uri == normalized_uri:
+                    assert (rest.status_code, rest.json()) == (403, SCOPE_FAILURE)
+        assert client.get("/tasks", headers=fleet).json() == before
+        for task in (subject, child, grandchild, unrelated):
+            stored = client.get(f"/tasks/{task['id']}/artifacts/plan.md", headers=fleet)
+            assert stored.content == f"artifact-for-{task['id']}".encode()
 
 
 def test_every_rest_and_mcp_surface_has_a_scope_classification(tmp_path: Path) -> None:
@@ -3414,6 +3591,43 @@ def test_active_setup_repo_task_can_only_set_its_own_repo_credential_dir(
         assert configured.status_code == 200, configured.text
         assert configured.json()["credential_dir"] == "openai.d"
 
+        fleet = _bearer(WRITE_TOKEN)
+        before = {repo: client.get(f"/repos/{repo}", headers=fleet).json() for repo in ("r1", "r2")}
+
+        def assert_denied_unchanged(path: str, headers: dict[str, str], body: object) -> None:
+            denied = client.patch(path, headers=headers, json=body)
+            assert (denied.status_code, denied.json()) == (403, SCOPE_FAILURE), body
+            assert {
+                repo: client.get(f"/repos/{repo}", headers=fleet).json() for repo in before
+            } == before
+
+        forbidden_fields = {
+            "id": "r1",
+            "name": "stolen",
+            "git_url": "https://example.test/changed.git",
+            "default_base": "changed-base",
+            "env_file": "changed.env",
+            "image_layer_file": "changed.Dockerfile",
+            "capabilities": {"docker_in_docker": True},
+            "hook_file": "changed.sh",
+            "enabled_workflows": ["alternate-credential-setup"],
+            "disabled_workflows": ["spike"],
+            "default_harness": "codex",
+            "default_model": "changed-model",
+            "honesty_reviewer": "codex:changed-model",
+            "reviewer_1": "codex:changed-model",
+            "reviewer_2": "codex:changed-model",
+        }
+        assert forbidden_fields
+        assert set(forbidden_fields) == set(RepoPatchIn.model_fields) - {"credential_dir"}
+        for field, value in {**forbidden_fields, "launch_paused": True, "unknown": "value"}.items():
+            for body in ({field: value}, {"credential_dir": "other.d", field: value}):
+                assert_denied_unchanged("/repos/r1", setup_headers, body)
+        for value in (False, True, 0, 1, 1.5, [], ["other.d"], {}, {"name": "other.d"}):
+            assert_denied_unchanged("/repos/r1", setup_headers, {"credential_dir": value})
+        for body in ([], ["credential_dir", "other.d"], "other.d", 1, True, None, {}):
+            assert_denied_unchanged("/repos/r1", setup_headers, body)
+
         for path, headers, body in (
             ("/repos/r2", setup_headers, {"credential_dir": "other.d"}),
             ("/repos/r1", setup_headers, {"name": "stolen"}),
@@ -3426,23 +3640,26 @@ def test_active_setup_repo_task_can_only_set_its_own_repo_credential_dir(
             ("/repos/r1", setup_headers, {"credential_dir": ""}),
             ("/repos/r1", setup_headers, {"credential_dir": "   "}),
             ("/repos/r1", setup_headers, {"credential_dir": "."}),
+            ("/repos/r1", setup_headers, {"credential_dir": ".."}),
+            ("/repos/r1", setup_headers, {"credential_dir": "/"}),
             ("/repos/r1", setup_headers, {"credential_dir": "/absolute.d"}),
             ("/repos/r1", setup_headers, {"credential_dir": "../other.d"}),
             ("/repos/r1", setup_headers, {"credential_dir": "nested/dir"}),
+            ("/repos/r1", setup_headers, {"credential_dir": "other.d/"}),
             ("/repos/r1", regular_headers, {"credential_dir": "other.d"}),
         ):
-            denied = client.patch(path, headers=headers, json=body)
-            assert (denied.status_code, denied.json()) == (403, SCOPE_FAILURE)
+            assert_denied_unchanged(path, headers, body)
 
         completed = client.post(f"/tasks/{setup['id']}/operations/advance", headers=setup_headers)
         assert completed.status_code == 200
-        denied_after_completion = client.patch(
-            "/repos/r1", headers=setup_headers, json={"credential_dir": "other.d"}
-        )
-        assert (denied_after_completion.status_code, denied_after_completion.json()) == (
-            403,
-            SCOPE_FAILURE,
-        )
+        assert completed.json()["state"] == "COMPLETE"
+        assert_denied_unchanged("/repos/r1", setup_headers, {"credential_dir": "other.d"})
+        dropped = _create_task(client, workflow="setup-repo")
+        dropped_headers = _bearer(_task_token(dropped["id"]))
+        response = client.post(f"/tasks/{dropped['id']}/operations/drop", headers=dropped_headers)
+        assert response.status_code == 200
+        assert response.json()["state"] == "DROPPED"
+        assert_denied_unchanged("/repos/r1", dropped_headers, {"credential_dir": "other.d"})
 
         repo = client.get("/repos/r1", headers=_bearer(WRITE_TOKEN)).json()
         assert repo["name"] == "acme/one"
@@ -3659,12 +3876,14 @@ def test_capability_plaintext_is_absent_from_persistent_and_diagnostic_surfaces(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # 2119: REQ-048.3.2
+    caplog.set_level(logging.DEBUG)
     with _client(tmp_path, read=[READ_TOKEN]) as client:
         task = _create_task(client)
         capability = _task_token(task["id"])
         assert capability not in json.dumps(task)
         task_response = client.get(f"/tasks/{task['id']}", headers=_bearer(capability))
         repo_response = client.get("/repos/r1", headers=_bearer(capability))
+        assert task_response.status_code == repo_response.status_code == 200
         assert capability not in task_response.text
         assert capability not in repo_response.text
         assert capability not in client.get("/tasks", headers=_bearer(WRITE_TOKEN)).text
@@ -3680,5 +3899,8 @@ def test_capability_plaintext_is_absent_from_persistent_and_diagnostic_surfaces(
             path.read_bytes() for path in (tmp_path / "artifacts").rglob("*") if path.is_file()
         )
         assert capability.encode() not in artifact_bytes
-        client.get("/tasks", headers={"Authorization": f"Bearer {capability}x"})
+        rejected = client.get("/tasks", headers={"Authorization": f"Bearer {capability}x"})
+        assert (rejected.status_code, rejected.json()) == (401, GENERIC_FAILURE)
+        scope_rejected = client.get("/tasks/missing", headers=_bearer(capability))
+        assert (scope_rejected.status_code, scope_rejected.json()) == (403, SCOPE_FAILURE)
         assert capability not in caplog.text

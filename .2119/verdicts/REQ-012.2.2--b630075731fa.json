@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.2.2--b630075731fa",
+  "requirementId": "REQ-012.2.2",
+  "hash": "b630075731fa",
+  "verdict": "pass",
+  "summary": "Fable 5.1: a pairless workflow on a repo with codex/gpt-5.6-sol:medium must yield that pair; falling through to the claude app default changes the asserted harness and model.",
+  "timestamp": "2026-09-30T06:01:32.779Z"
+}

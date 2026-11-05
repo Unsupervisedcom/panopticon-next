@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.7.2--988df5e5a79f",
+  "requirementId": "REQ-048.7.2",
+  "hash": "988df5e5a79f",
+  "verdict": "pass",
+  "summary": "Reads across child/grandchild/great-grandchild (metadata, artifacts, registrations) return 200, and artifact put, slug, token-estimate, turn, dependencies, and planning responsibility are applied and re-read with value equality; a 403 on any preplan action fails.",
+  "timestamp": "2026-10-28T06:06:48.395Z"
+}

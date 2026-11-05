@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.1.5--0890e0a3d1f6",
+  "requirementId": "REQ-031.1.5",
+  "hash": "0890e0a3d1f6",
+  "verdict": "pass",
+  "summary": "Successful probe drives both real command paths to exactly two detached tmux sessions with the required process commands.",
+  "timestamp": "2026-09-14T06:52:18.720Z"
+}

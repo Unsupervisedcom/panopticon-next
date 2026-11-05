@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.3.2--31049781af77",
+  "requirementId": "REQ-051.3.2",
+  "hash": "31049781af77",
+  "verdict": "pass",
+  "summary": "Native materialization compares LAN/public/Unix/malformed and near-loopback endpoints unchanged, including localhost suffixes, 127.0.0.10, non-loopback IPv6, unspecified addresses, and FTP loopback.",
+  "timestamp": "2026-09-14T08:55:55.245Z"
+}

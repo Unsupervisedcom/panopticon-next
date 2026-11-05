@@ -1,0 +1,8 @@
+{
+  "reviewId": "layered-settings-hints.2.1--34f6c5b3b85d",
+  "requirementId": "layered-settings-hints.2.1",
+  "hash": "34f6c5b3b85d",
+  "verdict": "pass",
+  "summary": "The registry and exact visible hints cover reviewer, workflow launch, repo launch and opt-in availability relationships with distinct override/filter semantics.",
+  "timestamp": "2026-09-14T07:54:43.882Z"
+}

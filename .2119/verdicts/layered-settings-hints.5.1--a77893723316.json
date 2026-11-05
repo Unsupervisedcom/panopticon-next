@@ -1,0 +1,8 @@
+{
+  "reviewId": "layered-settings-hints.5.1--a77893723316",
+  "requirementId": "layered-settings-hints.5.1",
+  "hash": "a77893723316",
+  "verdict": "pass",
+  "summary": "Exact repo-screen hint identifies workflow sources for reviewers/availability and per-task overrides for repo harness/model defaults.",
+  "timestamp": "2026-09-14T07:54:47.544Z"
+}

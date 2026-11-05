@@ -1,0 +1,8 @@
+{
+  "reviewId": "full-width-dashboard.1.2--9b22f04337ea",
+  "requirementId": "full-width-dashboard.1.2",
+  "hash": "9b22f04337ea",
+  "verdict": "pass",
+  "summary": "Down-key traversal visits every real row and keeps its row region inside the window while the vertical scrollbar remains zero-width.",
+  "timestamp": "2026-09-14T07:54:41.400Z"
+}

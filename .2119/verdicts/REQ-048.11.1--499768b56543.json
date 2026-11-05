@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.11.1--499768b56543",
+  "requirementId": "REQ-048.11.1",
+  "hash": "499768b56543",
+  "verdict": "pass",
+  "summary": "With no allowlist and with an empty list, every registered route's actual and preflight responses plus the live stream are asserted to lack Access-Control-Allow-Origin for three origins; a default-on CORS would fail.",
+  "timestamp": "2026-10-28T06:07:02.236Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.6.8--91f43e2e27db",
+  "requirementId": "REQ-026.6.8",
+  "hash": "91f43e2e27db",
+  "verdict": "pass",
+  "summary": "Dependency and governor waits with blocked markers render exact red user warning text, including a dependency wait with attention also set.",
+  "timestamp": "2026-09-14T07:54:03.058Z"
+}

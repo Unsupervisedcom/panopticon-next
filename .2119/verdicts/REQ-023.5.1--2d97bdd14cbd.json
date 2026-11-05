@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-023.5.1--2d97bdd14cbd",
+  "requirementId": "REQ-023.5.1",
+  "hash": "2d97bdd14cbd",
+  "verdict": "pass",
+  "summary": "Mounted help has exactly one ensemble line identifying Enter and both collapse and expand operations.",
+  "timestamp": "2026-09-14T07:53:49.553Z"
+}

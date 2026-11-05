@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.5.1--90fbc7e3790d",
+  "requirementId": "REQ-018.5.1",
+  "hash": "90fbc7e3790d",
+  "verdict": "pass",
+  "summary": "Values explicitly absent from suggestions are typed and submitted; model-only, effort-only and combined cases assert exact created starting_model values.",
+  "timestamp": "2026-09-14T07:53:14.666Z"
+}

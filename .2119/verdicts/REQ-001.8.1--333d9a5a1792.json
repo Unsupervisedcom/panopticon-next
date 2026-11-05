@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-001.8.1--333d9a5a1792",
+  "requirementId": "REQ-001.8.1",
+  "hash": "333d9a5a1792",
+  "verdict": "pass",
+  "summary": "Notifications are cleared before x; the built-in rejection must emit exactly the cannot-delete message at request time.",
+  "timestamp": "2026-09-14T07:52:44.500Z"
+}

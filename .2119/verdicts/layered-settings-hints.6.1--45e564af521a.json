@@ -1,0 +1,8 @@
+{
+  "reviewId": "layered-settings-hints.6.1--45e564af521a",
+  "requirementId": "layered-settings-hints.6.1",
+  "hash": "45e564af521a",
+  "verdict": "pass",
+  "summary": "Real modal and API tests cover effective app/repo/workflow launch provenance before overrides, including refreshed defaults and painted summaries at 80/120 columns.",
+  "timestamp": "2026-09-14T07:54:48.853Z"
+}

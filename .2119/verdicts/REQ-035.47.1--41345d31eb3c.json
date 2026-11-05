@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.47.1--41345d31eb3c",
+  "requirementId": "REQ-035.47.1",
+  "hash": "41345d31eb3c",
+  "verdict": "pass",
+  "summary": "Unit test asserts the exact NO_PROXY/no_proxy literals in the docker run argv (both spellings, positioned after --env-file) and would reject an emission that omits the service host, uses the full URL, drops env-file or lowercase bypass entries, or is ordered before --env-file; the real-CLI test adds a positive control (proxy hit without bypass) then proves zero proxy hits and only Bearer-authenticated target hits once the runner's emitted values are applied.",
+  "timestamp": "2026-10-28T06:11:28.609Z"
+}

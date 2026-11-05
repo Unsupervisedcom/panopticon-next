@@ -1,0 +1,8 @@
+{
+  "reviewId": "task-auth-readiness.3.8--45bd73b2a766",
+  "requirementId": "task-auth-readiness.3.8",
+  "hash": "45bd73b2a766",
+  "verdict": "pass",
+  "summary": "After reopening the persistent store and constructing a fresh runner, claimed and unclaimed paused tasks cannot reach spawn, heal, or startup-release side effects.",
+  "timestamp": "2026-09-14T08:00:40.057Z"
+}

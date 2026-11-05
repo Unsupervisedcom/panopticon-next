@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-035.29.1--3f5d79610567",
+  "requirementId": "REQ-035.29.1",
+  "hash": "3f5d79610567",
+  "verdict": "pass",
+  "summary": "Launch argv tests cover Linux wildcard binding for absent/empty overrides and disabled loopback; standalone startup verifies loopback.",
+  "timestamp": "2026-09-14T06:52:22.845Z"
+}

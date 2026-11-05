@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.4.1--0d5b58044b12",
+  "requirementId": "REQ-012.4.1",
+  "hash": "0d5b58044b12",
+  "verdict": "pass",
+  "summary": "Fable 5.1: deliberately unparseable model strings from repo, workflow and explicit sources must be accepted with 201 and returned byte-identical; validation or effort-splitting fails.",
+  "timestamp": "2026-09-30T06:01:39.185Z"
+}

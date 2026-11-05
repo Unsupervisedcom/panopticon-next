@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.6.3--0e86a599b457",
+  "requirementId": "REQ-026.6.3",
+  "hash": "0e86a599b457",
+  "verdict": "pass",
+  "summary": "Fable 5.1: blocked is toggled both ways under attention false and attention true and the marker must be unchanged each time.",
+  "timestamp": "2026-09-30T06:01:54.051Z"
+}

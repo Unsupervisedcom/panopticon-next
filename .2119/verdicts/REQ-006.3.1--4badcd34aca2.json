@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.3.1--4badcd34aca2",
+  "requirementId": "REQ-006.3.1",
+  "hash": "4badcd34aca2",
+  "verdict": "pass",
+  "summary": "Escape from a real bulk modal restores the base screen and leaves the release-call list empty.",
+  "timestamp": "2026-09-14T07:52:50.609Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-016.1.1--41e9483c0e6e",
+  "requirementId": "REQ-016.1.1",
+  "hash": "41e9483c0e6e",
+  "verdict": "pass",
+  "summary": "Full rendered hook inventory and real subprocess blackholes, later-request stalls, cumulative slow responses, malformed replies, and all three Pi handlers reject callbacks lasting three seconds or longer.",
+  "timestamp": "2026-09-14T08:55:41.833Z"
+}

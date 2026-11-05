@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-019.4.1--ec295a9bdc3c",
+  "requirementId": "REQ-019.4.1",
+  "hash": "ec295a9bdc3c",
+  "verdict": "pass",
+  "summary": "Both already-running and not-yet-started discovery cases populate the selected harness cache on cycle and render its model/effort vocabulary without duplicate calls.",
+  "timestamp": "2026-09-14T07:53:38.065Z"
+}

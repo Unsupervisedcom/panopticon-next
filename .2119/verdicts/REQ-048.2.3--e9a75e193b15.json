@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.2.3--e9a75e193b15",
+  "requirementId": "REQ-048.2.3",
+  "hash": "e9a75e193b15",
+  "verdict": "pass",
+  "summary": "Nine malformed mutations, a flipped-MAC forgery, and a sibling-bound capability are rejected, and the full wire tuple (status, headers, body) is asserted identical between an existing and a missing target and between an existing and a never-created asserted subject; a 404-vs-401 or body difference would fail.",
+  "timestamp": "2026-10-28T06:06:28.078Z"
+}

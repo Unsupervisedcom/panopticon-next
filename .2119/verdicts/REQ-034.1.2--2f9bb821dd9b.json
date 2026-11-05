@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-034.1.2--2f9bb821dd9b",
+  "requirementId": "REQ-034.1.2",
+  "hash": "2f9bb821dd9b",
+  "verdict": "pass",
+  "summary": "Backspace removes the last query character and restores matching IDs; repeated Backspace empties the query and restores all repositories.",
+  "timestamp": "2026-09-14T07:54:14.032Z"
+}

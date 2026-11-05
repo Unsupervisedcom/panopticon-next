@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-017.4.1--184670458f97",
+  "requirementId": "REQ-017.4.1",
+  "hash": "184670458f97",
+  "verdict": "pass",
+  "summary": "Mounted detail rendering includes the exact v: edit slug trailing hint and checks its dim style.",
+  "timestamp": "2026-09-14T07:53:08.731Z"
+}

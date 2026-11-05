@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.3.5--75bdf83a2bee",
+  "requirementId": "REQ-026.3.5",
+  "hash": "75bdf83a2bee",
+  "verdict": "pass",
+  "summary": "Fable 5.1: an unclaimed gated task must be present as a dashboard row initially and after a feed refresh, and in the service list before any spawn pass claims it; filtering gated rows out fails.",
+  "timestamp": "2026-09-30T06:01:48.793Z"
+}

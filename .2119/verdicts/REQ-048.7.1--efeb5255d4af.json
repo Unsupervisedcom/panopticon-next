@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.7.1--efeb5255d4af",
+  "requirementId": "REQ-048.7.1",
+  "hash": "efeb5255d4af",
+  "verdict": "pass",
+  "summary": "Orchestrator creates a child with governor=self in its own repo (201), while governor None/unrelated/child and repo r2 each get (403, scope body), a non-orchestrator is denied, and an alternate orchestrates=True workflow succeeds; accepting a wrong governor or repo would fail.",
+  "timestamp": "2026-10-28T06:06:47.172Z"
+}

@@ -18,6 +18,7 @@ from panopticon.taskservice.artifacts_fs import FilesystemArtifactStore
 from panopticon.taskservice.service import TaskService
 from panopticon.taskservice.store_sqlalchemy import SqlAlchemyStore
 from panopticon.workflows import Spike
+from panopticon.workflows.spec_2119 import Spec2119AutoSol
 
 
 class _GatedWorkflow(Workflow):
@@ -332,7 +333,10 @@ def test_task_responses_keep_dropped_dependencies_gated(client: TestClient) -> N
 
 # 2119: REQ-026.2.1
 # 2119: REQ-026.2.3
-def test_task_responses_use_workflow_terminality_for_dependency_readiness(tmp_path: Path) -> None:
+@pytest.mark.parametrize("completed_index", [0, 1])
+def test_task_responses_use_workflow_terminality_for_dependency_readiness(
+    tmp_path: Path, completed_index: int
+) -> None:
     service = TaskService(
         SqlAlchemyStore(),
         {"archived": _ArchivedWorkflow()},
@@ -341,22 +345,37 @@ def test_task_responses_use_workflow_terminality_for_dependency_readiness(tmp_pa
     asyncio.run(service.init())
     asyncio.run(service.create_repo(Repo(id="r1", name="acme/widgets", git_url="https://x/r1.git")))
     with TestClient(create_app(service)) as custom_client:
-        dependency = custom_client.post(
-            "/tasks", json={"repo_id": "r1", "workflow": "archived"}
-        ).json()
+        dependencies = [
+            custom_client.post("/tasks", json={"repo_id": "r1", "workflow": "archived"}).json()
+            for _ in range(2)
+        ]
         dependent = custom_client.post(
             "/tasks",
             json={
                 "repo_id": "r1",
                 "workflow": "archived",
-                "depends_on_task_ids": [dependency["id"]],
+                "depends_on_task_ids": [dependency["id"] for dependency in dependencies],
             },
         ).json()
         assert dependent["container_status"] == "gated"
 
-        archived = custom_client.post(f"/tasks/{dependency['id']}/operations/advance")
+        archived = custom_client.post(
+            f"/tasks/{dependencies[completed_index]['id']}/operations/advance"
+        )
         assert archived.status_code == 200, archived.text
         assert archived.json()["state"] == "ARCHIVED"
+        assert custom_client.get(f"/tasks/{dependent['id']}").json()["container_status"] == "gated"
+        mixed = custom_client.get("/tasks", params={"terminal": "false"}).json()
+        assert (
+            next(task for task in mixed if task["id"] == dependent["id"])["container_status"]
+            == "gated"
+        )
+
+        remaining = custom_client.post(
+            f"/tasks/{dependencies[1 - completed_index]['id']}/operations/advance"
+        )
+        assert remaining.status_code == 200, remaining.text
+        assert remaining.json()["state"] == "ARCHIVED"
         assert custom_client.get(f"/tasks/{dependent['id']}").json()["container_status"] == "queued"
         active = custom_client.get("/tasks", params={"terminal": "false"}).json()
         projected = next(task for task in active if task["id"] == dependent["id"])
@@ -648,9 +667,23 @@ def test_repo_launch_pair_beats_app_defaults(client: TestClient) -> None:
 
 
 # 2119: REQ-012.2.1
-def test_workflow_launch_pair_beats_repo_pair(tmp_path: Path) -> None:
+# 2119: REQ-028.8.2
+@pytest.mark.parametrize(
+    ("workflow", "repo_harness", "repo_model", "expected"),
+    [
+        (_TunedWorkflow(), "claude", "opus:low", ("codex", "gpt-5.6-sol:high")),
+        (Spec2119AutoSol(), "codex", "gpt-5.6-sol", ("claude", "claude-opus-5-5")),
+    ],
+)
+def test_workflow_launch_pair_beats_repo_pair(
+    tmp_path: Path,
+    workflow: Workflow,
+    repo_harness: str,
+    repo_model: str,
+    expected: tuple[str, str],
+) -> None:
     service = TaskService(
-        SqlAlchemyStore(), {"tuned": _TunedWorkflow()}, FilesystemArtifactStore(tmp_path)
+        SqlAlchemyStore(), {workflow.name: workflow}, FilesystemArtifactStore(tmp_path)
     )
     asyncio.run(service.init())
     asyncio.run(
@@ -659,14 +692,17 @@ def test_workflow_launch_pair_beats_repo_pair(tmp_path: Path) -> None:
                 id="r1",
                 name="acme/widgets",
                 git_url="https://x/r1.git",
-                default_harness="claude",
-                default_model="opus:low",
+                default_harness=repo_harness,
+                default_model=repo_model,
+                enabled_workflows=[workflow.name],
             )
         )
     )
     with TestClient(create_app(service)) as tuned_client:
-        task = tuned_client.post("/tasks", json={"repo_id": "r1", "workflow": "tuned"}).json()
-    assert (task["harness"], task["starting_model"]) == ("codex", "gpt-5.6-sol:high")
+        response = tuned_client.post("/tasks", json={"repo_id": "r1", "workflow": workflow.name})
+        assert response.status_code == 201
+        task = response.json()
+    assert (task["harness"], task["starting_model"]) == expected
 
 
 # 2119: REQ-012.3.3

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-031.1.4--3f8fa11b7343",
+  "requirementId": "REQ-031.1.4",
+  "hash": "3f8fa11b7343",
+  "verdict": "pass",
+  "summary": "Both refusal commands are exercised as subprocesses and must return nonzero with the expected diagnostic.",
+  "timestamp": "2026-09-14T06:52:17.730Z"
+}

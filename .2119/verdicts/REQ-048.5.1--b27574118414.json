@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.5.1--b27574118414",
+  "requirementId": "REQ-048.5.1",
+  "hash": "b27574118414",
+  "verdict": "pass",
+  "summary": "Slug, URL, turn, blocked, attention, tokens-used, token-estimate, in-scope dependencies, state, transition, operation, and responsibility resolution are each applied with the capability and re-read after a fresh service on the same DB with value equality; a 200 that did not persist or a 403 on any setter fails.",
+  "timestamp": "2026-10-28T06:06:38.256Z"
+}

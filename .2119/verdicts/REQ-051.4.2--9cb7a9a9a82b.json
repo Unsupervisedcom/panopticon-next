@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.4.2--9cb7a9a9a82b",
+  "requirementId": "REQ-051.4.2",
+  "hash": "9cb7a9a9a82b",
+  "verdict": "pass",
+  "summary": "Real Spawner under HostDaemon.tick against an enforced service for 257 passes: claim, failed status and exact detail unchanged, tasks version unchanged, autospec runner and executions receive zero calls, and only release clears; removing _is_orphan's FAILED exclusion fails on the first pass",
+  "timestamp": "2026-09-14T07:58:48.865Z"
+}

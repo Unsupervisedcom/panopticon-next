@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-036.1.1--295553c79072",
+  "requirementId": "REQ-036.1.1",
+  "hash": "295553c79072",
+  "verdict": "pass",
+  "summary": "Fable 5.1: per-slot overrides are applied independently, split on the first colon with the remainder verbatim, auto-sol keeps two codex Sol defaults (gpt-6.1-sol, gpt-5.6-sol), and six malformed forms raise in both slots before the run callable is touched.",
+  "timestamp": "2026-09-30T06:02:26.188Z"
+}

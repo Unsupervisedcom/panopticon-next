@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-034.1.1--aad04f3a549a",
+  "requirementId": "REQ-034.1.1",
+  "hash": "aad04f3a549a",
+  "verdict": "pass",
+  "summary": "Typed uppercase letters and punctuation yield an exact visible complete query and only matching ID prefixes, excluding substring and partial-query near matches.",
+  "timestamp": "2026-09-14T07:54:12.681Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "foreground-setup.1.6--832584d5ac1e",
+  "requirementId": "foreground-setup.1.6",
+  "hash": "832584d5ac1e",
+  "verdict": "pass",
+  "summary": "Bare invocation on a fresh install routes to quickstart with the real doctor checks and tmux absent from PATH: output must include the not-found line and both install commands from the real hint, exit is 1, and migrate/session start are asserted never called; only the tmux prerequisite is exercised.",
+  "timestamp": "2026-09-14T06:56:37.860Z"
+}

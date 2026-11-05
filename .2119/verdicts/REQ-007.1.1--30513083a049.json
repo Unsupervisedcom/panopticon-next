@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-007.1.1--30513083a049",
+  "requirementId": "REQ-007.1.1",
+  "hash": "30513083a049",
+  "verdict": "pass",
+  "summary": "Actual c dispatch copies the highlighted task detail and separately observes terminal and host clipboard attempts, including failure of either transport.",
+  "timestamp": "2026-09-14T07:53:00.376Z"
+}

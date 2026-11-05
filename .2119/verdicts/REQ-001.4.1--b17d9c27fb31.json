@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-001.4.1--b17d9c27fb31",
+  "requirementId": "REQ-001.4.1",
+  "hash": "b17d9c27fb31",
+  "verdict": "pass",
+  "summary": "Yes deletes only the selected real file and triggers a second registry fetch whose changed description must appear in the table.",
+  "timestamp": "2026-09-14T07:52:39.777Z"
+}

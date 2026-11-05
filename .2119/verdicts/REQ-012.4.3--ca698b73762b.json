@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.4.3--ca698b73762b",
+  "requirementId": "REQ-012.4.3",
+  "hash": "ca698b73762b",
+  "verdict": "pass",
+  "summary": "Fable 5.1: a task created before the app default changes must still read claude while a later task reads codex; storing null and resolving at read time fails.",
+  "timestamp": "2026-09-30T06:01:41.331Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-023.4.1--cb5e56b153bf",
+  "requirementId": "REQ-023.4.1",
+  "hash": "cb5e56b153bf",
+  "verdict": "pass",
+  "summary": "Down and Up skip the summary between real rows, and Down at a trailing summary keeps the real governor selected.",
+  "timestamp": "2026-09-14T07:53:48.040Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.3.2--0cb054b37c60",
+  "requirementId": "REQ-048.3.2",
+  "hash": "0cb054b37c60",
+  "verdict": "pass",
+  "summary": "Capability plaintext is asserted absent from task/repo REST bodies, the SQLite file bytes, all artifact bytes, every captured docker/tmux argv, and DEBUG-level caplog after both a 401 and a 403 auth outcome; a serializer field, DB audit row, or auth log line containing the token would fail.",
+  "timestamp": "2026-10-28T06:06:31.930Z"
+}

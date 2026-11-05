@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.2--e2386a63e29a",
+  "requirementId": "REQ-030.4.2",
+  "hash": "e2386a63e29a",
+  "verdict": "pass",
+  "summary": "Darwin with no tools and darwin with only wl-copy/xclip/xsel present both must return None; a fallthrough to the linux chain on darwin is the rejected counterexample.",
+  "timestamp": "2026-10-28T06:04:21.474Z"
+}

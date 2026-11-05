@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.3.2--a8d92f5a98f4",
+  "requirementId": "REQ-026.3.2",
+  "hash": "a8d92f5a98f4",
+  "verdict": "pass",
+  "summary": "Fable 5.1: a gated dependent's persisted turn stays user across the API before and after its dependency drops, the Actor vocabulary is pinned to agent/user, and the dashboard renders held without mutating the task records.",
+  "timestamp": "2026-09-30T06:01:47.753Z"
+}

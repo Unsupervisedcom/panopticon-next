@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-026.6.4--eeee02ab8203",
+  "requirementId": "REQ-026.6.4",
+  "hash": "eeee02ab8203",
+  "verdict": "pass",
+  "summary": "Fable 5.1: turn=user is written under attention false and attention true and the marker must be unchanged in both.",
+  "timestamp": "2026-09-30T06:01:55.138Z"
+}

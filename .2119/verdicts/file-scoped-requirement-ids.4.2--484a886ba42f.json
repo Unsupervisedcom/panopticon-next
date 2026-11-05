@@ -1,0 +1,8 @@
+{
+  "reviewId": "file-scoped-requirement-ids.4.2--484a886ba42f",
+  "requirementId": "file-scoped-requirement-ids.4.2",
+  "hash": "484a886ba42f",
+  "verdict": "pass",
+  "summary": "test_070_resolves_both_grammars_and_distinct_file_namespaces runs a single pinned `rfc2119@0.7.0 check --json` on a fixture with a legacy `### REQ-900.1:` spec (1 MUST + 1 unannotated MAY) and two file-scoped specs, annotated via one full-ID comment line; a CLI that dropped legacy annotations would yield coveredCount 4 and uncoveredRequirements [REQ-900.1.1], and one that dropped file-scoped annotations would yield coveredCount 1 with four uncovered, so the asserted requirementCount==6 / coveredCount==5 / uncoveredRequirements==[] rejects both counterexamples while the MAY correction keeps the mandatory check intact; the real-repo single run additionally requires uncoveredRequirements==[] across ~1200 legacy full-ID annotations and the bare `# 2119-spec:` form used by this very file, so neither grammar's annotations can silently fail to resolve.",
+  "timestamp": "2026-10-28T06:30:47.914Z"
+}

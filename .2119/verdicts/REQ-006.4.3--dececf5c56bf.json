@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-006.4.3--dececf5c56bf",
+  "requirementId": "REQ-006.4.3",
+  "hash": "dececf5c56bf",
+  "verdict": "pass",
+  "summary": "Exact final notifications verify respawned 2, 1, and 0 from actual release counts, including the real notification surface.",
+  "timestamp": "2026-09-14T07:52:54.220Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.1.1--fc4516e92bee",
+  "requirementId": "REQ-030.1.1",
+  "hash": "fc4516e92bee",
+  "verdict": "pass",
+  "summary": "Real-tmux tests close the loop on observable session state: on a fresh socket the production new_session_argv path yields `show-options -A -t test mouse` == `mouse* on` (stock default is off, so a config lacking/negating the line fails), and the repair test pre-sets `mouse off` on an existing server and asserts production session creation flips it back on; the four call-site argv tests (local/shell runner, dashboard, _start_sessions) plus the shell-runner live-socket spawn reject a call site that drops `-f`/`source-file` — the pure string check on config text is weak alone but is not the only coverage.",
+  "timestamp": "2026-10-28T06:11:23.491Z"
+}

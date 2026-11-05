@@ -1,18 +1,27 @@
 """REQ-030: panopticon's shipped tmux server defaults (mouse, scrollback, clipboard wiring) for
-its dedicated ``-L panopticon`` socket. Pure-function tests need no tmux; the tests at the bottom
-that source the generated config into a real tmux server (skipped without one) are the ones that
-actually prove the config text is valid tmux syntax and lands correctly on a fresh socket."""
+its dedicated ``-L panopticon`` socket. Real-tmux tests exercise production startup and actual
+mouse gestures through a PTY, capturing clipboard bytes without touching the operator clipboard.
+Pure-function tests cover config generation and clipboard-tool resolution."""
 
 from __future__ import annotations
 
 import os
+import pty
+import select
+import shlex
 import shutil
 import subprocess
 import tempfile
+import termios
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
+from panopticon.sessionservice import tmux_defaults
 from panopticon.sessionservice.tmux_defaults import (
     HISTORY_LIMIT,
     clipboard_tool,
@@ -30,6 +39,10 @@ def _which(present: set[str]):
 # 2119: REQ-030.4.1
 def test_clipboard_tool_selects_pbcopy_on_darwin_when_present() -> None:
     assert clipboard_tool(platform="darwin", which=_which({"pbcopy"})) == "pbcopy"
+    assert (
+        clipboard_tool(platform="darwin", which=_which({"pbcopy", "wl-copy", "xclip", "xsel"}))
+        == "pbcopy"
+    )
 
 
 # 2119: REQ-030.4.1
@@ -55,31 +68,39 @@ def test_clipboard_tool_selects_nothing_on_darwin_without_pbcopy() -> None:
 
 
 # 2119: REQ-030.4.3
-def test_clipboard_tool_selects_wl_copy_on_linux_when_present() -> None:
-    assert clipboard_tool(platform="linux", which=_which({"wl-copy"})) == "wl-copy"
+@pytest.mark.parametrize("platform", ["linux", "freebsd14"])
+def test_clipboard_tool_selects_wl_copy_on_linux_when_present(platform: str) -> None:
+    assert clipboard_tool(platform=platform, which=_which({"wl-copy"})) == "wl-copy"
     # wl-copy wins even when the other candidates are also present
-    assert clipboard_tool(platform="linux", which=_which({"wl-copy", "xclip", "xsel"})) == "wl-copy"
+    assert (
+        clipboard_tool(platform=platform, which=_which({"wl-copy", "xclip", "xsel"})) == "wl-copy"
+    )
 
 
 # 2119: REQ-030.4.4
-def test_clipboard_tool_falls_back_to_xclip_without_wl_copy() -> None:
-    assert clipboard_tool(platform="linux", which=_which({"xclip"})) == "xclip -selection clipboard"
+@pytest.mark.parametrize("platform", ["linux", "freebsd14"])
+def test_clipboard_tool_falls_back_to_xclip_without_wl_copy(platform: str) -> None:
     assert (
-        clipboard_tool(platform="linux", which=_which({"xclip", "xsel"}))
+        clipboard_tool(platform=platform, which=_which({"xclip"})) == "xclip -selection clipboard"
+    )
+    assert (
+        clipboard_tool(platform=platform, which=_which({"xclip", "xsel"}))
         == "xclip -selection clipboard"
     )
 
 
 # 2119: REQ-030.4.5
-def test_clipboard_tool_falls_back_to_xsel_without_wl_copy_or_xclip() -> None:
-    assert clipboard_tool(platform="linux", which=_which({"xsel"})) == "xsel --clipboard --input"
+@pytest.mark.parametrize("platform", ["linux", "freebsd14"])
+def test_clipboard_tool_falls_back_to_xsel_without_wl_copy_or_xclip(platform: str) -> None:
+    assert clipboard_tool(platform=platform, which=_which({"xsel"})) == "xsel --clipboard --input"
 
 
 # 2119: REQ-030.4.6
-def test_clipboard_tool_selects_nothing_on_linux_with_no_candidate_present() -> None:
-    assert clipboard_tool(platform="linux", which=_which(set())) is None
+@pytest.mark.parametrize("platform", ["linux", "freebsd14"])
+def test_clipboard_tool_selects_nothing_on_linux_with_no_candidate_present(platform: str) -> None:
+    assert clipboard_tool(platform=platform, which=_which(set())) is None
     # a darwin-only tool present doesn't leak into the non-darwin resolution
-    assert clipboard_tool(platform="linux", which=_which({"pbcopy"})) is None
+    assert clipboard_tool(platform=platform, which=_which({"pbcopy"})) is None
 
 
 # 2119: REQ-030.1.1
@@ -172,158 +193,249 @@ def test_write_default_config_overwrites_via_atomic_rename_leaving_no_temp_files
     assert list(tmp_path.iterdir()) == [path]  # only the final file — no leftover .tmp scratch
 
 
-# -- integration: a real tmux server, from a genuinely fresh socket -----------------
+# -- integration: real tmux, isolated from operator sessions and clipboard ---------
 
 _HAVE_TMUX = bool(shutil.which("tmux"))
 
 
+@dataclass
+class _TmuxServer:
+    root: Path
+    environment: dict[str, str]
+    socket: str = "defaults"
+
+    def run(self, *arguments: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            ["tmux", "-L", self.socket, *arguments],
+            capture_output=True,
+            env=self.environment,
+            check=check,
+            timeout=5,
+        )
+
+    def create(self, name: str = "test", command: str = "sleep 30") -> None:
+        self.run(*new_session_argv(self.socket, "-d", "-s", name, command))
+
+
+@pytest.fixture
+def tmux_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[_TmuxServer]:
+    # Short, unique socket paths also fit Darwin's Unix-domain socket length limit.
+    with tempfile.TemporaryDirectory(prefix="pn-tmux-", dir="/tmp") as directory:
+        root = Path(directory)
+        environment = {
+            "PATH": os.environ["PATH"],
+            "HOME": directory,
+            "XDG_CONFIG_HOME": directory,
+            "TMUX_TMPDIR": directory,
+            "TERM": "xterm-256color",
+        }
+        monkeypatch.setattr(
+            tmux_defaults, "default_config_path", lambda socket, **_: root / f"{socket}.conf"
+        )
+        # Never invoke the operator's real clipboard tools. Individual copy tests replace this
+        # dependency with a capture command; the constructor/config/bindings remain production.
+        monkeypatch.setattr(tmux_defaults, "clipboard_tool", lambda **_: None)
+        server = _TmuxServer(root, environment)
+        try:
+            yield server
+        finally:
+            server.run("kill-server", check=False)
+
+
+@contextmanager
+def _attached_terminal(server: _TmuxServer) -> Iterator[int]:
+    master, slave = pty.openpty()
+    termios.tcsetwinsize(slave, (24, 80))
+    client = subprocess.Popen(
+        ["tmux", "-L", server.socket, "attach-session", "-t", "test"],
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        env=server.environment,
+    )
+    os.close(slave)
+    try:
+        # Wait for tmux to enable SGR mouse reporting and paint the text before clicking.
+        output = bytearray()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if select.select([master], [], [], 0.02)[0]:
+                output.extend(os.read(master, 65536))
+            if b"\x1b[?1006h" in output and b"alpha bravo charlie" in output:
+                break
+        else:
+            pytest.fail(f"tmux client did not become ready: {bytes(output)!r}")
+        yield master
+    finally:
+        # Only our attached client and isolated server are stopped. OSC 52 remains inside this
+        # PTY, so even no-tool copying cannot change the terminal application's clipboard.
+        client.terminate()
+        try:
+            client.wait(timeout=5)
+        finally:
+            if client.poll() is None:
+                client.kill()
+                client.wait(timeout=5)
+            os.close(master)
+
+
+def _exercise_mouse_copy(
+    server: _TmuxServer, *, mode: str, gesture: str, capture: Path | None
+) -> None:
+    server.create(command="printf 'alpha bravo charlie\\n'; sleep 30")
+    server.run("set-window-option", "-t", "test", "mode-keys", mode)
+    # A stale or empty buffer cannot accidentally satisfy the byte-for-byte assertion.
+    server.run("set-buffer", "previous-buffer")
+    with _attached_terminal(server) as terminal:
+        if gesture == "drag":
+            # SGR coordinates are one-based. Vi includes its endpoint; emacs excludes it.
+            # Both gestures therefore select exactly the five letters at columns 7 through 11.
+            endpoint = 11 if mode == "vi" else 12
+            os.write(terminal, f"\x1b[<0;7;1M\x1b[<32;8;1M\x1b[<32;{endpoint};1M".encode())
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if (
+                    server.run("display-message", "-t", "test", "-p", "#{pane_in_mode}").stdout
+                    == b"1\n"
+                ):
+                    break
+                time.sleep(0.02)
+            else:
+                pytest.fail("mouse drag did not enter copy-mode")
+            assert server.run("save-buffer", "-").stdout == b"previous-buffer"
+            if capture is not None:
+                assert not capture.exists(), "copy must happen on release"
+            os.write(terminal, f"\x1b[<0;{endpoint};1m".encode())
+        else:
+            # Two press/release pairs at column 9, within bravo. Actual mouse input exercises
+            # root DoubleClick1Pane dispatch and the complete chained binding.
+            os.write(terminal, b"\x1b[<0;9;1M\x1b[<0;9;1m\x1b[<0;9;1M\x1b[<0;9;1m")
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if select.select([terminal], [], [], 0.02)[0]:
+                os.read(terminal, 65536)
+            buffer = server.run("save-buffer", "-").stdout
+            mode_active = server.run(
+                "display-message", "-t", "test", "-p", "#{pane_in_mode}"
+            ).stdout
+            captured = capture.read_bytes() if capture is not None and capture.exists() else None
+            if (
+                buffer == b"bravo"
+                and mode_active == b"0\n"
+                and (capture is None or captured == b"bravo")
+            ):
+                break
+        assert buffer == b"bravo"
+        assert mode_active == b"0\n"
+        if capture is not None:
+            assert captured == b"bravo"
+
+
+# 2119: REQ-030.2.1
+# 2119: REQ-030.2.2
+# 2119: REQ-030.2.3
+# 2119: REQ-030.2.4
+@pytest.mark.skipif(not _HAVE_TMUX, reason="needs tmux")
+@pytest.mark.parametrize("mode", ["emacs", "vi"])
+@pytest.mark.parametrize("gesture", ["drag", "double-click"])
+def test_real_mouse_gesture_copies_exact_bytes_to_clipboard_tool(
+    tmux_server: _TmuxServer, monkeypatch: pytest.MonkeyPatch, mode: str, gesture: str
+) -> None:
+    capture = tmux_server.root / "clipboard-stdin"
+    monkeypatch.setattr(
+        tmux_defaults, "clipboard_tool", lambda **_: f"/bin/cat > {shlex.quote(str(capture))}"
+    )
+    _exercise_mouse_copy(tmux_server, mode=mode, gesture=gesture, capture=capture)
+
+
+# 2119: REQ-030.2.5
+@pytest.mark.skipif(not _HAVE_TMUX, reason="needs tmux")
+@pytest.mark.parametrize("mode", ["emacs", "vi"])
+@pytest.mark.parametrize("gesture", ["drag", "double-click"])
+def test_real_mouse_gesture_without_clipboard_tool_copies_exact_paste_buffer(
+    tmux_server: _TmuxServer, mode: str, gesture: str
+) -> None:
+    _exercise_mouse_copy(tmux_server, mode=mode, gesture=gesture, capture=None)
+
+
 # 2119: REQ-030.1.1
 # 2119: REQ-030.3.1
 @pytest.mark.skipif(not _HAVE_TMUX, reason="needs tmux")
-def test_production_new_session_repairs_defaults_on_an_existing_server(tmp_path: Path) -> None:
-    del tmp_path
-    tmux_tmpdir = Path(tempfile.mkdtemp(prefix="pn-tmux-", dir="/tmp"))
-    tmux_tmpdir.chmod(0o700)
-    environment = {"PATH": os.environ["PATH"], "TMUX_TMPDIR": str(tmux_tmpdir)}
-    socket = "existing-defaults"
+def test_production_new_session_repairs_defaults_on_an_existing_server(
+    tmux_server: _TmuxServer,
+) -> None:
+    tmux = tmux_server.run
+    tmux("new-session", "-d", "-s", "keeper", "sleep", "30")
+    tmux("set-option", "-g", "mouse", "off")
+    tmux("set-option", "-g", "history-limit", "123")
+    tmux("set-option", "-g", "set-clipboard", "off")
+    tmux("unbind-key", "-T", "root", "DoubleClick1Pane")
 
-    def tmux(*arguments: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["tmux", "-L", socket, *arguments],
-            capture_output=True,
-            text=True,
-            env=environment,
-        )
-
-    try:
-        assert tmux("new-session", "-d", "-s", "keeper", "sleep", "30").returncode == 0
-        assert tmux("set-option", "-g", "mouse", "off").returncode == 0
-        assert tmux("set-option", "-g", "history-limit", "123").returncode == 0
-        assert tmux("set-option", "-g", "set-clipboard", "off").returncode == 0
-        assert tmux("unbind-key", "-T", "root", "DoubleClick1Pane").returncode == 0
-
-        created = tmux(*new_session_argv(socket, "-d", "-s", "corrected", "sleep", "30"))
-        assert created.returncode == 0, created.stderr
-        assert tmux("show-options", "-g", "mouse").stdout.strip() == "mouse on"
-        assert tmux("show-options", "-g", "set-clipboard").stdout.strip() == "set-clipboard on"
-        assert (
-            tmux("display-message", "-t", "corrected", "-p", "#{history_limit}").stdout.strip()
-            == HISTORY_LIMIT
-        )
-        binding = tmux("list-keys", "-T", "root").stdout
-        assert any(
-            "DoubleClick1Pane" in line and "select-word" in line for line in binding.splitlines()
-        )
-    finally:
-        tmux("kill-server")
-        shutil.rmtree(tmux_tmpdir)
+    tmux_server.create("corrected")
+    assert tmux("show-options", "-g", "mouse").stdout.strip() == b"mouse on"
+    assert tmux("show-options", "-g", "set-clipboard").stdout.strip() == b"set-clipboard on"
+    assert (
+        tmux("display-message", "-t", "corrected", "-p", "#{history_limit}").stdout.strip()
+        == HISTORY_LIMIT.encode()
+    )
+    binding = tmux("list-keys", "-T", "root").stdout
+    assert any(
+        b"DoubleClick1Pane" in line and b"select-word" in line for line in binding.splitlines()
+    )
 
 
 # 2119: REQ-030.1.1
 # 2119: REQ-030.1.2
+# 2119: REQ-030.1.3
 # 2119: REQ-030.2.3
 # 2119: REQ-030.2.4
 # 2119: REQ-030.3.1
 @pytest.mark.skipif(not _HAVE_TMUX, reason="needs tmux")
-def test_config_loads_correctly_via_dash_f_on_a_genuinely_fresh_socket(tmp_path: Path) -> None:
-    # This is the property unit tests (which never touch a real tmux binary) can't prove: that the
-    # generated config text is valid tmux syntax, that `-f` on a `new-session` call is what
-    # actually makes a brand-new socket's server durably pick up these defaults (separate `tmux -L
-    # sock set-option ...` calls do NOT — tmux's exit-empty tears a sessionless server back down
-    # between client invocations), and that the double-click binding's chained sub-commands land as
-    # ONE bound action rather than three immediate top-level commands (which bare `;` tokens on a
-    # plain CLI argv would do).
-    socket = "panopticon-tmux-defaults-itest"
-    subprocess.run(["tmux", "-L", socket, "kill-server"], capture_output=True)
-    try:
-        path = write_default_config(socket, directory=tmp_path, clipboard="cat")
-        result = subprocess.run(
-            ["tmux", "-L", socket, "-f", str(path), "new-session", "-d", "-s", "t1", "sleep", "30"],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, result.stderr
-
-        def show(option: str) -> str:
-            return subprocess.run(
-                ["tmux", "-L", socket, "show-options", "-g", option],
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-
-        assert show("mouse") == "mouse on"
-        assert show("history-limit") == f"history-limit {HISTORY_LIMIT}"
-        assert show("set-clipboard") == "set-clipboard on"
-
-        # not just declared globally — actually effective on the session `-f` just created and its
-        # first pane specifically (REQ-030.1: "a session created..."/"a pane created...")
-        def effective(option: str) -> str:
-            return subprocess.run(
-                ["tmux", "-L", socket, "show-options", "-A", "-t", "t1", option],
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-
-        assert effective("mouse") == "mouse* on"
-        assert effective("set-clipboard") == "set-clipboard on"
-        pane_history_limit = subprocess.run(
-            ["tmux", "-L", socket, "display-message", "-t", "t1", "-p", "#{history_limit}"],
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        assert pane_history_limit == HISTORY_LIMIT
-
-        keys = subprocess.run(
-            ["tmux", "-L", socket, "list-keys", "-T", "root"], capture_output=True, text=True
-        ).stdout
-        double_click = next(line for line in keys.splitlines() if "DoubleClick1Pane" in line)
-        # all three chained sub-commands present on the SAME binding line — proves they're bound
-        # together as one action, not split into separate immediate top-level commands
-        assert "copy-mode" in double_click
-        assert "select-word" in double_click
-        assert "copy-pipe-and-cancel" in double_click
-    finally:
-        subprocess.run(["tmux", "-L", socket, "kill-server"], capture_output=True)
+def test_config_loads_correctly_via_production_constructor_on_a_fresh_socket(
+    tmux_server: _TmuxServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tmux_defaults, "clipboard_tool", lambda **_: "cat")
+    tmux_server.create()
+    tmux = tmux_server.run
+    assert tmux("show-options", "-g", "mouse").stdout.strip() == b"mouse on"
+    assert (
+        tmux("show-options", "-g", "history-limit").stdout.strip()
+        == f"history-limit {HISTORY_LIMIT}".encode()
+    )
+    assert tmux("show-options", "-g", "set-clipboard").stdout.strip() == b"set-clipboard on"
+    assert tmux("show-options", "-A", "-t", "test", "mouse").stdout.strip() == b"mouse* on"
+    assert (
+        tmux("show-options", "-A", "-t", "test", "set-clipboard").stdout.strip()
+        == b"set-clipboard on"
+    )
+    assert (
+        tmux("display-message", "-t", "test", "-p", "#{history_limit}").stdout.strip()
+        == HISTORY_LIMIT.encode()
+    )
+    keys = tmux("list-keys", "-T", "root").stdout
+    double_click = next(line for line in keys.splitlines() if b"DoubleClick1Pane" in line)
+    assert b"copy-mode" in double_click
+    assert b"select-word" in double_click
+    assert b"copy-pipe-and-cancel" in double_click
 
 
 # 2119: REQ-030.5.2
 @pytest.mark.skipif(not _HAVE_TMUX, reason="needs tmux")
-def test_dash_f_skips_the_operators_own_tmux_conf(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_production_constructor_skips_the_operators_own_tmux_conf(
+    tmux_server: _TmuxServer,
 ) -> None:
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    (fake_home / ".tmux.conf").write_text('set-option -g status-left "OPERATORS-OWN-CONFIG"\n')
-    monkeypatch.setenv("HOME", str(fake_home))
-    socket = "panopticon-tmux-isolation-itest"
-    control_socket = "panopticon-tmux-isolation-itest-control"
-    subprocess.run(["tmux", "-L", socket, "kill-server"], capture_output=True)
-    subprocess.run(["tmux", "-L", control_socket, "kill-server"], capture_output=True)
+    (tmux_server.root / ".tmux.conf").write_text(
+        'set-option -g status-left "OPERATORS-OWN-CONFIG"\n'
+    )
+    control = _TmuxServer(tmux_server.root, tmux_server.environment, socket="control")
     try:
-        # negative control: without `-f`, the fake HOME/.tmux.conf IS eligible to load — proves the
-        # marker would actually appear if `-f` weren't suppressing it, not that it was never reachable
-        subprocess.run(
-            ["tmux", "-L", control_socket, "new-session", "-d", "-s", "t1", "sleep", "30"],
-            check=True,
+        # Negative control proves the fake operator config is discoverable on this tmux build.
+        control.run("new-session", "-d", "-s", "control", "sleep", "30")
+        assert b"OPERATORS-OWN-CONFIG" in control.run("show-options", "-g", "status-left").stdout
+        tmux_server.create()
+        assert (
+            b"OPERATORS-OWN-CONFIG"
+            not in tmux_server.run("show-options", "-g", "status-left").stdout
         )
-        control_status_left = subprocess.run(
-            ["tmux", "-L", control_socket, "show-options", "-g", "status-left"],
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        assert "OPERATORS-OWN-CONFIG" in control_status_left
-
-        path = write_default_config(socket, directory=tmp_path, clipboard=None)
-        subprocess.run(
-            ["tmux", "-L", socket, "-f", str(path), "new-session", "-d", "-s", "t1", "sleep", "30"],
-            check=True,
-        )
-        status_left = subprocess.run(
-            ["tmux", "-L", socket, "show-options", "-g", "status-left"],
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        assert "OPERATORS-OWN-CONFIG" not in status_left
     finally:
-        subprocess.run(["tmux", "-L", control_socket, "kill-server"], capture_output=True)
-        subprocess.run(["tmux", "-L", socket, "kill-server"], capture_output=True)
+        control.run("kill-server", check=False)

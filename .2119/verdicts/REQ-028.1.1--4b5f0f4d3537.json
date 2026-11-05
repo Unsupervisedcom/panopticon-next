@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.1.1--4b5f0f4d3537",
+  "requirementId": "REQ-028.1.1",
+  "hash": "4b5f0f4d3537",
+  "verdict": "pass",
+  "summary": "Fable 5.1: every discovered workflow plus skill-less and skilled fixtures must expose the exact ordered list provision, artifacts, then workflow skills; overriding the artifacts name is rejected at construction and at rescan.",
+  "timestamp": "2026-09-30T06:02:00.451Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.5.1--d9944c97f8b1",
+  "requirementId": "REQ-012.5.1",
+  "hash": "d9944c97f8b1",
+  "verdict": "pass",
+  "summary": "Fable 5.1: create with model and no harness, patch adding a model, and patch clearing the harness under an existing model are each rejected with 400, with a valid pair accepted as control.",
+  "timestamp": "2026-09-30T06:01:42.403Z"
+}

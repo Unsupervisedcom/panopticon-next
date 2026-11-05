@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-033.1.1--13e12d59f7c1",
+  "requirementId": "REQ-033.1.1",
+  "hash": "13e12d59f7c1",
+  "verdict": "pass",
+  "summary": "Fable 5.1: each review skill must contain the literal end-with-Suggested-placeholder-issues sentence and end with a test-owned triage literal.",
+  "timestamp": "2026-09-30T06:02:15.521Z"
+}

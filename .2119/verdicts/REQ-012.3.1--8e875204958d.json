@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-012.3.1--8e875204958d",
+  "requirementId": "REQ-012.3.1",
+  "hash": "8e875204958d",
+  "verdict": "pass",
+  "summary": "Fable 5.1: explicit codex beats both the app default and a repo default of claude; the workflow-pair case is rejected by the adjacent REQ-012.3.3 test. Persistence is only read from the create response here.",
+  "timestamp": "2026-09-30T06:01:34.870Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-051.4.1--dba58b727830",
+  "requirementId": "REQ-051.4.1",
+  "hash": "dba58b727830",
+  "verdict": "pass",
+  "summary": "Zero, positive and negative exit statuses require exact Pi/status failed details and ordered failure reporting before the real stop-handler SIGTERM boundary.",
+  "timestamp": "2026-09-14T08:10:33.299Z"
+}

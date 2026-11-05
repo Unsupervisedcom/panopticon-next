@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.4.1--069ac26b55f9",
+  "requirementId": "REQ-048.4.1",
+  "hash": "069ac26b55f9",
+  "verdict": "pass",
+  "summary": "Own task, transitions, operations, states, skills, briefing, wake, overview, artifact list/bytes, registrations, and the live stream (':ok','keepalive' bytes) are read with the capability and compared byte-for-byte against fleet responses and against a sibling workflow's output; a 403 on any listed surface or substituted sibling data fails.",
+  "timestamp": "2026-10-28T06:06:34.463Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.12.1--e33951052195",
+  "requirementId": "REQ-028.12.1",
+  "hash": "e33951052195",
+  "verdict": "pass",
+  "summary": "Fable 5.1: the honesty command and dispatch argv must contain codex exec --dangerously-bypass-approvals-and-sandbox, the reviewer prompt literal forbids checkout edits, and the git status --porcelain check is asserted as a literal sentence. The review-instruction equality itself reuses the source constant, so only those literal assertions carry weight.",
+  "timestamp": "2026-09-30T06:02:14.413Z"
+}

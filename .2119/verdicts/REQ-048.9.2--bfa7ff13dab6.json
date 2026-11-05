@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.9.2--bfa7ff13dab6",
+  "requirementId": "REQ-048.9.2",
+  "hash": "bfa7ff13dab6",
+  "verdict": "pass",
+  "summary": "Every registered GET/HEAD route with 'missing' params and a non-integer entry_index is asserted not 401/403 for the read token except /live and /session/input which must be 401, while every mutation, MCP tool, resource, and unknown tool are 401 before argument validation; a scope-403 on a read route or a 422 on a mutation fails.",
+  "timestamp": "2026-10-28T06:06:57.141Z"
+}

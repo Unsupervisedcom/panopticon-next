@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-030.4.4--655bc9a7029a",
+  "requirementId": "REQ-030.4.4",
+  "hash": "655bc9a7029a",
+  "verdict": "pass",
+  "summary": "Non-darwin with xclip (and with xclip+xsel, wl-copy absent) must return the exact string \"xclip -selection clipboard\"; bare \"xclip\" or xsel precedence fails.",
+  "timestamp": "2026-10-28T06:04:24.060Z"
+}

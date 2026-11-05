@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-028.8.2--dc7c9a4a7767",
+  "requirementId": "REQ-028.8.2",
+  "hash": "dc7c9a4a7767",
+  "verdict": "pass",
+  "summary": "Fable 5.1: real Spec2119AutoSol on a repo defaulting to codex/gpt-5.6-sol must create (claude, claude-opus-5-5) over REST. Mutations removing the pair and changing the model string were both killed by this test; override precedence relies on the workflow-agnostic REQ-012.3 tests.",
+  "timestamp": "2026-09-30T06:02:09.018Z"
+}

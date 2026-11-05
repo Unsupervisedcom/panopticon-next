@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-018.4.1--5d43058b90f2",
+  "requirementId": "REQ-018.4.1",
+  "hash": "5d43058b90f2",
+  "verdict": "pass",
+  "summary": "Down/Down/Up moves highlighted indices through filtered model and effort candidates before selecting the expected item.",
+  "timestamp": "2026-09-14T07:53:13.463Z"
+}

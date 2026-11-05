@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-048.6.3--0fd81d927c61",
+  "requirementId": "REQ-048.6.3",
+  "hash": "0fd81d927c61",
+  "verdict": "pass",
+  "summary": "For every task-targeted route and the launcher-failure endpoint, an existing sibling target and 'missing' are both asserted to produce exactly (403, {\"detail\":\"credential scope forbids operation\"}); a 404 for the missing case would fail.",
+  "timestamp": "2026-10-28T06:06:44.642Z"
+}

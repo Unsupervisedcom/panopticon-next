@@ -1,0 +1,8 @@
+{
+  "reviewId": "REQ-032.1.4--db9b38bf05df",
+  "requirementId": "REQ-032.1.4",
+  "hash": "db9b38bf05df",
+  "verdict": "pass",
+  "summary": "test_argv_resume_skips_a_newer_subagent_thread_of_the_interactive_session seeds a newer `codex-tui` rollout with thread_source='subagent' and asserts resume targets the older root ('user') session; filtering on originator alone is rejected.",
+  "timestamp": "2026-10-28T06:05:40.050Z"
+}
