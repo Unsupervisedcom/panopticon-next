@@ -1,0 +1,8 @@
+{
+  "reviewId": "merge-recovery-state.2.3--34950bab1104",
+  "requirementId": "merge-recovery-state.2.3",
+  "hash": "34950bab1104",
+  "verdict": "pass",
+  "summary": "Independent review: Exact policy ordering and rejection of the old pre-queue section detect repair branches moved below waits, including known conflicts when check evidence is unavailable.",
+  "timestamp": "2026-10-29T08:04:05.338Z"
+}

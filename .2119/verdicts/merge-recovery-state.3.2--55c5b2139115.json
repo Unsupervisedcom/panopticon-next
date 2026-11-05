@@ -1,0 +1,8 @@
+{
+  "reviewId": "merge-recovery-state.3.2--55c5b2139115",
+  "requirementId": "merge-recovery-state.3.2",
+  "hash": "55c5b2139115",
+  "verdict": "pass",
+  "summary": "Independent review: The ordered unknown-BLOCKED branch must report the unresolved blocker and stop after identified waits are considered; retry loops or recovery substitutions fail.",
+  "timestamp": "2026-10-29T08:04:08.908Z"
+}

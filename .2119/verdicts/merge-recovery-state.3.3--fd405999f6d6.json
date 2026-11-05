@@ -1,0 +1,8 @@
+{
+  "reviewId": "merge-recovery-state.3.3--fd405999f6d6",
+  "requirementId": "merge-recovery-state.3.3",
+  "hash": "fd405999f6d6",
+  "verdict": "pass",
+  "summary": "Independent review: The pinned approval branch returns control without a watcher while the non-repair invariant preserves the artifact; watcher or deletion substitutions fail.",
+  "timestamp": "2026-10-29T08:04:10.091Z"
+}

@@ -1,0 +1,8 @@
+{
+  "reviewId": "merge-recovery-state.3.4--abaa730bb10a",
+  "requirementId": "merge-recovery-state.3.4",
+  "hash": "abaa730bb10a",
+  "verdict": "pass",
+  "summary": "Independent review: The full policy rejects deleting or reordering the BEHIND synchronization branch or permitting it through the CLEAN/HAS_HOOKS enqueue gate.",
+  "timestamp": "2026-10-29T08:04:11.252Z"
+}

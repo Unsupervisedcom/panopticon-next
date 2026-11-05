@@ -1,0 +1,8 @@
+{
+  "reviewId": "merge-recovery-state.1.2--817908331560",
+  "requirementId": "merge-recovery-state.1.2",
+  "hash": "817908331560",
+  "verdict": "pass",
+  "summary": "Independent review: Real GitHub workflow transitions and the independent full-policy literal reject a BUILDING target or other replacement for ITERATING.",
+  "timestamp": "2026-10-29T08:04:00.202Z"
+}
